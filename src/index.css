@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ── Light theme (default) ──────────────────────────────────── */
+  :root {
+    --dao-bg-1: #f8f9fc;
+    --dao-bg-2: #f0f1f7;
+    --dao-bg-3: #e6e7f0;
+    --dao-bg-4: #dcdde9;
+    --dao-surface: #cfd1e0;
+    --dao-border: #c0c2d4;
+    --dao-text: #0f172a;
+    --dao-text-secondary: #334155;
+    --dao-text-muted: #64748b;
+    --dao-text-hint: #94a3b8;
+    --dao-shadow-strength: 0.08;
+    --dao-glow-strength: 0.15;
+    --dao-overlay: rgba(0, 0, 0, 0.05);
+  }
+
+  /* ── Dark theme ─────────────────────────────────────────────── */
+  .dark {
+    --dao-bg-1: #0a0a12;
+    --dao-bg-2: #0f0f1a;
+    --dao-bg-3: #161625;
+    --dao-bg-4: #1e1e30;
+    --dao-surface: #252540;
+    --dao-border: #2e2e4a;
+    --dao-text: #f3f4f6;
+    --dao-text-secondary: #d1d5db;
+    --dao-text-muted: #9ca3af;
+    --dao-text-hint: #6b7280;
+    --dao-shadow-strength: 0.8;
+    --dao-glow-strength: 0.3;
+    --dao-overlay: rgba(0, 0, 0, 0.5);
+  }
+
+  html {
+    background-color: var(--dao-bg-1);
+    color: var(--dao-text);
+  }
+
+  body {
+    @apply min-h-screen antialiased;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: var(--dao-bg-2);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--dao-border);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-primary-700;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-500 text-white font-medium px-4 py-2 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply font-medium px-4 py-2 rounded-lg border transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    background-color: var(--dao-surface);
+    border-color: var(--dao-border);
+    color: var(--dao-text-secondary);
+  }
+  .btn-secondary:hover {
+    background-color: var(--dao-border);
+  }
+
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-500 text-white font-medium px-4 py-2 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .card {
+    background-color: var(--dao-bg-3);
+    border: 1px solid var(--dao-border);
+    @apply rounded-xl;
+  }
+
+  .input {
+    background-color: var(--dao-bg-2);
+    border: 1px solid var(--dao-border);
+    color: var(--dao-text);
+    @apply rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200;
+  }
+  .input::placeholder {
+    color: var(--dao-text-hint);
+  }
+}

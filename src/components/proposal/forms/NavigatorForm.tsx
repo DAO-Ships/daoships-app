@@ -1,0 +1,357 @@
+import { useState } from 'react'
+import { Button } from '@/components/common/Button'
+import { OfferingField } from './OfferingField'
+import { AddressDisplay } from '@/components/common/AddressDisplay'
+import type { Navigator } from '@/types/navigator'
+import { NavigatorPermission } from '@/types/navigator'
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NavigatorForm - Add, update, or remove navigators via governance proposal
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface NavigatorChange {
+  address: string
+  permission: number
+  label: string
+}
+
+interface NavigatorFormData {
+  title: string
+  description: string
+  offering: string
+  navigators: NavigatorChange[]
+}
+
+interface NavigatorFormProps {
+  currentNavigators: Navigator[]
+  daoLocks: { admin: boolean; manager: boolean; governor: boolean }
+  /** Pre-fill a new navigator addition (e.g. from NavigatorCatalog after deploy) */
+  prefill?: { address: string; permission: number } | null
+  minOfferingDisplay: string
+  canSelfSponsor?: boolean
+  onSubmit: (data: NavigatorFormData) => void
+  isSubmitting?: boolean
+}
+
+const PERMISSION_OPTIONS: Array<{ value: number; label: string; description: string }> = [
+  { value: NavigatorPermission.None, label: 'Disable', description: 'Revoke all permissions (can be re-enabled later)' },
+  { value: NavigatorPermission.ManagerOnly, label: 'Manager', description: 'Can mint/burn shares and loot' },
+  { value: NavigatorPermission.GovernorOnly, label: 'Governor', description: 'Can cancel proposals' },
+  { value: NavigatorPermission.AdminOnly, label: 'Admin', description: 'Can pause tokens, set config' },
+  { value: NavigatorPermission.ManagerAndGovernor, label: 'Manager + Governor', description: 'Manager and Governor permissions' },
+  { value: NavigatorPermission.AdminAndManager, label: 'Admin + Manager', description: 'Admin and Manager permissions' },
+  { value: NavigatorPermission.AdminAndGovernor, label: 'Admin + Governor', description: 'Admin and Governor permissions' },
+  { value: NavigatorPermission.All, label: 'All', description: 'Full Admin, Manager, and Governor permissions' },
+]
+
+const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/
+
+export function NavigatorForm({
+  currentNavigators,
+  daoLocks,
+  prefill,
+  minOfferingDisplay,
+  canSelfSponsor = false,
+  onSubmit,
+  isSubmitting = false,
+}: NavigatorFormProps) {
+  const [title, setTitle] = useState(prefill ? `Register navigator ${prefill.address.slice(0, 10)}...` : '')
+  const [description, setDescription] = useState('')
+  const [offering, setOffering] = useState('')
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Changes to existing navigators (permission updates / removals)
+  // Pre-fill from query params if a new navigator was just deployed
+  const [changes, setChanges] = useState<Map<string, number>>(() => {
+    const initial = new Map<string, number>()
+    if (prefill) {
+      initial.set(prefill.address.toLowerCase(), prefill.permission)
+    }
+    return initial
+  })
+
+  // New navigator additions
+  const [newAddress, setNewAddress] = useState('')
+  const [newPermission, setNewPermission] = useState(NavigatorPermission.ManagerOnly)
+
+  const updateExisting = (address: string, permission: number) => {
+    setChanges((prev) => {
+      const next = new Map(prev)
+      // Find the navigator's current permission
+      const current = currentNavigators.find((n) => n.navigator_address === address)
+      if (current && current.permission === permission) {
+        next.delete(address) // No change
+      } else {
+        next.set(address, permission)
+      }
+      return next
+    })
+  }
+
+  const addNew = () => {
+    const addr = newAddress.trim().toLowerCase()
+    if (!ADDRESS_REGEX.test(addr)) {
+      setErrors((prev) => ({ ...prev, newAddress: 'Invalid address' }))
+      return
+    }
+    if (currentNavigators.some((n) => n.navigator_address === addr) || changes.has(addr)) {
+      setErrors((prev) => ({ ...prev, newAddress: 'Navigator already listed' }))
+      return
+    }
+    setChanges((prev) => new Map(prev).set(addr, newPermission))
+    setNewAddress('')
+    setNewPermission(NavigatorPermission.ManagerOnly)
+    setErrors((prev) => { const next = { ...prev }; delete next.newAddress; return next })
+  }
+
+  const removeNew = (address: string) => {
+    // Only remove if it's a new addition (not in currentNavigators)
+    if (!currentNavigators.some((n) => n.navigator_address === address)) {
+      setChanges((prev) => { const next = new Map(prev); next.delete(address); return next })
+    }
+  }
+
+  const getPermissionLabel = (perm: number): string => {
+    return PERMISSION_OPTIONS.find((o) => o.value === perm)?.label || `Permission ${perm}`
+  }
+
+  // Check if a permission is blocked by locks
+  const isPermissionLocked = (perm: number): boolean => {
+    if ((perm & NavigatorPermission.AdminOnly) && daoLocks.admin) return true
+    if ((perm & NavigatorPermission.ManagerOnly) && daoLocks.manager) return true
+    if ((perm & NavigatorPermission.GovernorOnly) && daoLocks.governor) return true
+    return false
+  }
+
+  const validate = (): boolean => {
+    const newErrors: Record<string, string> = {}
+    if (!title.trim()) newErrors.title = 'Proposal title is required'
+    if (changes.size === 0) newErrors.changes = 'At least one navigator change is required'
+    // Check locks
+    for (const [addr, perm] of changes) {
+      if (perm > 0 && isPermissionLocked(perm)) {
+        newErrors.changes = `Cannot grant locked permission to ${addr.slice(0, 10)}...`
+        break
+      }
+    }
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validate()) return
+
+    const navigators: NavigatorChange[] = []
+    for (const [address, permission] of changes) {
+      navigators.push({ address, permission, label: getPermissionLabel(permission) })
+    }
+
+    onSubmit({
+      title: title.trim(),
+      description: description.trim(),
+      offering,
+      navigators,
+    })
+  }
+
+  // Separate new additions from existing navigator changes
+  const existingAddresses = new Set(currentNavigators.map((n) => n.navigator_address))
+  const newAdditions = [...changes.entries()].filter(([addr]) => !existingAddresses.has(addr))
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Proposal metadata */}
+      <div className="space-y-5">
+        <div>
+          <label htmlFor="nav-title" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+            Proposal Title <span className="text-red-400">*</span>
+          </label>
+          <input
+            id="nav-title"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Update navigator permissions"
+            className="input w-full"
+            maxLength={240}
+            disabled={isSubmitting}
+          />
+          {errors.title && <p className="text-xs text-red-400 mt-1">{errors.title}</p>}
+        </div>
+
+        <div>
+          <label htmlFor="nav-desc" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+            Description
+          </label>
+          <textarea
+            id="nav-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Explain why this navigator change is needed..."
+            className="input w-full min-h-[80px] resize-y"
+            maxLength={5000}
+            disabled={isSubmitting}
+            rows={3}
+          />
+        </div>
+      </div>
+
+      <div className="border-t border-dao-border" />
+
+      {/* Existing navigators */}
+      {currentNavigators.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-dao-text-secondary">Existing Navigators</h3>
+          {currentNavigators.map((nav) => {
+            const changedPerm = changes.get(nav.navigator_address)
+            const isChanged = changedPerm !== undefined
+            const effectivePerm = isChanged ? changedPerm : nav.permission
+            const isRemoval = effectivePerm === 0
+
+            return (
+              <div
+                key={nav.navigator_address}
+                className={`rounded-lg border px-4 py-3 ${
+                  isRemoval
+                    ? 'border-red-500/30 bg-red-50 dark:bg-red-900/10'
+                    : isChanged
+                      ? 'border-accent-500/30 bg-accent-50 dark:bg-accent-900/10'
+                      : 'border-dao-border bg-dao-dark-2'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <AddressDisplay address={nav.navigator_address} />
+                      {nav.navigator_type && (
+                        <span className="text-xs text-dao-text-hint">{nav.navigator_type}</span>
+                      )}
+                    </div>
+                    {isChanged && (
+                      <p className="text-xs text-accent-500">
+                        {isRemoval
+                          ? 'Will be disabled'
+                          : `Permission: ${getPermissionLabel(nav.permission)} → ${getPermissionLabel(effectivePerm)}`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <select
+                      value={effectivePerm}
+                      onChange={(e) => updateExisting(nav.navigator_address, Number(e.target.value))}
+                      className="input text-sm py-1.5 px-2"
+                      disabled={isSubmitting}
+                    >
+                      {PERMISSION_OPTIONS.map((opt) => (
+                        <option
+                          key={opt.value}
+                          value={opt.value}
+                          disabled={opt.value > 0 && isPermissionLocked(opt.value)}
+                        >
+                          {opt.label}{opt.value > 0 && isPermissionLocked(opt.value) ? ' (locked)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {isChanged && (
+                      <button
+                        type="button"
+                        onClick={() => updateExisting(nav.navigator_address, nav.permission)}
+                        className="text-xs text-dao-text-hint hover:text-dao-text transition-colors"
+                        title="Reset"
+                      >
+                        undo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* New additions */}
+      {newAdditions.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-dao-text-secondary">New Navigators</h3>
+          {newAdditions.map(([addr, perm]) => (
+            <div key={addr} className="rounded-lg border border-accent-500/30 bg-accent-50 dark:bg-accent-900/10 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <AddressDisplay address={addr} />
+                  <p className="text-xs text-accent-500 mt-0.5">{getPermissionLabel(perm)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeNew(addr)}
+                  className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                >
+                  remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new navigator */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-dao-text-secondary">Add New Navigator</h3>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={newAddress}
+            onChange={(e) => { setNewAddress(e.target.value); setErrors((prev) => { const next = { ...prev }; delete next.newAddress; return next }) }}
+            placeholder="0x... navigator contract address"
+            className="input flex-1 font-mono text-sm"
+            disabled={isSubmitting}
+          />
+          <select
+            value={newPermission}
+            onChange={(e) => setNewPermission(Number(e.target.value))}
+            className="input text-sm py-1.5 px-2"
+            disabled={isSubmitting}
+          >
+            {PERMISSION_OPTIONS.filter((o) => o.value > 0).map((opt) => (
+              <option
+                key={opt.value}
+                value={opt.value}
+                disabled={isPermissionLocked(opt.value)}
+              >
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <Button type="button" variant="secondary" size="sm" onClick={addNew} disabled={isSubmitting}>
+            Add
+          </Button>
+        </div>
+        {errors.newAddress && <p className="text-xs text-red-400">{errors.newAddress}</p>}
+      </div>
+
+      {errors.changes && <p className="text-xs text-red-400">{errors.changes}</p>}
+
+      <div className="border-t border-dao-border" />
+
+      <OfferingField
+        value={offering}
+        onChange={setOffering}
+        minOfferingDisplay={minOfferingDisplay}
+        canSelfSponsor={canSelfSponsor}
+        disabled={isSubmitting}
+      />
+
+      <div className="flex justify-end">
+        <Button
+          type="submit"
+          variant="primary"
+          loading={isSubmitting}
+          disabled={!title.trim() || changes.size === 0}
+        >
+          Submit Navigator Proposal
+        </Button>
+      </div>
+    </form>
+  )
+}

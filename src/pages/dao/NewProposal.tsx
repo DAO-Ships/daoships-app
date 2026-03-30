@@ -1,0 +1,618 @@
+import { useState } from 'react'
+import { useOutletContext, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { quais } from 'quais'
+import type { Dao } from '@/types'
+import { ProposalType } from '@/types/proposal'
+import { extractDaoConfig } from '@/types/dao'
+import { useWallet } from '@/hooks/useWallet'
+import { useTreasury } from '@/hooks/useTreasury'
+import { useTreasuryBalances } from '@/hooks/useTreasuryBalances'
+import { useMember } from '@/hooks/useMember'
+import { useDaoProfile } from '@/hooks/useDaoProfile'
+import { safeJsonParse, safeString, safeEntries } from '@/utils/contentJson'
+import { safeBigInt } from '@/utils/bigint'
+import { formatTokenAmount } from '@/utils/format'
+import { parseDurationToSeconds } from '@/utils/time'
+import { ConnectWallet } from '@/components/common/ConnectWallet'
+import { Card } from '@/components/common/Card'
+import { daoService } from '@/services/DaoService'
+import { ProposalEncoder } from '@/services/utils/ProposalEncoder'
+import { FundingForm, type VaultTokenOption } from '@/components/proposal/forms/FundingForm'
+import { MembershipForm } from '@/components/proposal/forms/MembershipForm'
+import { GuildTokensForm } from '@/components/proposal/forms/GuildTokensForm'
+import { GovernanceForm } from '@/components/proposal/forms/GovernanceForm'
+import { CustomActionForm } from '@/components/proposal/forms/CustomActionForm'
+import { ProfileForm } from '@/components/proposal/forms/ProfileForm'
+import { AnnouncementForm } from '@/components/proposal/forms/AnnouncementForm'
+import { NavigatorForm } from '@/components/proposal/forms/NavigatorForm'
+import { useNavigators } from '@/hooks/useNavigators'
+import { CONTRACT_ADDRESSES } from '@/config/contracts'
+import { POSTER_TAGS } from '@/types/poster'
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NewProposal - Proposal type picker and form
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface DaoContext {
+  dao: Dao
+}
+
+interface ProposalTypeOption {
+  type: ProposalType
+  label: string
+  description: string
+  icon: string
+}
+
+const PROPOSAL_TYPES: ProposalTypeOption[] = [
+  {
+    type: ProposalType.Funding,
+    label: 'Funding',
+    description: 'Request tokens from the DAO treasury for a specific purpose.',
+    icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
+  {
+    type: ProposalType.Membership,
+    label: 'Membership',
+    description: 'Issue shares or loot to a new or existing member.',
+    icon: 'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z',
+  },
+  {
+    type: ProposalType.GuildTokens,
+    label: 'Guild Tokens',
+    description: 'Add or remove tokens (QUAI or ERC-20) from the ragequit-eligible treasury list.',
+    icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+  },
+  {
+    type: ProposalType.GovConfig,
+    label: 'Governance Config',
+    description: 'Modify governance parameters like voting period, quorum, etc.',
+    icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+  },
+  {
+    type: ProposalType.Navigator,
+    label: 'Navigators',
+    description: 'Add, disable, or update permissions for navigator contracts.',
+    icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+  },
+  {
+    type: ProposalType.Profile,
+    label: 'Update Profile',
+    description: 'Update the DAO name, description, avatar, links, or tags.',
+    icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+  },
+  {
+    type: ProposalType.Announcement,
+    label: 'Announcement',
+    description: 'Post an official DAO announcement visible to all members.',
+    icon: 'M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z',
+  },
+  {
+    type: ProposalType.Custom,
+    label: 'Custom Action',
+    description: 'Execute an arbitrary contract call through the DAO.',
+    icon: 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4',
+  },
+]
+
+export function NewProposal() {
+  const { daoId } = useParams()
+  const { dao } = useOutletContext<DaoContext>()
+  const { connected, address } = useWallet()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const queryClient = useQueryClient()
+
+  // Pre-select proposal type and pre-fill data from query params (e.g. from NavigatorCatalog)
+  const preselectedType = searchParams.get('type') as ProposalType | null
+  const [selectedType, setSelectedType] = useState<ProposalType | null>(
+    preselectedType && Object.values(ProposalType).includes(preselectedType) ? preselectedType : null,
+  )
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // Navigator pre-fill from query params
+  const prefillNavigator = searchParams.get('addAddress') && searchParams.get('addPermission')
+    ? { address: searchParams.get('addAddress')!, permission: Number(searchParams.get('addPermission')) }
+    : null
+
+  const { data: treasury } = useTreasury(daoId)
+  const { data: balances } = useTreasuryBalances(dao.avatar, treasury)
+  const { data: member } = useMember(daoId, address ?? undefined)
+  const { data: profileRecord } = useDaoProfile(daoId)
+  const { data: navigators } = useNavigators(daoId)
+
+  // Read sponsorship eligibility directly from the contract so the UI matches
+  // what the service layer and contract will actually enforce. The indexer's
+  // voting_power can lag behind on-chain state after delegation changes.
+  const { data: onChainSponsor } = useQuery({
+    queryKey: ['sponsorCheck', daoId, address],
+    queryFn: async () => {
+      const [votingPower, params] = await Promise.all([
+        daoService.getCurrentVotes(daoId!, address!),
+        daoService.getSponsorParams(daoId!),
+      ])
+      return { votingPower, ...params }
+    },
+    enabled: !!daoId && !!address,
+    staleTime: 10_000,
+  })
+
+  const minOffering = onChainSponsor?.proposalOffering ?? safeBigInt(dao.proposal_offering)
+  const minOfferingDisplay = minOffering > 0n ? formatTokenAmount(minOffering) : '0'
+  const canSelfSponsor = onChainSponsor
+    ? onChainSponsor.votingPower >= onChainSponsor.sponsorThreshold
+    : (member ? safeBigInt(member.voting_power) >= safeBigInt(dao.sponsor_threshold) : false)
+
+  const submitMutation = useMutation({
+    mutationFn: async (params: {
+      proposalData: string
+      details: string
+      offering: bigint
+      expiration: number
+      rationale?: string
+      title: string
+    }) => {
+      // The service layer reads the exact offering from the contract and
+      // determines self-sponsorship, so we don't need to validate here.
+      const proposalId = await daoService.submitProposal(
+        daoId!,
+        params.proposalData,
+        params.expiration,
+        params.details,
+        params.offering,
+      )
+
+      return proposalId
+    },
+    onSuccess: (proposalId) => {
+      queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
+      navigate(`/dao/${daoId}/proposals/${proposalId}`)
+    },
+    onError: (err) => {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to submit proposal')
+    },
+  })
+
+  const isSubmitting = submitMutation.isPending
+
+  // ── Shared helpers ───────────────────────────────────────────────────
+
+  /** Parse expiration duration string to a future Unix timestamp (seconds), or 0 for none. */
+  function parseExpiration(expirationInput: string | undefined): number {
+    if (!expirationInput?.trim()) return 0
+    const seconds = parseDurationToSeconds(expirationInput)
+    if (!seconds || seconds <= 0) return 0
+    return Math.floor(Date.now() / 1000) + seconds
+  }
+
+  /** Common fields all forms emit alongside their specific data. */
+  interface SharedFormFields {
+    title: string
+    description: string
+    offering: string
+    expiration?: string
+    rationale?: string
+  }
+
+  function submitEncoded(
+    data: SharedFormFields,
+    encoded: { proposalData: string },
+  ) {
+    const details = JSON.stringify({ title: data.title, description: data.description })
+    const offering = data.offering ? quais.parseQuai(data.offering) : minOffering
+    const expiration = parseExpiration(data.expiration)
+    submitMutation.mutate({
+      proposalData: encoded.proposalData,
+      details,
+      offering,
+      expiration,
+      rationale: data.rationale,
+      title: data.title,
+    })
+  }
+
+  // ── Form submission handlers ──────────────────────────────────────────
+
+  const handleFundingSubmit = (data: SharedFormFields & {
+    recipient: string; tokenAddress: string; amount: string
+  }) => {
+    setSubmitError(null)
+    try {
+      const encoder = new ProposalEncoder(dao.id)
+      encoder.addTransfer(data.recipient, data.tokenAddress, quais.parseQuai(data.amount))
+      submitEncoded(data, encoder.encode())
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
+    }
+  }
+
+  const handleMembershipSubmit = (data: SharedFormFields & {
+    members: Array<{ address: string; amount: string; tokenType: 'shares' | 'loot'; action: 'mint' | 'burn' }>
+  }) => {
+    setSubmitError(null)
+    try {
+      const encoder = new ProposalEncoder(dao.id)
+      const mintShares = data.members.filter((m) => m.action === 'mint' && m.tokenType === 'shares')
+      const burnShares = data.members.filter((m) => m.action === 'burn' && m.tokenType === 'shares')
+      const mintLoot = data.members.filter((m) => m.action === 'mint' && m.tokenType === 'loot')
+      const burnLoot = data.members.filter((m) => m.action === 'burn' && m.tokenType === 'loot')
+
+      if (mintShares.length > 0) encoder.addMintShares(mintShares.map((m) => m.address), mintShares.map((m) => quais.parseQuai(m.amount)))
+      if (burnShares.length > 0) encoder.addBurnShares(burnShares.map((m) => m.address), burnShares.map((m) => quais.parseQuai(m.amount)))
+      if (mintLoot.length > 0) encoder.addMintLoot(mintLoot.map((m) => m.address), mintLoot.map((m) => quais.parseQuai(m.amount)))
+      if (burnLoot.length > 0) encoder.addBurnLoot(burnLoot.map((m) => m.address), burnLoot.map((m) => quais.parseQuai(m.amount)))
+
+      submitEncoded(data, encoder.encode())
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
+    }
+  }
+
+  const handleGovernanceSubmit = (data: SharedFormFields & {
+    votingPeriod: number; gracePeriod: number; quorumPercent: number
+    proposalOffering: string; sponsorThreshold: string; minRetentionPercent: number
+    defaultExpiryWindow: number
+  }) => {
+    setSubmitError(null)
+    try {
+      const encoder = new ProposalEncoder(dao.id)
+      encoder.addSetGovernanceConfig({
+        votingPeriod: data.votingPeriod,
+        gracePeriod: data.gracePeriod,
+        quorumPercent: BigInt(data.quorumPercent),
+        proposalOffering: BigInt(data.proposalOffering),
+        sponsorThreshold: BigInt(data.sponsorThreshold),
+        minRetentionPercent: BigInt(data.minRetentionPercent),
+        defaultExpiryWindow: data.defaultExpiryWindow,
+      })
+      submitEncoded(data, encoder.encode())
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
+    }
+  }
+
+  const handleGuildTokensSubmit = (data: SharedFormFields & {
+    tokens: Array<{ address: string; enabled: boolean }>
+  }) => {
+    setSubmitError(null)
+    try {
+      const encoder = new ProposalEncoder(dao.id)
+      encoder.addSetGuildTokens(data.tokens.map((t) => t.address), data.tokens.map((t) => t.enabled))
+      submitEncoded(data, encoder.encode())
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
+    }
+  }
+
+  const handleCustomSubmit = (data: SharedFormFields & {
+    target: string; calldata: string; value: string
+  }) => {
+    setSubmitError(null)
+    try {
+      const encoder = new ProposalEncoder(dao.id)
+      encoder.addCustomAction(data.target, BigInt(data.value), data.calldata)
+      submitEncoded(data, encoder.encode())
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
+    }
+  }
+
+  const handleProfileSubmit = (data: SharedFormFields & {
+    profile: { name: string; description: string; avatar: string; links: Record<string, string>; tags: string[] }
+    currentProfile: { name?: string; description?: string; avatar?: string; links?: Record<string, string>; tags?: string[] }
+  }) => {
+    setSubmitError(null)
+    try {
+      const encoder = new ProposalEncoder(dao.id)
+      const cur = data.currentProfile
+      const next = data.profile
+
+      // Build update payload with only changed fields
+      const update: Record<string, unknown> = { daoAddress: dao.id }
+      if (next.name !== (cur.name || '')) update.name = next.name
+      if (next.description !== (cur.description || '')) update.description = next.description
+      if (next.avatar !== (cur.avatar || '')) update.avatar = next.avatar
+
+      const curLinks = cur.links || {}
+      const linksChanged = JSON.stringify(next.links) !== JSON.stringify(curLinks)
+      if (linksChanged) update.links = next.links
+
+      const curTags = cur.tags || []
+      const tagsChanged = JSON.stringify(next.tags) !== JSON.stringify(curTags)
+      if (tagsChanged) update.tags = next.tags
+
+      // If nothing changed, we still need at least the name for a full profile post
+      const changedKeys = Object.keys(update).filter((k) => k !== 'daoAddress')
+      if (changedKeys.length === 0) {
+        setSubmitError('No profile changes detected')
+        return
+      }
+
+      // Always use DAO_PROFILE — supports partial updates (null removes, omit keeps)
+      // Add schemaVersion for indexer compliance
+      const payload = { schemaVersion: '1.0', ...update }
+
+      encoder.addPosterPost(CONTRACT_ADDRESSES.POSTER, JSON.stringify(payload), POSTER_TAGS.DAO_PROFILE)
+      submitEncoded(data, encoder.encode())
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
+    }
+  }
+
+  const handleAnnouncementSubmit = (data: SharedFormFields & {
+    announcementTitle: string
+    announcementBody: string
+    severity: 'info' | 'warning' | 'critical'
+  }) => {
+    setSubmitError(null)
+    try {
+      const encoder = new ProposalEncoder(dao.id)
+      const payload = {
+        schemaVersion: '1.0',
+        daoAddress: dao.id.toLowerCase(),
+        title: data.announcementTitle,
+        body: data.announcementBody || undefined,
+        severity: data.severity,
+      }
+      encoder.addPosterPost(CONTRACT_ADDRESSES.POSTER, JSON.stringify(payload), POSTER_TAGS.DAO_ANNOUNCEMENT)
+      submitEncoded(data, encoder.encode())
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
+    }
+  }
+
+  const handleNavigatorSubmit = (data: SharedFormFields & {
+    navigators: Array<{ address: string; permission: number }>
+  }) => {
+    setSubmitError(null)
+    try {
+      const encoder = new ProposalEncoder(dao.id)
+      encoder.addSetNavigators(
+        data.navigators.map((n) => n.address),
+        data.navigators.map((n) => BigInt(n.permission)),
+      )
+      submitEncoded(data, encoder.encode())
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────
+
+  if (!connected) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <h2 className="text-2xl font-bold font-display text-dao-text">
+          Connect your wallet to create a proposal
+        </h2>
+        <p className="text-dao-text-muted text-center max-w-md">
+          You need a connected wallet and DAO membership to submit proposals.
+        </p>
+        <ConnectWallet />
+      </div>
+    )
+  }
+
+  // Build vault token options with balances for FundingForm.
+  // Native QUAI is always available; ERC-20 guild tokens come from useTreasuryBalances
+  // which already handles the native sentinel address properly.
+  const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+  const hasNativeInGuildTokens = (balances?.tokenBalances ?? []).some((tb) => tb.isNative)
+  const vaultTokenOptions: VaultTokenOption[] = [
+    // Add native QUAI if not already in guild tokens
+    ...(!hasNativeInGuildTokens ? [{
+      address: ZERO_ADDRESS,
+      symbol: 'QUAI',
+      name: 'Quai',
+      decimals: 18,
+      balance: balances?.nativeBalance ?? 0n,
+      isNative: true,
+    }] : []),
+    // Guild tokens (native + ERC-20) with live balances
+    ...(balances?.tokenBalances ?? []).map((tb) => ({
+      address: tb.address,
+      symbol: tb.symbol,
+      name: tb.name,
+      decimals: tb.decimals,
+      balance: tb.balance,
+      isNative: tb.isNative,
+    })),
+  ]
+
+  // Current guild token addresses for the GuildTokensForm
+  const currentGuildTokenAddresses = (treasury ?? []).map((t) => t.token_address)
+
+  return (
+    <div className="space-y-6">
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-2 text-sm text-dao-text-hint">
+        <Link to={`/dao/${daoId}`} className="hover:text-primary-400 transition-colors">
+          {dao.name || `DAO ${dao.id.slice(0, 8)}...`}
+        </Link>
+        <span>/</span>
+        <Link to={`/dao/${daoId}/proposals`} className="hover:text-primary-400 transition-colors">
+          Proposals
+        </Link>
+        <span>/</span>
+        <span className="text-dao-text-secondary">New</span>
+      </nav>
+
+      <h1 className="text-2xl font-bold font-display text-dao-text">New Proposal</h1>
+
+      {/* Type selection */}
+      {!selectedType ? (
+        <div>
+          <p className="text-dao-text-muted mb-4">
+            Select the type of proposal you want to create.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {PROPOSAL_TYPES.map((opt) => (
+              <button
+                key={opt.type}
+                onClick={() => setSelectedType(opt.type)}
+                className="card px-5 py-5 text-left hover:border-accent-500/50 transition-colors group"
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-primary-50 dark:bg-primary-900/40 border border-primary-200 dark:border-primary-700/30 flex items-center justify-center flex-shrink-0">
+                    <svg
+                      className="w-5 h-5 text-primary-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d={opt.icon} />
+                    </svg>
+                  </div>
+                  <h3 className="text-dao-text font-semibold group-hover:text-accent-400 transition-colors">
+                    {opt.label}
+                  </h3>
+                </div>
+                <p className="text-sm text-dao-text-muted">{opt.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Selected type header */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setSelectedType(null); setSubmitError(null) }}
+              className="text-sm text-dao-text-muted hover:text-dao-text transition-colors"
+            >
+              &larr; Change type
+            </button>
+            <span className="text-sm text-dao-text-hint">|</span>
+            <span className="text-sm text-primary-400 font-medium">
+              {PROPOSAL_TYPES.find((t) => t.type === selectedType)?.label}
+            </span>
+          </div>
+
+          <Card header={
+            <h2 className="text-lg font-semibold text-dao-text">
+              {PROPOSAL_TYPES.find((t) => t.type === selectedType)?.label} Proposal
+            </h2>
+          }>
+            {selectedType === ProposalType.Funding && (
+              <FundingForm
+                daoId={daoId!}
+                vaultTokens={vaultTokenOptions}
+                minOfferingDisplay={minOfferingDisplay}
+                canSelfSponsor={canSelfSponsor}
+                onSubmit={handleFundingSubmit}
+                isSubmitting={isSubmitting}
+              />
+            )}
+
+            {selectedType === ProposalType.Membership && (
+              <MembershipForm
+                minOfferingDisplay={minOfferingDisplay}
+                canSelfSponsor={canSelfSponsor}
+                onSubmit={handleMembershipSubmit}
+                isSubmitting={isSubmitting}
+              />
+            )}
+
+            {selectedType === ProposalType.GuildTokens && (
+              <GuildTokensForm
+                currentGuildTokens={currentGuildTokenAddresses}
+                minOfferingDisplay={minOfferingDisplay}
+                canSelfSponsor={canSelfSponsor}
+                onSubmit={handleGuildTokensSubmit}
+                isSubmitting={isSubmitting}
+              />
+            )}
+
+            {selectedType === ProposalType.GovConfig && (
+              <GovernanceForm
+                currentConfig={extractDaoConfig(dao)}
+                minOfferingDisplay={minOfferingDisplay}
+                canSelfSponsor={canSelfSponsor}
+                onSubmit={handleGovernanceSubmit}
+                isSubmitting={isSubmitting}
+              />
+            )}
+
+            {selectedType === ProposalType.Navigator && (
+              <NavigatorForm
+                currentNavigators={navigators || []}
+                daoLocks={{
+                  admin: dao.admin_locked,
+                  manager: dao.manager_locked,
+                  governor: dao.governor_locked,
+                }}
+                prefill={prefillNavigator}
+                minOfferingDisplay={minOfferingDisplay}
+                canSelfSponsor={canSelfSponsor}
+                onSubmit={handleNavigatorSubmit}
+                isSubmitting={isSubmitting}
+              />
+            )}
+
+            {selectedType === ProposalType.Profile && (() => {
+              const profileContent = profileRecord?.content ? safeJsonParse(profileRecord.content) : null
+              const rawLinks = profileContent && typeof profileContent === 'object'
+                ? (profileContent as Record<string, unknown>).links : null
+              const profileLinks: Record<string, string> = {}
+              if (rawLinks && typeof rawLinks === 'object' && !Array.isArray(rawLinks)) {
+                for (const [k, v] of safeEntries(rawLinks as Record<string, unknown>)) {
+                  if (typeof v === 'string') profileLinks[k] = v
+                }
+              }
+              const rawTags = profileContent && typeof profileContent === 'object'
+                ? (profileContent as Record<string, unknown>).tags : null
+              const profileTags: string[] = Array.isArray(rawTags)
+                ? rawTags.filter((t): t is string => typeof t === 'string')
+                : []
+              return (
+                <ProfileForm
+                  currentProfile={{
+                    name: dao.name || '',
+                    description: dao.description || '',
+                    avatar: dao.avatar_img || safeString(profileContent, 'avatar') || '',
+                    links: profileLinks,
+                    tags: profileTags,
+                  }}
+                  minOfferingDisplay={minOfferingDisplay}
+                  canSelfSponsor={canSelfSponsor}
+                  onSubmit={handleProfileSubmit}
+                  isSubmitting={isSubmitting}
+                />
+              )
+            })()}
+
+            {selectedType === ProposalType.Announcement && (
+              <AnnouncementForm
+                minOfferingDisplay={minOfferingDisplay}
+                canSelfSponsor={canSelfSponsor}
+                onSubmit={handleAnnouncementSubmit}
+                isSubmitting={isSubmitting}
+              />
+            )}
+
+            {selectedType === ProposalType.Custom && (
+              <CustomActionForm
+                minOfferingDisplay={minOfferingDisplay}
+                canSelfSponsor={canSelfSponsor}
+                onSubmit={handleCustomSubmit}
+                isSubmitting={isSubmitting}
+              />
+            )}
+
+            {submitError && (
+              <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 rounded-lg px-4 py-3 space-y-2">
+                {submitError.split('\n\n').map((line, i) => (
+                  <p key={i} className={`text-sm ${i === 0 ? 'text-red-400 font-medium' : 'text-red-400/80'}`}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+    </div>
+  )
+}
