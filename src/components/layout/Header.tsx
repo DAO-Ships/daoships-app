@@ -1,8 +1,10 @@
+import { Link } from 'react-router-dom'
 import { ConnectWallet } from '@/components/common/ConnectWallet'
 import { StatusDot } from '@/components/common/StatusDot'
 import { useIndexerConnection } from '@/hooks/useIndexerConnection'
 import { NETWORK_CONFIG } from '@/config/contracts'
 import { useUiStore } from '@/store/uiStore'
+import { useDaoStore } from '@/store/daoStore'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Header - App title, network indicator, wallet connect
@@ -11,6 +13,7 @@ import { useUiStore } from '@/store/uiStore'
 export function Header() {
   const { status, isLoading, isEnabled } = useIndexerConnection()
   const { toggleSidebar } = useUiStore()
+  const { currentDaoId, currentDaoName } = useDaoStore()
 
   const indexerStatus = isLoading || !isEnabled
     ? 'unknown'
@@ -31,9 +34,22 @@ export function Header() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h1 className="text-lg font-bold font-display text-dao-text tracking-wide">
-          DAO Ships
-        </h1>
+        <div className="flex items-center gap-2">
+          <Link to="/" className="text-lg font-bold font-display text-dao-text tracking-wide hover:text-primary-400 transition-colors">
+            DAO Ships
+          </Link>
+          {currentDaoId && currentDaoName && (
+            <>
+              <span className="text-dao-text-hint">/</span>
+              <Link
+                to={`/dao/${currentDaoId}`}
+                className="text-sm font-semibold text-dao-text-secondary hover:text-primary-400 transition-colors truncate max-w-[200px]"
+              >
+                {currentDaoName}
+              </Link>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Center: network + indexer status */}

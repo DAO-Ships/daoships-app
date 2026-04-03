@@ -1,17 +1,21 @@
 import { useState, useMemo } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import type { Dao, Proposal } from '@/types'
+import type { Dao, Proposal, DaoExpiryConfig } from '@/types'
 import { ProposalStatus, deriveProposalStatus } from '@/types/proposal'
 import { useProposals } from '@/hooks/useProposals'
 import { safeBigInt } from '@/utils/bigint'
 import { Button } from '@/components/common/Button'
-import { Loading } from '@/components/common/Loading'
+import { Card } from '@/components/common/Card'
+import { SkeletonProposalCard } from '@/components/common/Skeleton'
 import { EmptyState } from '@/components/common/EmptyState'
+import { Breadcrumb } from '@/components/common/Breadcrumb'
+import { StatusBadge } from '@/components/common/StatusBadge'
 import { formatTimeAgo } from '@/utils/time'
 import { parseProposalDetails } from '@/utils/format'
+import { getProposalType } from '@/utils/proposalTypes'
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Proposals - Proposal list with status filter tabs
+// Proposals - Proposal list with status filter tabs and type indicators
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface DaoContext {
@@ -29,100 +33,82 @@ const FILTER_TABS: { value: FilterTab; label: string }[] = [
   { value: 'failed', label: 'Failed' },
 ]
 
-interface DaoExpiryConfig {
-  voting_period: number
-  grace_period: number
-  default_expiry_window: number
+interface ProposalWithStatus {
+  proposal: Proposal
+  status: string
 }
 
-function matchesFilter(proposal: Proposal, filter: FilterTab, daoConfig?: DaoExpiryConfig): boolean {
+function matchesFilter({ status, proposal }: ProposalWithStatus, filter: FilterTab): boolean {
   if (filter === 'all') return true
-
-  const status = deriveProposalStatus(proposal, daoConfig)
   switch (filter) {
-    case 'voting':
-      return status === ProposalStatus.Voting
-    case 'grace':
-      return status === ProposalStatus.Grace
-    case 'ready':
-      return status === ProposalStatus.Ready
-    case 'passed':
-      return status === ProposalStatus.Processed && proposal.passed
-    case 'failed':
-      return (
-        status === ProposalStatus.Defeated ||
-        status === ProposalStatus.Cancelled ||
-        status === ProposalStatus.Expired
-      )
-    default:
-      return true
+    case 'voting': return status === ProposalStatus.Voting
+    case 'grace': return status === ProposalStatus.Grace
+    case 'ready': return status === ProposalStatus.Ready
+    case 'passed': return status === ProposalStatus.Processed && proposal.passed
+    case 'failed': return (
+      status === ProposalStatus.Defeated ||
+      status === ProposalStatus.Cancelled ||
+      status === ProposalStatus.Expired ||
+      status === ProposalStatus.ActionFailed
+    )
+    default: return true
   }
 }
 
-function ProposalCard({ proposal, daoId, daoConfig }: { proposal: Proposal; daoId: string; daoConfig?: DaoExpiryConfig }) {
-  const status = deriveProposalStatus(proposal, daoConfig)
+function ProposalCard({ proposal, daoId, status }: { proposal: Proposal; daoId: string; status: string }) {
+  const details = parseProposalDetails(proposal.details)
   const yesBalance = safeBigInt(proposal.yes_balance)
   const noBalance = safeBigInt(proposal.no_balance)
   const totalBalance = yesBalance + noBalance
-  const yesPercent = totalBalance > 0n
-    ? Number((yesBalance * 100n) / totalBalance)
-    : 0
+  const yesPercent = totalBalance > 0n ? Number((yesBalance * 100n) / totalBalance) : 0
+  const noPercent = totalBalance > 0n ? 100 - yesPercent : 0
+
+  const proposalType = getProposalType(proposal.details, proposal.proposal_data)
 
   return (
     <Link
       to={`/dao/${daoId}/proposals/${proposal.proposal_id}`}
-      className="card block px-5 py-4 hover:border-accent-500/50 transition-colors"
+      className="flex items-center gap-4 px-5 py-3.5 hover:bg-dao-surface/50 transition-colors"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="text-sm font-mono text-dao-text-hint">
-              #{proposal.proposal_id}
-            </span>
-            <h3 className="text-dao-text font-medium truncate">
-              {parseProposalDetails(proposal.details).title}
-            </h3>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-dao-text-hint mt-2">
-            <span>{formatTimeAgo(new Date(proposal.created_at).getTime())}</span>
-            {totalBalance > 0n && (
-              <span>
-                {yesPercent}% approval ({proposal.yes_votes} yes / {proposal.no_votes} no)
-              </span>
-            )}
-          </div>
-        </div>
-        <span
-          className={`text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0 ${
-            status === ProposalStatus.Voting
-              ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-400'
-              : status === ProposalStatus.Grace
-                ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-400'
-                : status === ProposalStatus.Ready
-                  ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400'
-                  : status === ProposalStatus.Processed
-                    ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500'
-                    : status === ProposalStatus.Defeated ||
-                        status === ProposalStatus.Cancelled
-                      ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400'
-                      : status === ProposalStatus.Expired
-                        ? 'bg-dao-surface text-dao-text-hint'
-                        : 'bg-dao-surface text-dao-text-muted'
-          }`}
-        >
-          {status.charAt(0).toUpperCase() + status.slice(1)}
-        </span>
+      {/* ID */}
+      <span className="text-xs font-mono text-dao-text-hint w-8 flex-shrink-0">#{proposal.proposal_id}</span>
+
+      {/* Type badge */}
+      <div className="w-20 flex-shrink-0">
+        {proposalType && (
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${proposalType.color}`}>
+            {proposalType.label}
+          </span>
+        )}
       </div>
 
-      {/* Vote progress bar */}
-      {totalBalance > 0n && (
-        <div className="mt-3 h-1.5 rounded-full bg-dao-dark-2 overflow-hidden">
-          <div
-            className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-            style={{ width: `${yesPercent}%` }}
-          />
-        </div>
-      )}
+      {/* Title + time */}
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm text-dao-text font-medium truncate">{details.title}</h3>
+        <p className="text-xs text-dao-text-hint mt-0.5">
+          {formatTimeAgo(new Date(proposal.created_at).getTime())}
+        </p>
+      </div>
+
+      {/* Vote column — bar + text aligned together */}
+      <div className="hidden sm:block w-28 flex-shrink-0 text-right">
+        {totalBalance > 0n ? (
+          <>
+            <div className="flex h-1.5 rounded-full bg-dao-dark-2 overflow-hidden mb-1">
+              <div className="h-full bg-emerald-500" style={{ width: `${yesPercent}%` }} />
+              <div className="h-full bg-red-500" style={{ width: `${noPercent}%` }} />
+            </div>
+            <span className="text-[10px] text-dao-text-hint">
+              {yesPercent}% yes · {proposal.yes_votes + proposal.no_votes} votes
+            </span>
+          </>
+        ) : (
+          <span className="text-[10px] text-dao-text-hint">No votes</span>
+        )}
+      </div>
+
+      {/* Status */}
+      <StatusBadge status={status} className="flex-shrink-0" />
     </Link>
   )
 }
@@ -138,21 +124,37 @@ export function Proposals() {
     default_expiry_window: dao.default_expiry_window,
   }), [dao.voting_period, dao.grace_period, dao.default_expiry_window])
 
-  const filteredProposals = useMemo(() => {
-    if (!proposals) return []
-    return proposals.filter((p) => matchesFilter(p, activeFilter, daoConfig))
-  }, [proposals, activeFilter, daoConfig])
+  // Compute all proposals with status once, then filter
+  const allWithStatus = useMemo(() => {
+    if (!proposals) return [] as ProposalWithStatus[]
+    return proposals.map((p) => ({ proposal: p, status: deriveProposalStatus(p, daoConfig) }))
+  }, [proposals, daoConfig])
+
+  const filteredProposals = useMemo(
+    () => allWithStatus.filter((ps) => matchesFilter(ps, activeFilter)),
+    [allWithStatus, activeFilter],
+  )
+
+  // Count per filter tab
+  const tabCounts = useMemo(() => {
+    const counts: Record<FilterTab, number> = { all: 0, voting: 0, grace: 0, ready: 0, passed: 0, failed: 0 }
+    for (const ps of allWithStatus) {
+      counts.all++
+      if (ps.status === ProposalStatus.Voting) counts.voting++
+      else if (ps.status === ProposalStatus.Grace) counts.grace++
+      else if (ps.status === ProposalStatus.Ready) counts.ready++
+      else if (ps.status === ProposalStatus.Processed && ps.proposal.passed) counts.passed++
+      else if (ps.status === ProposalStatus.Defeated || ps.status === ProposalStatus.Cancelled || ps.status === ProposalStatus.Expired || ps.status === ProposalStatus.ActionFailed) counts.failed++
+    }
+    return counts
+  }, [allWithStatus])
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-dao-text-hint">
-        <Link to={`/dao/${dao.id}`} className="hover:text-primary-400 transition-colors">
-          {dao.name || `DAO ${dao.id.slice(0, 8)}...`}
-        </Link>
-        <span>/</span>
-        <span className="text-dao-text-secondary">Proposals</span>
-      </nav>
+      <Breadcrumb items={[
+        { label: dao.name || `DAO ${dao.id.slice(0, 8)}...`, href: `/dao/${dao.id}` },
+        { label: 'Proposals' },
+      ]} />
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -162,42 +164,53 @@ export function Proposals() {
         </Link>
       </div>
 
-      {/* Filter tabs */}
+      {/* Filter tabs with count badges */}
       <div className="flex gap-1 overflow-x-auto pb-1">
-        {FILTER_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setActiveFilter(tab.value)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-              activeFilter === tab.value
-                ? 'bg-primary-600 text-white'
-                : 'bg-dao-surface text-dao-text-muted hover:text-dao-text hover:bg-dao-border'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {FILTER_TABS.map((tab) => {
+          const count = tabCounts[tab.value]
+          return (
+            <button
+              key={tab.value}
+              onClick={() => setActiveFilter(tab.value)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                activeFilter === tab.value
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-dao-surface text-dao-text-muted hover:text-dao-text hover:bg-dao-border'
+              }`}
+            >
+              {tab.label}
+              {count > 0 && (
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                  activeFilter === tab.value
+                    ? 'bg-white/20 text-white'
+                    : 'bg-dao-dark-2 text-dao-text-hint'
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {/* Proposal list */}
       {isLoading ? (
-        <Loading fullPage />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }, (_, i) => <SkeletonProposalCard key={i} />)}
+        </div>
       ) : error ? (
         <EmptyState
           title="Failed to load proposals"
           description={error instanceof Error ? error.message : 'An unexpected error occurred.'}
         />
       ) : filteredProposals.length > 0 ? (
-        <div className="space-y-3">
-          {filteredProposals.map((proposal) => (
-            <ProposalCard
-              key={proposal.id}
-              proposal={proposal}
-              daoId={dao.id}
-              daoConfig={daoConfig}
-            />
-          ))}
-        </div>
+        <Card>
+          <div className="divide-y divide-dao-border">
+            {filteredProposals.map(({ proposal, status }) => (
+              <ProposalCard key={proposal.id} proposal={proposal} daoId={dao.id} status={status} />
+            ))}
+          </div>
+        </Card>
       ) : (
         <EmptyState
           title={activeFilter === 'all' ? 'No proposals yet' : `No ${activeFilter} proposals`}
@@ -208,9 +221,7 @@ export function Proposals() {
           }
           action={
             activeFilter === 'all' ? (
-              <Link to="new">
-                <Button variant="primary">Create Proposal</Button>
-              </Link>
+              <Link to="new"><Button variant="primary">Create Proposal</Button></Link>
             ) : undefined
           }
         />

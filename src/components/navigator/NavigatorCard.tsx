@@ -102,7 +102,10 @@ export function NavigatorCard({ navigator }: NavigatorCardProps) {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            {navigator.description && (
+              <p className="text-xs text-dao-text-muted mt-0.5 line-clamp-1">{navigator.description}</p>
+            )}
+            <div className="flex items-center gap-2 mt-0.5">
               {navigator.name && (
                 <p className="text-xs text-dao-text-hint">{typeLabel}</p>
               )}

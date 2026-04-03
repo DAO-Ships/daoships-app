@@ -2,9 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { quais } from 'quais'
 import { daoService } from '@/services/DaoService'
 import { encodeGovernanceConfig } from '@/services/utils/GovernanceEncoder'
-import { CONTRACT_ADDRESSES } from '@/config/contracts'
-
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+import { CONTRACT_ADDRESSES, ZERO_ADDRESS } from '@/config/contracts'
 
 export interface LaunchParams {
   salts: { vault: string; shares: string; loot: string; daoShip: string }

@@ -9,6 +9,11 @@ import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
+import { useNavigatorAllowlist } from '@/hooks/useNavigatorAllowlist'
+import { useMember } from '@/hooks/useMember'
+import { isOpenAllowlist } from '@/utils/allowlist'
+import { safeBigInt } from '@/utils/bigint'
+import { AllowlistDownloadButton, AllowlistRestore } from '@/components/navigator/AllowlistActions'
 
 const ERC20_BALANCE_ABI = [
   'function balanceOf(address account) view returns (uint256)',
@@ -96,6 +101,13 @@ function ERC20TributeInteraction({
   const [tokenBalance, setTokenBalance] = useState<bigint | null>(null)
   const [supportsPermit, setSupportsPermit] = useState(false)
 
+  // Allowlist
+  const allowlist = useNavigatorAllowlist(daoId, navigatorAddress, config.allowlistRoot)
+  const userAllowlisted = !userAddress ? false : allowlist.checkAddress(userAddress)
+  const hasAllowlist = !isOpenAllowlist(config.allowlistRoot)
+  const { data: memberData } = useMember(daoId, userAddress ?? undefined)
+  const isMember = memberData ? (safeBigInt(memberData.shares) > 0n || safeBigInt(memberData.loot) > 0n) : false
+
   const sharesBigInt = sharesToMint ? parseTokenAmount(sharesToMint) : 0n
   const lootBigInt = lootToMint ? parseTokenAmount(lootToMint) : 0n
   const isValid = sharesBigInt > 0n || lootBigInt > 0n
@@ -133,7 +145,7 @@ function ERC20TributeInteraction({
 
   // Fetch tribute token balance and detect permit support
   useEffect(() => {
-    if (!userAddress || !config.tributeToken) return
+    if (!userAddress || !config.tributeToken || !baseService.hasProvider()) return
     const provider = baseService.getProvider()
     const checksummed = quais.getAddress(userAddress!)
 
@@ -151,7 +163,7 @@ function ERC20TributeInteraction({
     )
     permitProbe.nonces(checksummed).then(() => setSupportsPermit(true)).catch(() => setSupportsPermit(false))
 
-  }, [userAddress, config.tributeToken, success])
+  }, [userAddress, config.tributeToken, success, connected])
 
   // Fetch per-address minted amount
   useEffect(() => {
@@ -181,7 +193,8 @@ function ERC20TributeInteraction({
         return
       }
 
-      await navigatorService.erc20TributeOnboard(navigatorAddress, sharesBigInt, lootBigInt)
+      const proof = hasAllowlist && userAddress ? (allowlist.getProof(userAddress) ?? []) : []
+      await navigatorService.erc20TributeOnboard(navigatorAddress, sharesBigInt, lootBigInt, proof)
       setSharesToMint('')
       setLootToMint('')
       setSuccess(true)
@@ -300,8 +313,41 @@ function ERC20TributeInteraction({
         )}
       </Card>
 
+      {/* Allowlist status */}
+      {hasAllowlist && (
+        <div className={`rounded-lg px-4 py-3 space-y-2 ${
+          allowlist.dataUnavailable
+            ? 'bg-amber-500/10 border border-amber-500/30'
+            : userAddress && userAllowlisted
+              ? 'bg-emerald-500/10 border border-emerald-500/30'
+              : userAddress
+                ? 'bg-red-500/10 border border-red-500/30'
+                : 'bg-primary-500/10 border border-primary-500/30'
+        }`}>
+          {allowlist.dataUnavailable ? (
+            <>
+              <p className="text-sm text-amber-400">Allowlist data unavailable. Proofs cannot be generated.</p>
+              {isMember && <AllowlistRestore daoId={daoId} navigatorAddress={navigatorAddress} allowlistRoot={config.allowlistRoot} />}
+            </>
+          ) : (
+            <>
+              {userAddress && userAllowlisted ? (
+                <p className="text-sm text-emerald-400">Your address is on the allowlist ({allowlist.addressCount} addresses).</p>
+              ) : userAddress ? (
+                <p className="text-sm text-red-400">Your address is not on the allowlist for this navigator.</p>
+              ) : (
+                <p className="text-sm text-primary-400">This navigator has an allowlist ({allowlist.addressCount} addresses). Connect your wallet to check eligibility.</p>
+              )}
+              {isMember && allowlist.treeDump && (
+                <AllowlistDownloadButton navigatorAddress={navigatorAddress} root={config.allowlistRoot} addresses={allowlist.addresses} treeDump={allowlist.treeDump} />
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Onboard form */}
-      {!isExpired && !config.paused && !mintCapReached && (
+      {!isExpired && !config.paused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
         <Card header={<h3 className="text-sm font-semibold text-dao-text">Join DAO (ERC20 Tribute)</h3>}>
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

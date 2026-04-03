@@ -17,14 +17,16 @@ const DEFAULT_DECIMALS = 18
  * @returns Formatted string, e.g. "1.000" or "0.712"
  */
 export function formatTokenAmount(
-  amount: bigint,
+  amount: bigint | number | string,
   decimals: number = DEFAULT_DECIMALS,
   maxDecimals: number = 4,
   minDecimals: number = 3,
 ): string {
-  const divisor = 10n ** BigInt(decimals)
-  const whole = amount / divisor
-  const remainder = amount % divisor
+  const amt = typeof amount === 'bigint' ? amount : BigInt(amount)
+  const dec = Number(decimals)
+  const divisor = 10n ** BigInt(dec)
+  const whole = amt / divisor
+  const remainder = amt % divisor
 
   if (remainder === 0n) {
     if (minDecimals > 0) {
@@ -34,7 +36,7 @@ export function formatTokenAmount(
   }
 
   // Pad the fractional part to `decimals` length, then truncate to `maxDecimals`
-  const fracStr = remainder.toString().padStart(decimals, '0').slice(0, maxDecimals)
+  const fracStr = remainder.toString().padStart(dec, '0').slice(0, maxDecimals)
 
   // Remove trailing zeroes, but keep at least `minDecimals` places
   let trimmed = fracStr.replace(/0+$/, '')
@@ -100,7 +102,7 @@ export function parseProposalDetails(details: string | null): ParsedProposalDeta
         title: parsed.title || 'Untitled Proposal',
         description: parsed.description || '',
         type: typeof parsed.type === 'string' ? parsed.type : undefined,
-        discussionUrl: typeof parsed.discussionUrl === 'string' ? parsed.discussionUrl : undefined,
+        discussionUrl: typeof parsed.discussionUrl === 'string' && /^https?:\/\//i.test(parsed.discussionUrl) ? parsed.discussionUrl : undefined,
       }
     }
   } catch {

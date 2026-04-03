@@ -5,37 +5,34 @@ import { quais } from 'quais'
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Base service providing shared JsonRpcProvider and signer management.
- * All other services import the singleton `baseService` instance to access
- * the RPC provider (for read calls) and the wallet signer (for write calls).
+ * Base service providing wallet-based provider and signer management.
+ * All RPC calls are routed through the connected wallet's provider
+ * (e.g. Pelagus extension) — direct JsonRpcProvider cannot be used
+ * because the Quai RPC endpoint blocks browser CORS requests.
  *
- * The provider is created with `usePathing: true`, which is critical for
- * Quai's sharded architecture — it routes RPC requests to the correct
- * shard based on the address prefix.
+ * Services must check `hasProvider()` before making read calls.
+ * Write calls require `requireSigner()`.
  */
 class BaseService {
-  private provider: quais.JsonRpcProvider
   private signer: quais.Signer | null = null
+  private walletProvider: quais.Provider | null = null
 
-  constructor() {
-    const rpcUrl = import.meta.env.VITE_RPC_URL
-    if (!rpcUrl) {
-      throw new Error('VITE_RPC_URL environment variable is not set')
+  /**
+   * Get the wallet provider for read-only calls.
+   * Throws if no wallet is connected — callers should gate on hasProvider().
+   */
+  getProvider(): quais.Provider {
+    if (!this.walletProvider) {
+      throw new Error('No wallet connected. Connect your wallet to interact with the blockchain.')
     }
-
-    this.provider = new quais.JsonRpcProvider(
-      rpcUrl,
-      undefined,
-      { usePathing: true }
-    )
+    return this.walletProvider
   }
 
   /**
-   * Get the shared JsonRpcProvider instance.
-   * Used by all services for read-only contract calls.
+   * Check whether a wallet provider is available for read calls.
    */
-  getProvider(): quais.JsonRpcProvider {
-    return this.provider
+  hasProvider(): boolean {
+    return this.walletProvider !== null
   }
 
   /**
@@ -47,9 +44,11 @@ class BaseService {
 
   /**
    * Set the signer after wallet connection, or null on disconnect.
+   * Captures the wallet's provider for all RPC read calls.
    */
   setSigner(signer: quais.Signer | null): void {
     this.signer = signer
+    this.walletProvider = signer?.provider ?? null
   }
 
   /**

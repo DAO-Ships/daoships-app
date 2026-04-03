@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// Poster Tag Types - matches the 7 recognized daoships.* poster tags
+// Poster Tag Types - matches the 6 recognized daoships.* poster tags
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const POSTER_TAGS = {
@@ -8,8 +8,7 @@ export const POSTER_TAGS = {
   DAO_ANNOUNCEMENT: 'daoships.dao.announcement',
   MEMBER_PROFILE: 'daoships.member.profile',
   PROPOSAL_VOTE_REASON: 'daoships.proposal.vote.reason',
-  TREASURY_LABEL: 'daoships.treasury.label',
-  NAVIGATOR_METADATA: 'daoships.navigator.metadata',
+  NAVIGATOR_ALLOWLIST: 'daoships.navigator.allowlist',
 } as const
 
 export type PosterTag = typeof POSTER_TAGS[keyof typeof POSTER_TAGS]

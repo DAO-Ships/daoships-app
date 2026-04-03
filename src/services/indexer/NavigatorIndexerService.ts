@@ -28,6 +28,27 @@ class NavigatorIndexerService {
   }
 
   /**
+   * List all navigator events for a DAO (all navigators).
+   * Ordered by creation date descending (newest first).
+   */
+  async listNavigatorEvents(daoId: string): Promise<NavigatorEvent[]> {
+    if (!supabase) return []
+
+    const { data, error } = await supabase
+      .from('ds_navigator_events')
+      .select('*')
+      .eq('dao_id', daoId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('[NavigatorIndexerService] listNavigatorEvents error:', error.message)
+      return []
+    }
+
+    return (data as NavigatorEvent[]) ?? []
+  }
+
+  /**
    * Get all events for a specific navigator within a DAO.
    * Events include onboard, checkin, and slash actions.
    * Ordered by block_number descending (newest first).

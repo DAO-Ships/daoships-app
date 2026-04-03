@@ -55,6 +55,9 @@ export interface LaunchFormValues {
     expiry: string            // '' for no expiry, or seconds
     mintCap: string           // '0' = unlimited
     perAddressCap: string     // '0' = unlimited
+    allowlistAddresses: string // newline-separated addresses, '' = open
+    navigatorName: string      // human-readable name for Poster metadata
+    navigatorDescription: string // human-readable description
   }
   enableERC20Tribute: boolean
   erc20TributeConfig: {
@@ -64,6 +67,9 @@ export interface LaunchFormValues {
     expiry: string
     mintCap: string
     perAddressCap: string
+    allowlistAddresses: string // newline-separated addresses, '' = open
+    navigatorName: string
+    navigatorDescription: string
   }
   // Step 5: Guild Tokens
   guildTokens: Array<{ type: 'native' | 'erc20'; address: string }>
@@ -127,12 +133,12 @@ export function BasicInfoStep({ control, errors }: BasicInfoStepProps) {
           {...name.field}
           placeholder="My Awesome DAO"
           className="input w-full"
-          maxLength={120}
+          maxLength={64}
         />
         {errors.name && (
           <p className="text-xs text-red-400 mt-1">{errors.name.message}</p>
         )}
-        <p className="text-xs text-dao-text-hint mt-1">{name.field.value?.length || 0}/120</p>
+        <p className="text-xs text-dao-text-hint mt-1">{name.field.value?.length || 0}/64</p>
       </div>
 
       {/* Optional Profile Section (collapsible) */}
@@ -176,10 +182,10 @@ export function BasicInfoStep({ control, errors }: BasicInfoStepProps) {
                 {...description.field}
                 placeholder="What is your DAO about?"
                 className="input w-full min-h-[100px] resize-y"
-                maxLength={2000}
+                maxLength={280}
                 rows={4}
               />
-              <p className="text-xs text-dao-text-hint mt-1">{description.field.value?.length || 0}/2000</p>
+              <p className="text-xs text-dao-text-hint mt-1">{description.field.value?.length || 0}/280</p>
             </div>
 
             {/* Avatar URL */}
@@ -193,7 +199,7 @@ export function BasicInfoStep({ control, errors }: BasicInfoStepProps) {
                 {...avatarUrl.field}
                 placeholder="https://example.com/logo.png or ipfs://..."
                 className="input w-full"
-                maxLength={2048}
+                maxLength={200}
               />
               <p className="text-xs text-dao-text-hint mt-1">
                 PNG, JPG, SVG, or IPFS link for your DAO's logo
@@ -216,7 +222,7 @@ export function BasicInfoStep({ control, errors }: BasicInfoStepProps) {
                       onChange={(e) => updateLink(key, e.target.value)}
                       placeholder={placeholder}
                       className="input w-full text-sm"
-                      maxLength={2048}
+                      maxLength={200}
                     />
                   </div>
                 ))}
@@ -245,7 +251,7 @@ export function BasicInfoStep({ control, errors }: BasicInfoStepProps) {
               {...shareTokenName.field}
               placeholder="DAO Shares"
               className="input w-full"
-              maxLength={60}
+              maxLength={32}
             />
           </div>
           <div>
@@ -279,7 +285,7 @@ export function BasicInfoStep({ control, errors }: BasicInfoStepProps) {
               {...lootTokenName.field}
               placeholder="DAO Loot"
               className="input w-full"
-              maxLength={60}
+              maxLength={32}
             />
           </div>
           <div>

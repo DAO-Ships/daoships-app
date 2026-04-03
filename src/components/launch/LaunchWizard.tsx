@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { useLaunch } from '@/hooks/useLaunch'
 import { useWallet } from '@/hooks/useWallet'
 import { parseTokenAmount } from '@/utils/format'
 import { NATIVE_TOKEN_SENTINEL } from '@/config/contracts'
 import { parseDurationToSeconds } from '@/utils/time'
+import { parseAllowlistInput } from '@/utils/allowlist'
+import { MAX_ALLOWLIST_ADDRESSES } from '@/components/common/AllowlistInput'
 import { Button } from '@/components/common/Button'
 import { BasicInfoStep } from './steps/BasicInfoStep'
 import { MembersStep } from './steps/MembersStep'
@@ -60,6 +63,9 @@ const DEFAULT_VALUES: LaunchFormValues = {
     expiry: '',
     mintCap: '0',
     perAddressCap: '0',
+    allowlistAddresses: '',
+    navigatorName: '',
+    navigatorDescription: '',
   },
   enableERC20Tribute: false,
   erc20TributeConfig: {
@@ -69,6 +75,9 @@ const DEFAULT_VALUES: LaunchFormValues = {
     expiry: '',
     mintCap: '0',
     perAddressCap: '0',
+    allowlistAddresses: '',
+    navigatorName: '',
+    navigatorDescription: '',
   },
   guildTokens: [],
   vaultOwners: [{ address: '' }],
@@ -85,20 +94,84 @@ function saveFormState(values: LaunchFormValues, step: number) {
   } catch { /* ignore */ }
 }
 
+/**
+ * Permissive schema for validating localStorage-restored form state.
+ * Ensures the structure won't crash the form — real per-step validation
+ * happens on submit via dedicated Zod schemas in validation.ts.
+ */
+const launchFormShape = z.object({
+  name: z.string().default(''),
+  description: z.string().default(''),
+  avatarUrl: z.string().default(''),
+  links: z.record(z.string()).default({}),
+  shareTokenName: z.string().default(''),
+  shareTokenSymbol: z.string().default(''),
+  lootTokenName: z.string().default(''),
+  lootTokenSymbol: z.string().default(''),
+  pauseSharesOnLaunch: z.boolean().default(false),
+  pauseLootOnLaunch: z.boolean().default(false),
+  members: z.array(z.object({
+    address: z.string().default(''),
+    shares: z.string().default('0'),
+    loot: z.string().default('0'),
+  })).default([]),
+  votingPeriodInput: z.string().default('3 days'),
+  gracePeriodInput: z.string().default('1 day'),
+  quorumPercent: z.string().default('0'),
+  proposalOffering: z.string().default('0'),
+  sponsorThreshold: z.string().default('1'),
+  minRetentionPercent: z.string().default('0'),
+  defaultExpiryWindow: z.string().default('0'),
+  enableOnboarder: z.boolean().default(false),
+  onboarderConfig: z.object({
+    mode: z.enum(['multiplier', 'fixedPrice']).default('multiplier'),
+    shareMultiplier: z.string().default('10000'),
+    lootMultiplier: z.string().default('0'),
+    pricePerUnit: z.string().default('0'),
+    sharesPerUnit: z.string().default('0'),
+    lootPerUnit: z.string().default('0'),
+    minTribute: z.string().default('0.1'),
+    expiry: z.string().default(''),
+    mintCap: z.string().default('0'),
+    perAddressCap: z.string().default('0'),
+    allowlistAddresses: z.string().default(''),
+    navigatorName: z.string().default(''),
+    navigatorDescription: z.string().default(''),
+  }).default({}),
+  enableERC20Tribute: z.boolean().default(false),
+  erc20TributeConfig: z.object({
+    tributeToken: z.string().default(''),
+    pricePerShare: z.string().default('0'),
+    pricePerLoot: z.string().default('0'),
+    expiry: z.string().default(''),
+    mintCap: z.string().default('0'),
+    perAddressCap: z.string().default('0'),
+    allowlistAddresses: z.string().default(''),
+    navigatorName: z.string().default(''),
+    navigatorDescription: z.string().default(''),
+  }).default({}),
+  guildTokens: z.array(z.object({
+    type: z.enum(['native', 'erc20']).default('erc20'),
+    address: z.string().default(''),
+  })).default([]),
+  vaultOwners: z.array(z.object({ address: z.string().default('') })).default([]),
+  vaultThreshold: z.string().default('1'),
+}).passthrough()
+
 function loadFormState(): { values: LaunchFormValues; step: number } | null {
   try {
     const raw = localStorage.getItem(FORM_STORAGE_KEY)
     const stepRaw = localStorage.getItem(STEP_STORAGE_KEY)
     if (!raw) return null
-    const values = JSON.parse(raw) as LaunchFormValues
-    // Migrate guild tokens from old format (no type field) to new format
-    if (values.guildTokens) {
-      values.guildTokens = values.guildTokens.map(t => ({
-        ...t,
-        type: t.type || 'erc20',
-      }))
-    }
-    return { values, step: stepRaw ? parseInt(stepRaw, 10) : 0 }
+    const parsed = JSON.parse(raw)
+    // Validate structure — returns defaults for missing/invalid fields
+    const result = launchFormShape.safeParse(parsed)
+    if (!result.success) return null
+    const values = result.data as LaunchFormValues
+    const step = stepRaw ? parseInt(stepRaw, 10) : 0
+    // Only resume if the user made meaningful progress (advanced past step 0 or entered a name)
+    if (step === 0 && !values.name?.trim()) return null
+    return { values, step }
   } catch { return null }
 }
 
@@ -113,6 +186,7 @@ export function clearLaunchState() {
 export function LaunchWizard() {
   // Restore saved form state if returning to an interrupted launch
   const [savedState] = useState(() => loadFormState())
+  const [showResumed, setShowResumed] = useState(!!savedState)
 
   const [currentStep, setCurrentStep] = useState(() => savedState?.step ?? 0)
   const [launchComplete, setLaunchComplete] = useState(false)
@@ -175,6 +249,10 @@ export function LaunchWizard() {
             if (isNaN(price) || price <= 0) return false
             if ((isNaN(shares) || shares <= 0) && (isNaN(loot) || loot <= 0)) return false
           }
+          // Allowlist size check
+          const obAllowlist = parseAllowlistInput(ob.allowlistAddresses || '')
+          if (obAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) return false
+          if (obAllowlist.invalid.length > 0) return false
         }
         if (data.enableERC20Tribute) {
           const erc = data.erc20TributeConfig
@@ -183,6 +261,10 @@ export function LaunchWizard() {
           }
           const priceShare = parseFloat(erc.pricePerShare || '0')
           if (isNaN(priceShare) || priceShare <= 0) return false
+          // Allowlist size check
+          const ercAllowlist = parseAllowlistInput(erc.allowlistAddresses || '')
+          if (ercAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) return false
+          if (ercAllowlist.invalid.length > 0) return false
         }
         return true
       }
@@ -335,7 +417,7 @@ export function LaunchWizard() {
       </div>
 
       {/* Resumed session notice */}
-      {savedState && !launchComplete && currentStep < STEPS.length - 1 && (
+      {showResumed && savedState && !launchComplete && currentStep < STEPS.length - 1 && (
         <div className="bg-accent-500/10 border border-accent-500/30 rounded-lg px-4 py-3 flex items-center justify-between">
           <p className="text-sm text-accent-300">
             Resumed from your previous session (step {savedState.step + 1}/{STEPS.length}).
@@ -346,6 +428,7 @@ export function LaunchWizard() {
               clearLaunchState()
               reset(DEFAULT_VALUES)
               setCurrentStep(0)
+              setShowResumed(false)
             }}
             className="text-xs text-dao-text-muted hover:text-dao-text transition-colors ml-4 flex-shrink-0"
           >

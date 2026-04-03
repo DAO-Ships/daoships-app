@@ -54,6 +54,7 @@ export interface Navigator {
   id: string
   dao_id: string
   navigator_address: string
+  deployer: string | null
 
   created_at: string
 

@@ -147,26 +147,6 @@ describe('validatePosterContent', () => {
     })
   })
 
-  describe('daoships.navigator.metadata', () => {
-    it('accepts valid navigator metadata', () => {
-      const result = validatePosterContent(POSTER_TAGS.NAVIGATOR_METADATA, {
-        daoAddress: '0x001234567890abcdef1234567890abcdef123456',
-        navigatorAddress: '0x001234567890abcdef1234567890abcdef654321',
-        name: 'Onboarder',
-        description: 'Handles onboarding',
-      })
-      expect(result.valid).toBe(true)
-    })
-
-    it('rejects missing navigatorAddress', () => {
-      const result = validatePosterContent(POSTER_TAGS.NAVIGATOR_METADATA, {
-        daoAddress: '0x001234567890abcdef1234567890abcdef123456',
-      })
-      expect(result.valid).toBe(false)
-      expect(result.errors).toContain('navigatorAddress is required')
-    })
-  })
-
   describe('unknown tags', () => {
     it('rejects unknown poster tags', () => {
       const result = validatePosterContent('unknown.tag', { foo: 'bar' })

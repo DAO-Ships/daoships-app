@@ -1,10 +1,12 @@
 import { useParams, useOutletContext, Link } from 'react-router-dom'
 import type { Dao, NavigatorEvent } from '@/types'
 import { NAVIGATOR_PERMISSION_LABELS, type NavigatorPermissionLabel } from '@/types'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigators } from '@/hooks/useNavigators'
 import { useNavigatorConfig } from '@/hooks/useNavigatorConfig'
 import { useNavigatorEvents } from '@/hooks/useNavigatorEvents'
 import { useWallet } from '@/hooks/useWallet'
+import { recordIndexerService } from '@/services/indexer/RecordIndexerService'
 import { getNavigatorPlugin, UnknownPlugin } from '@/components/navigator/plugins'
 import { Card } from '@/components/common/Card'
 import { Loading } from '@/components/common/Loading'
@@ -111,17 +113,15 @@ export function NavigatorDetail() {
   const daoName = dao.name || `DAO ${dao.id.slice(0, 8)}...`
 
   // Type-specific hero messaging
-  const heroTitle = detectedType === 'OnboarderNavigator'
-    ? `Join ${daoName}`
-    : detectedType === 'ERC20TributeNavigator'
-      ? `Join ${daoName} with Token Tribute`
-      : typeLabel
+  const heroTitle = navigator.name
+    || (detectedType === 'OnboarderNavigator' ? `Join ${daoName}`
+      : detectedType === 'ERC20TributeNavigator' ? `Join ${daoName} with Token Tribute`
+      : typeLabel)
 
-  const heroSubtitle = detectedType === 'OnboarderNavigator'
-    ? 'Purchase shares to become a member and participate in governance.'
-    : detectedType === 'ERC20TributeNavigator'
-      ? 'Contribute tokens to receive shares and join the community.'
-      : catalogEntry?.shortDescription || 'Interact with this navigator.'
+  const heroSubtitle = navigator.description
+    || (detectedType === 'OnboarderNavigator' ? 'Purchase shares to become a member and participate in governance.'
+      : detectedType === 'ERC20TributeNavigator' ? 'Contribute tokens to receive shares and join the community.'
+      : catalogEntry?.shortDescription || 'Interact with this navigator.')
 
   // Resolve the plugin component
   const PluginComponent = getNavigatorPlugin(detectedType) || UnknownPlugin

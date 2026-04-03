@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/common/Button'
 import { OfferingField } from './OfferingField'
 import { ProposalSettingsFields } from './ProposalSettingsFields'
+import { ProposalActionSection } from './ProposalActionSection'
 import { formatDuration, parseDurationToSeconds } from '@/utils/time'
 import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
 import type { DaoConfig } from '@/types'
@@ -14,6 +15,8 @@ interface GovernanceFormData {
   title: string
   description: string
   offering: string
+  expiration: string
+  discussionUrl: string
   votingPeriod: number
   gracePeriod: number
   quorumPercent: number
@@ -42,7 +45,7 @@ export function GovernanceForm({
   const [description, setDescription] = useState('')
   const [offering, setOffering] = useState('')
   const [expiration, setExpiration] = useState('')
-  const [rationale, setRationale] = useState('')
+  const [discussionUrl, setDiscussionUrl] = useState('')
   const [votingPeriodInput, setVotingPeriodInput] = useState('')
   const [gracePeriodInput, setGracePeriodInput] = useState('')
   const [quorumPercent, setQuorumPercent] = useState('')
@@ -108,6 +111,8 @@ export function GovernanceForm({
         title: title.trim(),
         description: description.trim(),
         offering,
+        expiration,
+        discussionUrl,
         votingPeriod: votingPeriodSeconds!,
         gracePeriod: gracePeriodSeconds!,
         quorumPercent: Math.round(parseFloat(quorumPercent) * 100),
@@ -133,9 +138,10 @@ export function GovernanceForm({
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Governance update proposal title"
           className="input w-full"
-          maxLength={240}
+          maxLength={120}
           disabled={isSubmitting}
         />
+        <p className="text-xs text-dao-text-hint mt-1 text-right">{title.length}/120</p>
         {errors.title && <p className="text-xs text-red-400 mt-1">{errors.title}</p>}
       </div>
 
@@ -149,13 +155,33 @@ export function GovernanceForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Explain why these governance parameters should change..."
-          className="input w-full min-h-[80px] resize-y"
-          maxLength={5000}
+          className="input w-full min-h-[60px] resize-y"
+          maxLength={2000}
           disabled={isSubmitting}
-          rows={3}
+          rows={2}
         />
+        <p className="text-xs text-dao-text-hint mt-1 text-right">{description.length}/2000</p>
       </div>
 
+      {/* Discussion Link */}
+      <div>
+        <label htmlFor="governance-discussion-url" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+          Discussion Link
+        </label>
+        <input
+          id="governance-discussion-url"
+          type="url"
+          value={discussionUrl}
+          onChange={(e) => setDiscussionUrl(e.target.value)}
+          placeholder="https://forum.mydao.xyz/t/..."
+          className="input w-full font-mono text-sm"
+          maxLength={200}
+          disabled={isSubmitting}
+        />
+        <p className="text-xs text-dao-text-hint mt-1 text-right">{discussionUrl.length}/200</p>
+      </div>
+
+      <ProposalActionSection title="Governance Parameters">
       {/* Governance parameters grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Voting Period */}
@@ -322,13 +348,12 @@ export function GovernanceForm({
           {errors.defaultExpiryWindow && <p className="text-xs text-red-400 mt-1">{errors.defaultExpiryWindow}</p>}
         </div>
       </div>
+      </ProposalActionSection>
 
       {/* Proposal Settings */}
       <ProposalSettingsFields
         expiration={expiration}
         onExpirationChange={setExpiration}
-        rationale={rationale}
-        onRationaleChange={setRationale}
         disabled={isSubmitting}
       />
 

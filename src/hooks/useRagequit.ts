@@ -30,9 +30,16 @@ export function useRagequit(daoId: string) {
         params.tokens
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['members', daoId] })
-      queryClient.invalidateQueries({ queryKey: ['treasury', daoId] })
-      queryClient.invalidateQueries({ queryKey: ['dao', daoId] })
+      const invalidateAll = () => {
+        queryClient.invalidateQueries({ queryKey: ['members', daoId] })
+        queryClient.invalidateQueries({ queryKey: ['member', daoId] })
+        queryClient.invalidateQueries({ queryKey: ['treasury', daoId] })
+        queryClient.invalidateQueries({ queryKey: ['treasuryBalances'] })
+        queryClient.invalidateQueries({ queryKey: ['dao', daoId] })
+      }
+      invalidateAll()
+      // Re-fetch after a delay to catch indexer lag
+      setTimeout(invalidateAll, 4000)
     },
   })
 

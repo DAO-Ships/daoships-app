@@ -10,6 +10,8 @@ import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { Button } from '@/components/common/Button'
 import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
 import { formatDuration } from '@/utils/time'
+import { useNavigatorAllowlist } from '@/hooks/useNavigatorAllowlist'
+import { isOpenAllowlist } from '@/utils/allowlist'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NavigatorDetailCard - Navigator info + type-specific interaction UI
@@ -41,9 +43,10 @@ const NAVIGATOR_TYPE_LABELS: Record<string, string> = {
 
 interface NavigatorDetailCardProps {
   navigator: Navigator
+  daoId: string
 }
 
-export function NavigatorDetailCard({ navigator }: NavigatorDetailCardProps) {
+export function NavigatorDetailCard({ navigator, daoId }: NavigatorDetailCardProps) {
   const { data: configResult, isLoading: configLoading } = useNavigatorConfig(
     navigator.is_active ? navigator.navigator_address : undefined,
   )
@@ -95,6 +98,8 @@ export function NavigatorDetailCard({ navigator }: NavigatorDetailCardProps) {
         <OnboarderSection
           navigatorAddress={navigator.navigator_address}
           config={configResult.config}
+          daoId={daoId}
+          userAddress={userAddress}
           connected={connected}
         />
       )}
@@ -102,6 +107,8 @@ export function NavigatorDetailCard({ navigator }: NavigatorDetailCardProps) {
         <ERC20TributeSection
           navigatorAddress={navigator.navigator_address}
           config={configResult.config}
+          daoId={daoId}
+          userAddress={userAddress}
           connected={connected}
         />
       )}
@@ -129,16 +136,24 @@ export function NavigatorDetailCard({ navigator }: NavigatorDetailCardProps) {
 function OnboarderSection({
   navigatorAddress,
   config,
+  daoId,
+  userAddress,
   connected,
 }: {
   navigatorAddress: string
   config: OnboarderNavigatorConfig
+  daoId: string
+  userAddress: string | null
   connected: boolean
 }) {
   const [amount, setAmount] = useState('')
   const [isOnboarding, setIsOnboarding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  const allowlist = useNavigatorAllowlist(daoId, navigatorAddress, config.allowlistRoot)
+  const hasAllowlist = !isOpenAllowlist(config.allowlistRoot)
+  const userAllowlisted = !userAddress ? false : allowlist.checkAddress(userAddress)
 
   const amountBigInt = amount ? parseTokenAmount(amount) : 0n
   const isFixedPrice = config.mode === 'fixedPrice'
@@ -172,7 +187,8 @@ function OnboarderSection({
     setSuccess(false)
     setIsOnboarding(true)
     try {
-      await navigatorService.onboarderOnboard(navigatorAddress, amountBigInt)
+      const proof = hasAllowlist && userAddress ? (allowlist.getProof(userAddress) ?? []) : []
+      await navigatorService.onboarderOnboard(navigatorAddress, amountBigInt, proof)
       setAmount('')
       setSuccess(true)
     } catch (e: unknown) {
@@ -274,7 +290,22 @@ function OnboarderSection({
         )}
       </div>
 
-      {!isExpired && !config.paused && !mintCapReached && (
+      {/* Allowlist status */}
+      {hasAllowlist && (
+        <p className={`text-xs mt-2 ${
+          allowlist.dataUnavailable ? 'text-amber-400'
+            : userAddress && userAllowlisted ? 'text-emerald-400'
+            : userAddress ? 'text-red-400'
+            : 'text-primary-400'
+        }`}>
+          {allowlist.dataUnavailable ? 'Allowlist data unavailable'
+            : userAddress && userAllowlisted ? `On allowlist (${allowlist.addressCount} addresses)`
+            : userAddress ? 'Not on allowlist'
+            : `Allowlist active (${allowlist.addressCount} addresses)`}
+        </p>
+      )}
+
+      {!isExpired && !config.paused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
         <>
           <div>
             <label
@@ -362,10 +393,14 @@ function OnboarderSection({
 function ERC20TributeSection({
   navigatorAddress,
   config,
+  daoId,
+  userAddress,
   connected,
 }: {
   navigatorAddress: string
   config: ERC20TributeNavigatorConfig
+  daoId: string
+  userAddress: string | null
   connected: boolean
 }) {
   const [sharesToMint, setSharestoMint] = useState('')
@@ -373,6 +408,10 @@ function ERC20TributeSection({
   const [isOnboarding, setIsOnboarding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  const allowlist = useNavigatorAllowlist(daoId, navigatorAddress, config.allowlistRoot)
+  const hasAllowlist = !isOpenAllowlist(config.allowlistRoot)
+  const userAllowlisted = !userAddress ? false : allowlist.checkAddress(userAddress)
 
   const sharesBigInt = sharesToMint ? parseTokenAmount(sharesToMint) : 0n
   const lootBigInt = lootToMint ? parseTokenAmount(lootToMint) : 0n
@@ -395,7 +434,8 @@ function ERC20TributeSection({
     setSuccess(false)
     setIsOnboarding(true)
     try {
-      await navigatorService.erc20TributeOnboard(navigatorAddress, sharesBigInt, lootBigInt)
+      const proof = hasAllowlist && userAddress ? (allowlist.getProof(userAddress) ?? []) : []
+      await navigatorService.erc20TributeOnboard(navigatorAddress, sharesBigInt, lootBigInt, proof)
       setSharestoMint('')
       setLootToMint('')
       setSuccess(true)
@@ -483,7 +523,22 @@ function ERC20TributeSection({
         )}
       </div>
 
-      {!isExpired && !config.paused && !mintCapReached && (
+      {/* Allowlist status */}
+      {hasAllowlist && (
+        <p className={`text-xs mt-2 ${
+          allowlist.dataUnavailable ? 'text-amber-400'
+            : userAddress && userAllowlisted ? 'text-emerald-400'
+            : userAddress ? 'text-red-400'
+            : 'text-primary-400'
+        }`}>
+          {allowlist.dataUnavailable ? 'Allowlist data unavailable'
+            : userAddress && userAllowlisted ? `On allowlist (${allowlist.addressCount} addresses)`
+            : userAddress ? 'Not on allowlist'
+            : `Allowlist active (${allowlist.addressCount} addresses)`}
+        </p>
+      )}
+
+      {!isExpired && !config.paused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

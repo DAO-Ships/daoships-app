@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// Poster Content Validation Schemas (7 canonical tags)
+// Poster Content Validation Schemas (6 canonical tags)
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { isValidUrl } from '@/utils/url'
@@ -31,41 +31,39 @@ interface FieldDef {
 const POSTER_SCHEMAS: Record<string, Record<string, FieldDef>> = {
   [POSTER_TAGS.DAO_PROFILE_INITIAL]: {
     daoAddress: { required: true, maxLength: 42, type: 'string' },
-    name: { required: true, maxLength: 100, type: 'string' },
-    description: { required: true, maxLength: 1000, type: 'string' },
+    name: { required: true, maxLength: 64, type: 'string' },
+    description: { required: true, maxLength: 280, type: 'string' },
     avatar: { type: 'url' },
     banner: { type: 'url' },
   },
   [POSTER_TAGS.DAO_PROFILE]: {
     daoAddress: { required: true, maxLength: 42, type: 'string' },
-    name: { maxLength: 100, type: 'string' },
-    description: { maxLength: 1000, type: 'string' },
+    name: { maxLength: 64, type: 'string' },
+    description: { maxLength: 280, type: 'string' },
     avatar: { type: 'url' },
     banner: { type: 'url' },
   },
   [POSTER_TAGS.DAO_ANNOUNCEMENT]: {
     daoAddress: { required: true, maxLength: 42, type: 'string' },
-    title: { required: true, maxLength: 200, type: 'string' },
-    body: { maxLength: 1000, type: 'string' },
+    title: { required: true, maxLength: 100, type: 'string' },
+    body: { maxLength: 500, type: 'string' },
     severity: { type: 'enum', enumValues: ['info', 'warning', 'critical'] },
+    url: { type: 'url' },
+    expiresAt: { maxLength: 30, type: 'string' },
   },
   [POSTER_TAGS.MEMBER_PROFILE]: {
-    name: { required: true, maxLength: 100, type: 'string' },
-    bio: { maxLength: 1000, type: 'string' },
+    name: { required: true, maxLength: 32, type: 'string' },
+    bio: { maxLength: 160, type: 'string' },
     avatar: { type: 'url' },
   },
   [POSTER_TAGS.PROPOSAL_VOTE_REASON]: {
     daoAddress: { required: true, maxLength: 42, type: 'string' },
-    reason: { required: true, maxLength: 2000, type: 'string' },
+    reason: { required: true, maxLength: 500, type: 'string' },
   },
-  [POSTER_TAGS.TREASURY_LABEL]: {
-    daoAddress: { required: true, maxLength: 42, type: 'string' },
-  },
-  [POSTER_TAGS.NAVIGATOR_METADATA]: {
+  [POSTER_TAGS.NAVIGATOR_ALLOWLIST]: {
     daoAddress: { required: true, maxLength: 42, type: 'string' },
     navigatorAddress: { required: true, maxLength: 42, type: 'string' },
-    name: { maxLength: 100, type: 'string' },
-    description: { maxLength: 1000, type: 'string' },
+    root: { required: true, maxLength: 66, type: 'string' },
   },
 }
 

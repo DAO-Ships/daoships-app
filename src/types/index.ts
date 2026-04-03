@@ -2,7 +2,7 @@
 // Type Barrel Exports
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type { Dao, DaoConfig, GuildToken, Ragequit } from './dao'
+export type { Dao, DaoConfig, DaoExpiryConfig, GuildToken, Ragequit } from './dao'
 export { extractDaoConfig } from './dao'
 
 export type { Proposal, ProposalTiming } from './proposal'

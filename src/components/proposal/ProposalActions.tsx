@@ -1,17 +1,14 @@
 import { useProposalStatus } from '@/hooks/useProposalStatus'
 import { ProposalStatus } from '@/types'
-import type { Proposal } from '@/types'
+import type { Proposal, Vote, DaoExpiryConfig } from '@/types'
+import type { MemberProfile } from '@/hooks/useMemberProfile'
 import { Button } from '@/components/common/Button'
+import { AddressDisplay } from '@/components/common/AddressDisplay'
+import { MemberAvatar } from '@/components/member/MemberAvatar'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ProposalActions - Context-aware action buttons based on proposal status
 // ═══════════════════════════════════════════════════════════════════════════
-
-interface DaoExpiryConfig {
-  voting_period: number
-  grace_period: number
-  default_expiry_window: number
-}
 
 interface ProposalActionsProps {
   proposal: Proposal
@@ -21,6 +18,14 @@ interface ProposalActionsProps {
   userShares?: bigint
   sponsorThreshold?: bigint
   hasVoted?: boolean
+  /** Address the user has delegated their voting power to (null = self-delegated) */
+  delegatingTo?: string | null
+  /** The delegate's vote on this proposal, if they have voted */
+  delegateVote?: Vote | null
+  /** Vote reason posted by the delegate, if any */
+  delegateVoteReason?: string | null
+  /** Profile of the delegate, if available */
+  delegateProfile?: MemberProfile | null
   onSponsor?: () => void
   onVote?: (approved: boolean) => void
   onProcess?: () => void
@@ -30,6 +35,8 @@ interface ProposalActionsProps {
   isVotePending?: boolean
   isProcessPending?: boolean
   isCancelPending?: boolean
+  /** True when the sponsor's voting power has fallen below the sponsor threshold */
+  sponsorBelowThreshold?: boolean
 }
 
 export function ProposalActions({
@@ -40,6 +47,10 @@ export function ProposalActions({
   userShares = 0n,
   sponsorThreshold = 0n,
   hasVoted = false,
+  delegatingTo,
+  delegateVote,
+  delegateVoteReason,
+  delegateProfile,
   onSponsor,
   onVote,
   onProcess,
@@ -49,6 +60,7 @@ export function ProposalActions({
   isVotePending = false,
   isProcessPending = false,
   isCancelPending = false,
+  sponsorBelowThreshold = false,
 }: ProposalActionsProps) {
   const status = useProposalStatus(proposal, daoConfig)
 
@@ -62,19 +74,22 @@ export function ProposalActions({
     )
   }
 
+  // Check if user has delegated their voting power to someone else
+  const hasDelegated = delegatingTo && delegatingTo.toLowerCase() !== userAddress.toLowerCase()
+
   const isProposer = userAddress.toLowerCase() === proposal.submitter?.toLowerCase()
   const isExpired = status === ProposalStatus.Expired
   const canSponsor = status === ProposalStatus.Submitted && userShares >= sponsorThreshold
-  const canVote = status === ProposalStatus.Voting && !hasVoted
+  const canVote = status === ProposalStatus.Voting && !hasVoted && !hasDelegated
   const canProcess = status === ProposalStatus.Ready
-  const canCancel = isProposer && (
-    status === ProposalStatus.Submitted ||
-    status === ProposalStatus.Voting ||
-    status === ProposalStatus.Grace
-  )
+  const isCancellableStatus = status === ProposalStatus.Submitted || status === ProposalStatus.Voting
+  const canCancelAsProposer = isProposer && isCancellableStatus
+  const canCancelSponsorBelow = sponsorBelowThreshold && isCancellableStatus && !isProposer
+  const canCancel = canCancelAsProposer || canCancelSponsorBelow
 
   const showVotedMessage = status === ProposalStatus.Voting && hasVoted
-  const hasActions = canSponsor || canVote || canProcess || canCancel || showVotedMessage || isExpired
+  const showDelegationInfo = status === ProposalStatus.Voting && hasDelegated
+  const hasActions = canSponsor || canVote || canProcess || canCancel || showVotedMessage || showDelegationInfo || isExpired || sponsorBelowThreshold
 
   if (!hasActions) {
     return null
@@ -122,8 +137,48 @@ export function ProposalActions({
         )}
 
         {/* Already voted indicator */}
-        {status === ProposalStatus.Voting && hasVoted && (
+        {status === ProposalStatus.Voting && hasVoted && !hasDelegated && (
           <span className="text-sm text-dao-text-muted self-center">You have already voted on this proposal.</span>
+        )}
+
+        {/* Delegation info — shown instead of vote buttons when user has delegated */}
+        {showDelegationInfo && delegatingTo && (
+          <div className="w-full bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700/30 rounded-lg px-4 py-3 space-y-3">
+            <p className="text-sm text-dao-text-secondary">
+              Your voting power is delegated to:
+            </p>
+            <div className="flex items-center gap-3">
+              <MemberAvatar avatar={delegateProfile?.avatar} size={8} />
+              <div className="min-w-0">
+                {delegateProfile?.name && (
+                  <p className="text-sm font-medium text-dao-text">{delegateProfile.name}</p>
+                )}
+                <AddressDisplay address={delegatingTo} />
+              </div>
+            </div>
+            {delegateProfile?.bio && (
+              <p className="text-xs text-dao-text-muted line-clamp-2">{delegateProfile.bio}</p>
+            )}
+            {delegateVote ? (
+              <div className="pt-1 border-t border-primary-200/50 dark:border-primary-700/20">
+                <p className="text-sm">
+                  Your delegate voted{' '}
+                  <span className={`font-semibold ${delegateVote.approved ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {delegateVote.approved ? 'Yes' : 'No'}
+                  </span>
+                </p>
+                {delegateVoteReason && (
+                  <p className="text-sm text-dao-text-muted mt-1 whitespace-pre-wrap">
+                    "{delegateVoteReason}"
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-dao-text-hint pt-1 border-t border-primary-200/50 dark:border-primary-700/20">
+                Your delegate has not voted on this proposal yet.
+              </p>
+            )}
+          </div>
         )}
 
         {/* Process button */}
@@ -158,6 +213,18 @@ export function ProposalActions({
           </div>
         )}
 
+        {/* Sponsor below threshold warning */}
+        {canCancelSponsorBelow && (
+          <div className="w-full bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
+            <p className="text-sm text-amber-400 font-medium">
+              Sponsor's voting power is below the threshold
+            </p>
+            <p className="text-xs text-amber-400/80 mt-1">
+              The sponsor of this proposal no longer holds enough voting shares to meet the sponsor threshold. Any member can cancel this proposal.
+            </p>
+          </div>
+        )}
+
         {/* Cancel button */}
         {canCancel && onCancel && (
           <Button
@@ -166,7 +233,7 @@ export function ProposalActions({
             loading={isCancelPending}
             onClick={onCancel}
           >
-            Cancel Proposal
+            {canCancelSponsorBelow ? 'Cancel (Sponsor Below Threshold)' : 'Cancel Proposal'}
           </Button>
         )}
       </div>

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useOutletContext, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { quais } from 'quais'
+import { ZERO_ADDRESS } from '@/config/contracts'
 import type { Dao } from '@/types'
 import { ProposalType } from '@/types/proposal'
 import { extractDaoConfig } from '@/types/dao'
@@ -18,6 +19,8 @@ import { ConnectWallet } from '@/components/common/ConnectWallet'
 import { Card } from '@/components/common/Card'
 import { daoService } from '@/services/DaoService'
 import { ProposalEncoder } from '@/services/utils/ProposalEncoder'
+import { Breadcrumb } from '@/components/common/Breadcrumb'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { FundingForm, type VaultTokenOption } from '@/components/proposal/forms/FundingForm'
 import { MembershipForm } from '@/components/proposal/forms/MembershipForm'
 import { GuildTokensForm } from '@/components/proposal/forms/GuildTokensForm'
@@ -43,58 +46,69 @@ interface ProposalTypeOption {
   label: string
   description: string
   icon: string
+  category: string
 }
 
 const PROPOSAL_TYPES: ProposalTypeOption[] = [
   {
     type: ProposalType.Funding,
     label: 'Funding',
-    description: 'Request tokens from the DAO treasury for a specific purpose.',
+    description: 'Request tokens from the DAO treasury.',
     icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-  },
-  {
-    type: ProposalType.Membership,
-    label: 'Membership',
-    description: 'Issue shares or loot to a new or existing member.',
-    icon: 'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z',
+    category: 'Treasury',
   },
   {
     type: ProposalType.GuildTokens,
     label: 'Guild Tokens',
-    description: 'Add or remove tokens (QUAI or ERC-20) from the ragequit-eligible treasury list.',
+    description: 'Add or remove ragequit-eligible tokens.',
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+    category: 'Treasury',
+  },
+  {
+    type: ProposalType.Membership,
+    label: 'Membership',
+    description: 'Issue or burn shares/loot for members.',
+    icon: 'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z',
+    category: 'Members',
   },
   {
     type: ProposalType.GovConfig,
     label: 'Governance Config',
-    description: 'Modify governance parameters like voting period, quorum, etc.',
+    description: 'Modify voting period, quorum, thresholds.',
     icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+    category: 'Governance',
   },
   {
     type: ProposalType.Navigator,
     label: 'Navigators',
-    description: 'Add, disable, or update permissions for navigator contracts.',
+    description: 'Add, disable, or update navigator permissions.',
     icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+    category: 'Governance',
   },
   {
     type: ProposalType.Profile,
     label: 'Update Profile',
-    description: 'Update the DAO name, description, avatar, links, or tags.',
+    description: 'Update DAO name, avatar, links, or tags.',
     icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+    category: 'Communication',
   },
   {
     type: ProposalType.Announcement,
     label: 'Announcement',
-    description: 'Post an official DAO announcement visible to all members.',
+    description: 'Post an official DAO announcement.',
     icon: 'M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z',
+    category: 'Communication',
   },
   {
     type: ProposalType.Custom,
     label: 'Custom Action',
-    description: 'Execute an arbitrary contract call through the DAO.',
+    description: 'Execute arbitrary contract calls through the DAO.',
     icon: 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4',
+    category: 'Advanced',
   },
 ]
+
+const PROPOSAL_CATEGORIES = ['Treasury', 'Members', 'Governance', 'Communication', 'Advanced']
 
 export function NewProposal() {
   const { daoId } = useParams()
@@ -150,7 +164,6 @@ export function NewProposal() {
       details: string
       offering: bigint
       expiration: number
-      rationale?: string
       title: string
     }) => {
       // The service layer reads the exact offering from the contract and
@@ -192,24 +205,41 @@ export function NewProposal() {
     description: string
     offering: string
     expiration?: string
-    rationale?: string
+    discussionUrl?: string
   }
+
+  const [showConfirm, setShowConfirm] = useState(false)
+  const pendingSubmission = useRef<{
+    proposalData: string; details: string; offering: bigint; expiration: number; title: string
+  } | null>(null)
 
   function submitEncoded(
     data: SharedFormFields,
     encoded: { proposalData: string },
+    proposalType?: string,
   ) {
-    const details = JSON.stringify({ title: data.title, description: data.description })
+    const detailsObj: Record<string, string> = { title: data.title }
+    if (proposalType) detailsObj.type = proposalType
+    if (data.discussionUrl) detailsObj.discussionUrl = data.discussionUrl
+    if (data.description?.trim()) detailsObj.description = data.description.trim()
+    const details = JSON.stringify(detailsObj)
     const offering = data.offering ? quais.parseQuai(data.offering) : minOffering
     const expiration = parseExpiration(data.expiration)
-    submitMutation.mutate({
+    pendingSubmission.current = {
       proposalData: encoded.proposalData,
       details,
       offering,
       expiration,
-      rationale: data.rationale,
       title: data.title,
-    })
+    }
+    setShowConfirm(true)
+  }
+
+  function confirmSubmit() {
+    if (!pendingSubmission.current) return
+    submitMutation.mutate(pendingSubmission.current)
+    setShowConfirm(false)
+    pendingSubmission.current = null
   }
 
   // ── Form submission handlers ──────────────────────────────────────────
@@ -221,7 +251,7 @@ export function NewProposal() {
     try {
       const encoder = new ProposalEncoder(dao.id)
       encoder.addTransfer(data.recipient, data.tokenAddress, quais.parseQuai(data.amount))
-      submitEncoded(data, encoder.encode())
+      submitEncoded(data, encoder.encode(), 'funding')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
@@ -243,7 +273,7 @@ export function NewProposal() {
       if (mintLoot.length > 0) encoder.addMintLoot(mintLoot.map((m) => m.address), mintLoot.map((m) => quais.parseQuai(m.amount)))
       if (burnLoot.length > 0) encoder.addBurnLoot(burnLoot.map((m) => m.address), burnLoot.map((m) => quais.parseQuai(m.amount)))
 
-      submitEncoded(data, encoder.encode())
+      submitEncoded(data, encoder.encode(), 'membership')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
@@ -266,7 +296,7 @@ export function NewProposal() {
         minRetentionPercent: BigInt(data.minRetentionPercent),
         defaultExpiryWindow: data.defaultExpiryWindow,
       })
-      submitEncoded(data, encoder.encode())
+      submitEncoded(data, encoder.encode(), 'governance_config')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
@@ -279,20 +309,22 @@ export function NewProposal() {
     try {
       const encoder = new ProposalEncoder(dao.id)
       encoder.addSetGuildTokens(data.tokens.map((t) => t.address), data.tokens.map((t) => t.enabled))
-      submitEncoded(data, encoder.encode())
+      submitEncoded(data, encoder.encode(), 'custom')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
   }
 
   const handleCustomSubmit = (data: SharedFormFields & {
-    target: string; calldata: string; value: string
+    actions: Array<{ to: string; value: string; data: string }>
   }) => {
     setSubmitError(null)
     try {
       const encoder = new ProposalEncoder(dao.id)
-      encoder.addCustomAction(data.target, BigInt(data.value), data.calldata)
-      submitEncoded(data, encoder.encode())
+      for (const action of data.actions) {
+        encoder.addCustomAction(action.to, BigInt(action.value), action.data)
+      }
+      submitEncoded(data, encoder.encode(), 'custom')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
@@ -334,7 +366,7 @@ export function NewProposal() {
       const payload = { schemaVersion: '1.0', ...update }
 
       encoder.addPosterPost(CONTRACT_ADDRESSES.POSTER, JSON.stringify(payload), POSTER_TAGS.DAO_PROFILE)
-      submitEncoded(data, encoder.encode())
+      submitEncoded(data, encoder.encode(), 'profile_update')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
@@ -344,19 +376,23 @@ export function NewProposal() {
     announcementTitle: string
     announcementBody: string
     severity: 'info' | 'warning' | 'critical'
+    announcementUrl: string
+    announcementExpiresAt: string
   }) => {
     setSubmitError(null)
     try {
       const encoder = new ProposalEncoder(dao.id)
-      const payload = {
+      const payload: Record<string, unknown> = {
         schemaVersion: '1.0',
         daoAddress: dao.id.toLowerCase(),
         title: data.announcementTitle,
         body: data.announcementBody || undefined,
         severity: data.severity,
       }
+      if (data.announcementUrl) payload.url = data.announcementUrl
+      if (data.announcementExpiresAt) payload.expiresAt = new Date(data.announcementExpiresAt).toISOString()
       encoder.addPosterPost(CONTRACT_ADDRESSES.POSTER, JSON.stringify(payload), POSTER_TAGS.DAO_ANNOUNCEMENT)
-      submitEncoded(data, encoder.encode())
+      submitEncoded(data, encoder.encode(), 'announcement')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
@@ -372,7 +408,7 @@ export function NewProposal() {
         data.navigators.map((n) => n.address),
         data.navigators.map((n) => BigInt(n.permission)),
       )
-      submitEncoded(data, encoder.encode())
+      submitEncoded(data, encoder.encode(), 'navigator_add')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
@@ -395,9 +431,7 @@ export function NewProposal() {
   }
 
   // Build vault token options with balances for FundingForm.
-  // Native QUAI is always available; ERC-20 guild tokens come from useTreasuryBalances
-  // which already handles the native sentinel address properly.
-  const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+  // useTreasuryBalances already filters to enabled guild tokens only.
   const hasNativeInGuildTokens = (balances?.tokenBalances ?? []).some((tb) => tb.isNative)
   const vaultTokenOptions: VaultTokenOption[] = [
     // Add native QUAI if not already in guild tokens
@@ -420,59 +454,58 @@ export function NewProposal() {
     })),
   ]
 
-  // Current guild token addresses for the GuildTokensForm
-  const currentGuildTokenAddresses = (treasury ?? []).map((t) => t.token_address)
+  // Current guild tokens for the GuildTokensForm (all tokens, including disabled)
+  const currentGuildTokens = (treasury ?? []).map((t) => ({ address: t.token_address, enabled: t.enabled }))
 
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-dao-text-hint">
-        <Link to={`/dao/${daoId}`} className="hover:text-primary-400 transition-colors">
-          {dao.name || `DAO ${dao.id.slice(0, 8)}...`}
-        </Link>
-        <span>/</span>
-        <Link to={`/dao/${daoId}/proposals`} className="hover:text-primary-400 transition-colors">
-          Proposals
-        </Link>
-        <span>/</span>
-        <span className="text-dao-text-secondary">New</span>
-      </nav>
+      <Breadcrumb items={[
+        { label: dao.name || `DAO ${dao.id.slice(0, 8)}...`, href: `/dao/${daoId}` },
+        { label: 'Proposals', href: `/dao/${daoId}/proposals` },
+        { label: 'New' },
+      ]} />
 
       <h1 className="text-2xl font-bold font-display text-dao-text">New Proposal</h1>
 
       {/* Type selection */}
       {!selectedType ? (
-        <div>
-          <p className="text-dao-text-muted mb-4">
-            Select the type of proposal you want to create.
+        <div className="space-y-6">
+          <p className="text-dao-text-muted">
+            What kind of proposal do you want to create?
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {PROPOSAL_TYPES.map((opt) => (
-              <button
-                key={opt.type}
-                onClick={() => setSelectedType(opt.type)}
-                className="card px-5 py-5 text-left hover:border-accent-500/50 transition-colors group"
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-lg bg-primary-50 dark:bg-primary-900/40 border border-primary-200 dark:border-primary-700/30 flex items-center justify-center flex-shrink-0">
-                    <svg
-                      className="w-5 h-5 text-primary-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
+          {PROPOSAL_CATEGORIES.map((category) => {
+            const items = PROPOSAL_TYPES.filter((t) => t.category === category)
+            if (items.length === 0) return null
+            return (
+              <div key={category}>
+                <h3 className="text-xs font-semibold text-dao-text-hint uppercase tracking-wider mb-2">{category}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {items.map((opt) => (
+                    <button
+                      key={opt.type}
+                      onClick={() => setSelectedType(opt.type)}
+                      className="card px-4 py-3.5 text-left hover:border-accent-500/50 hover:-translate-y-0.5 transition-all duration-200 group"
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" d={opt.icon} />
-                    </svg>
-                  </div>
-                  <h3 className="text-dao-text font-semibold group-hover:text-accent-400 transition-colors">
-                    {opt.label}
-                  </h3>
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/40 border border-primary-200 dark:border-primary-700/30 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-4.5 h-4.5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d={opt.icon} />
+                          </svg>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-sm text-dao-text font-semibold group-hover:text-accent-400 transition-colors">
+                            {opt.label}
+                          </h4>
+                          <p className="text-xs text-dao-text-muted">{opt.description}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-                <p className="text-sm text-dao-text-muted">{opt.description}</p>
-              </button>
-            ))}
-          </div>
+              </div>
+            )
+          })}
         </div>
       ) : (
         <div className="space-y-6">
@@ -517,7 +550,7 @@ export function NewProposal() {
 
             {selectedType === ProposalType.GuildTokens && (
               <GuildTokensForm
-                currentGuildTokens={currentGuildTokenAddresses}
+                currentGuildTokens={currentGuildTokens}
                 minOfferingDisplay={minOfferingDisplay}
                 canSelfSponsor={canSelfSponsor}
                 onSubmit={handleGuildTokensSubmit}
@@ -598,6 +631,10 @@ export function NewProposal() {
                 canSelfSponsor={canSelfSponsor}
                 onSubmit={handleCustomSubmit}
                 isSubmitting={isSubmitting}
+                vaultAddress={dao.avatar}
+                knownTokens={(balances?.tokenBalances ?? [])
+                  .filter((tb) => !tb.isNative)
+                  .map((tb) => ({ address: tb.address, symbol: tb.symbol, name: tb.name, decimals: tb.decimals, balance: tb.balance }))}
               />
             )}
 
@@ -613,6 +650,19 @@ export function NewProposal() {
           </Card>
         </div>
       )}
+      {/* Confirmation dialog */}
+      <ConfirmDialog
+        isOpen={showConfirm}
+        onClose={() => { setShowConfirm(false); pendingSubmission.current = null }}
+        onConfirm={confirmSubmit}
+        title="Submit Proposal"
+        message={`Submit "${pendingSubmission.current?.title ?? ''}" as a governance proposal? ${
+          minOffering > 0n ? `This will require a ${minOfferingDisplay} QUAI offering.` : ''
+        } The proposal will need to be sponsored and pass a vote before execution.`}
+        confirmText="Submit Proposal"
+        variant="info"
+        isLoading={submitMutation.isPending}
+      />
     </div>
   )
 }

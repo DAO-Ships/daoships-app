@@ -12,8 +12,14 @@ export function useVoting(daoId: string, proposalId: string) {
   const voteMutation = useMutation({
     mutationFn: (approved: boolean) => daoService.submitVote(daoId, Number(proposalId), approved),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
-      queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
+      const run = () => {
+        queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
+        queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
+        queryClient.invalidateQueries({ queryKey: ['hasVoted', daoId] })
+        queryClient.invalidateQueries({ queryKey: ['votes', daoId] })
+      }
+      run()
+      setTimeout(run, 4000)
     },
   })
 

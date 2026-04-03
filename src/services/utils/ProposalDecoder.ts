@@ -188,7 +188,9 @@ function decodeSingleTx(tx: { to: string; value: bigint; data: string }): Decode
       try { parsedContent = JSON.parse(content) } catch { /* not JSON */ }
       return {
         type: 'posterPost',
-        label: tag.includes('profile') ? 'Update DAO profile' : `Post to Poster (${tag})`,
+        label: tag.includes('profile') ? 'Update DAO profile'
+          : tag.includes('announcement') ? 'DAO Announcement'
+          : `Post to Poster (${tag})`,
         details: { tag, content: parsedContent || content },
       }
     }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { posterService } from '@/services/core/PosterService'
 import { Button } from '@/components/common/Button'
+import { MemberAvatar } from '@/components/member/MemberAvatar'
 import type { MemberProfile } from '@/hooks/useMemberProfile'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -61,7 +62,7 @@ export function MemberProfileForm({ daoId, currentProfile, onClose }: MemberProf
           onChange={(e) => setName(e.target.value)}
           placeholder="Your name or alias"
           className="input w-full"
-          maxLength={100}
+          maxLength={32}
           required
           disabled={postMutation.isPending}
         />
@@ -78,11 +79,11 @@ export function MemberProfileForm({ daoId, currentProfile, onClose }: MemberProf
           onChange={(e) => setBio(e.target.value)}
           placeholder="Tell the DAO about yourself..."
           className="input w-full min-h-[80px] resize-y"
-          maxLength={1000}
+          maxLength={160}
           disabled={postMutation.isPending}
           rows={3}
         />
-        <p className="text-xs text-dao-text-hint mt-1 text-right">{bio.length}/1000</p>
+        <p className="text-xs text-dao-text-hint mt-1 text-right">{bio.length}/160</p>
       </div>
 
       {/* Avatar */}
@@ -90,16 +91,20 @@ export function MemberProfileForm({ daoId, currentProfile, onClose }: MemberProf
         <label htmlFor="profile-avatar" className="block text-sm font-medium text-dao-text-secondary mb-1">
           Avatar URL
         </label>
-        <input
-          id="profile-avatar"
-          type="text"
-          value={avatar}
-          onChange={(e) => setAvatar(e.target.value)}
-          placeholder="https://... or ipfs://..."
-          className="input w-full font-mono text-sm"
-          maxLength={2048}
-          disabled={postMutation.isPending}
-        />
+        <div className="flex items-center gap-3">
+          <input
+            id="profile-avatar"
+            type="text"
+            value={avatar}
+            onChange={(e) => setAvatar(e.target.value)}
+            placeholder="https://... or ipfs://..."
+            className="input flex-1 font-mono text-sm"
+            maxLength={200}
+            disabled={postMutation.isPending}
+          />
+          <MemberAvatar avatar={avatar || undefined} size={10} />
+        </div>
+        <p className="text-xs text-dao-text-hint mt-1">Paste a URL to preview your avatar</p>
       </div>
 
       {/* Error */}

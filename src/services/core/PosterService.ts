@@ -1,6 +1,7 @@
 import { quais } from 'quais'
 import { baseService } from './BaseService.ts'
 import PosterABI from '@/config/abi/Poster.json'
+import { CONTRACT_ADDRESSES } from '@/config/contracts'
 import { POSTER_TAGS } from '@/types/poster'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -25,11 +26,7 @@ const MAX_CONTENT_BYTES = 16384
 class PosterService {
 
   private getPosterAddress(): string {
-    const addr = import.meta.env.VITE_POSTER
-    if (!addr) {
-      throw new Error('VITE_POSTER environment variable is not set')
-    }
-    return addr
+    return CONTRACT_ADDRESSES.POSTER
   }
 
   private getWriteContract(): quais.Contract {
@@ -116,6 +113,8 @@ class PosterService {
     title: string
     body?: string
     severity?: 'info' | 'warning' | 'critical'
+    url?: string
+    expiresAt?: string
   }): Promise<void> {
     return this.post(this.stringify(announcement), POSTER_TAGS.DAO_ANNOUNCEMENT)
   }
@@ -149,27 +148,21 @@ class PosterService {
   }
 
   /**
-   * Post treasury transaction labels. Via governance proposal.
-   * Trust level: VERIFIED
+   * Post navigator allowlist (StandardMerkleTree dump + addresses).
+   * Called by the deployer after deploying a navigator with an allowlist.
+   * Trust level: SEMI_TRUSTED (deployer wallet is msg.sender)
+   *
+   * The `treeDump` field is the output of StandardMerkleTree.dump() —
+   * it contains the full tree structure needed to reconstruct proofs.
    */
-  async postTreasuryLabel(data: {
-    daoAddress: string
-    labels?: Array<{ address: string; label: string; purpose?: string }>
-  }): Promise<void> {
-    return this.post(this.stringify(data), POSTER_TAGS.TREASURY_LABEL)
-  }
-
-  /**
-   * Post navigator metadata. Called by navigator deployer.
-   * Trust level: SEMI_TRUSTED
-   */
-  async postNavigatorMetadata(metadata: {
+  async postNavigatorAllowlist(data: {
     daoAddress: string
     navigatorAddress: string
-    name?: string
-    description?: string
+    root: string
+    addresses: string[]
+    treeDump: unknown
   }): Promise<void> {
-    return this.post(this.stringify(metadata), POSTER_TAGS.NAVIGATOR_METADATA)
+    return this.post(this.stringify(data), POSTER_TAGS.NAVIGATOR_ALLOWLIST)
   }
 }
 

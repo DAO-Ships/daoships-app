@@ -19,7 +19,7 @@ import { providerToQuaisSigner } from '@/config/walletBridge'
  */
 export function useWallet() {
   const { address, isConnected } = useAppKitAccount()
-  const { connector } = useAccount()
+  const { connector, chainId: wagmiChainId } = useAccount()
   const { disconnect: wagmiDisconnect } = useDisconnect()
   const { open } = useAppKit()
   const { connected, address: storeAddress, setConnected, setDisconnected } = useWalletStore()
@@ -89,7 +89,7 @@ export function useWallet() {
     connected: isConnected || connected,
     address: address ?? storeAddress,
     signer: signerRef.current,
-    chainId: null as number | null,
+    chainId: wagmiChainId ?? null,
     connect,
     disconnect,
   }

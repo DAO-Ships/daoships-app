@@ -35,6 +35,11 @@ export const NETWORK_CONFIG: NetworkConfig = {
   },
 }
 
+// ── Zero Address ─────────────────────────────────────────────────────────
+
+/** The zero address (0x000...000). Use for null-address checks and sentinel values. */
+export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+
 // ── Native Token Sentinel ─────────────────────────────────────────────────
 
 /**

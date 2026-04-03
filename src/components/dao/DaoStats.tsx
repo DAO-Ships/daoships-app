@@ -1,5 +1,48 @@
+import { useState, useEffect, useRef } from 'react'
 import type { Dao } from '@/types'
 import { formatTokenAmount, formatCompactNumber } from '@/utils/format'
+import { safeBigInt } from '@/utils/bigint'
+
+/** Animate a number counting up from 0 on mount */
+function useCountUp(target: string, duration = 600): string {
+  const [display, setDisplay] = useState('0')
+  const mounted = useRef(false)
+
+  useEffect(() => {
+    if (mounted.current) { setDisplay(target); return }
+    mounted.current = true
+
+    // Extract the numeric part for animation
+    const match = target.match(/^([\d,.]+)/)
+    if (!match) { setDisplay(target); return }
+    const numStr = match[1].replace(/,/g, '')
+    const targetNum = parseFloat(numStr)
+    if (isNaN(targetNum) || targetNum === 0) { setDisplay(target); return }
+
+    const startTime = performance.now()
+    function tick(now: number) {
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      // Ease-out curve
+      const eased = 1 - (1 - progress) ** 3
+      const current = targetNum * eased
+      // Format to match target's precision
+      const formatted = numStr.includes('.')
+        ? current.toFixed(numStr.split('.')[1]?.length ?? 0)
+        : Math.round(current).toLocaleString()
+      setDisplay(target.replace(match[1], formatted))
+      if (progress < 1) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [target, duration])
+
+  return display
+}
+
+function AnimatedValue({ value, className }: { value: string; className: string }) {
+  const animated = useCountUp(value)
+  return <p className={className}>{animated}</p>
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DaoStats - Key metrics display for DAO overview
@@ -19,8 +62,8 @@ interface StatItem {
 }
 
 export function DaoStats({ dao, memberCount, proposalCount, treasuryValue }: DaoStatsProps) {
-  const totalShares = BigInt(dao.total_shares || '0')
-  const totalLoot = BigInt(dao.total_loot || '0')
+  const totalShares = safeBigInt(dao.total_shares)
+  const totalLoot = safeBigInt(dao.total_loot)
   const members = memberCount ?? Number(dao.active_member_count || '0')
   const proposals = proposalCount ?? Number(dao.proposal_count || '0')
 
@@ -66,11 +109,9 @@ export function DaoStats({ dao, memberCount, proposalCount, treasuryValue }: Dao
             <p className="text-xs font-medium uppercase tracking-wider text-dao-text-muted">
               {stat.label}
             </p>
-            <p className={`text-xl sm:text-2xl font-display font-bold mt-1 ${
+            <AnimatedValue value={stat.value} className={`text-xl sm:text-2xl font-display font-bold mt-1 ${
               stat.accent ? 'text-accent-400' : 'text-dao-text'
-            }`}>
-              {stat.value}
-            </p>
+            }`} />
           </div>
         ))}
       </div>

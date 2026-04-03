@@ -3,7 +3,7 @@ import { useDaos } from '@/hooks/useDaos'
 import { useDebounce } from '@/hooks/useDebounce'
 import { DaoCard } from '@/components/dao/DaoCard'
 import { EmptyState } from '@/components/common/EmptyState'
-import { Loading } from '@/components/common/Loading'
+import { SkeletonDaoCard } from '@/components/common/Skeleton'
 import type { Dao } from '@/types'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -40,7 +40,7 @@ export function Explore() {
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortOption>('newest')
   const debouncedSearch = useDebounce(search, 300)
-  const { data: daos, isLoading, error } = useDaos(debouncedSearch)
+  const { data: daos, isLoading, error } = useDaos()
 
   const filteredDaos = useMemo(() => {
     if (!daos) return []
@@ -71,13 +71,17 @@ export function Explore() {
 
       {/* Search and sort controls */}
       <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
+        <div className="flex-1 relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dao-text-hint pointer-events-none"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, description, or address..."
-            className="input w-full"
+            className="input w-full pl-9"
           />
         </div>
         <select
@@ -95,7 +99,9 @@ export function Explore() {
 
       {/* Results */}
       {isLoading ? (
-        <Loading fullPage />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }, (_, i) => <SkeletonDaoCard key={i} />)}
+        </div>
       ) : error ? (
         <EmptyState
           title="Failed to load DAOs"

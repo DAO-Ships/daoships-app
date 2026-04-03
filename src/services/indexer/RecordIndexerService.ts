@@ -49,6 +49,7 @@ class RecordIndexerService {
       .select('*')
       .eq('dao_id', daoId)
       .order('created_at', { ascending: false })
+      .limit(100)
 
     if (tag) {
       query = query.eq('tag', tag)
@@ -125,10 +126,11 @@ class RecordIndexerService {
 
     const { data, error } = await supabase
       .from('ds_records')
-      .select('user_address, content_json, created_at')
+      .select('user_address, content_json')
       .eq('dao_id', daoId)
       .eq('tag', POSTER_TAGS.MEMBER_PROFILE)
       .order('created_at', { ascending: false })
+      .limit(200)
 
     if (error) {
       console.error('[RecordIndexerService] getMemberProfiles error:', error.message)
@@ -161,6 +163,7 @@ class RecordIndexerService {
       .eq('tag', POSTER_TAGS.PROPOSAL_VOTE_REASON)
       .eq('content_json->>proposalId', String(proposalId))
       .order('created_at', { ascending: false })
+      .limit(100)
 
     if (error) {
       console.error('[RecordIndexerService] getVoteReasons error:', error.message)
@@ -171,17 +174,34 @@ class RecordIndexerService {
   }
 
   /**
-   * Get treasury labels (most recent set) for a DAO.
+   * Get allowlist record for a specific navigator.
+   * Returns the most recent allowlist post matching the navigator address.
    */
-  async getTreasuryLabels(daoId: string): Promise<DaoRecord[]> {
-    return this.getRecords(daoId, POSTER_TAGS.TREASURY_LABEL)
-  }
+  async getNavigatorAllowlist(daoId: string, navigatorAddress: string): Promise<DaoRecord | null> {
+    if (!supabase) return null
 
-  /**
-   * Get navigator metadata records for a DAO.
-   */
-  async getNavigatorMetadata(daoId: string): Promise<DaoRecord[]> {
-    return this.getRecords(daoId, POSTER_TAGS.NAVIGATOR_METADATA)
+    const normalizedNav = navigatorAddress.toLowerCase()
+
+    const { data, error } = await supabase
+      .from('ds_records')
+      .select('*')
+      .eq('dao_id', daoId.toLowerCase())
+      .eq('tag', POSTER_TAGS.NAVIGATOR_ALLOWLIST)
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    if (error) {
+      console.error('[RecordIndexerService] getNavigatorAllowlist error:', error.message)
+      return null
+    }
+
+    // Filter by navigatorAddress in content_json (Supabase JSONB filtering)
+    const match = (data ?? []).find((r) => {
+      const json = r.content_json as Record<string, unknown> | null
+      return json?.navigatorAddress?.toString().toLowerCase() === normalizedNav
+    })
+
+    return (match as DaoRecord) ?? null
   }
 }
 

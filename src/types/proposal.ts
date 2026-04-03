@@ -2,6 +2,8 @@
 // Proposal Types - matches ds_proposals table
 // ═══════════════════════════════════════════════════════════════════════════
 
+import type { DaoExpiryConfig } from './dao'
+
 /**
  * Proposal lifecycle status.
  * Matches the `ds_proposal_status` PostgreSQL enum exactly.
@@ -13,6 +15,7 @@ export enum ProposalStatus {
   Grace = 'grace',
   Ready = 'ready',
   Processed = 'processed',
+  ActionFailed = 'action failed',
   Cancelled = 'cancelled',
   Defeated = 'defeated',
   Expired = 'expired',
@@ -132,11 +135,13 @@ export interface ProposalTiming {
  */
 export function deriveProposalStatus(
   proposal: Proposal,
-  daoConfig?: { voting_period: number; grace_period: number; default_expiry_window: number },
+  daoConfig?: DaoExpiryConfig,
 ): ProposalStatus {
   if (proposal.cancelled) return ProposalStatus.Cancelled
   if (proposal.processed) {
-    return proposal.passed ? ProposalStatus.Processed : ProposalStatus.Defeated
+    if (!proposal.passed) return ProposalStatus.Defeated
+    if (proposal.action_failed) return ProposalStatus.ActionFailed
+    return ProposalStatus.Processed
   }
   if (!proposal.sponsored) return ProposalStatus.Submitted
 

@@ -1,7 +1,10 @@
 import { useMemo } from 'react'
 import { decodeProposalActions, type DecodedAction } from '@/services/utils/ProposalDecoder'
+import { useNavigators } from '@/hooks/useNavigators'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { Card } from '@/components/common/Card'
+import { CustomActionDetail } from './CustomActionDetail'
+import type { Navigator } from '@/types/navigator'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ProposalActionSummary - Decodes and displays proposal actions for voters
@@ -9,6 +12,7 @@ import { Card } from '@/components/common/Card'
 
 interface ProposalActionSummaryProps {
   proposalData?: string | null
+  daoId?: string
 }
 
 function ActionIcon({ type }: { type: DecodedAction['type'] }) {
@@ -55,7 +59,7 @@ function ProfileChanges({ content }: { content: Record<string, unknown> }) {
   )
 }
 
-function ActionDetail({ action }: { action: DecodedAction }) {
+function ActionDetail({ action, navigatorMap }: { action: DecodedAction; navigatorMap?: Map<string, Navigator> }) {
   const d = action.details
 
   switch (action.type) {
@@ -88,7 +92,73 @@ function ActionDetail({ action }: { action: DecodedAction }) {
     }
 
     case 'posterPost': {
+      const tag = d.tag as string | undefined
       const content = d.content
+
+      // Announcement-specific rendering
+      if (tag?.includes('announcement') && typeof content === 'object' && content !== null) {
+        const ann = content as Record<string, unknown>
+        const severity = (typeof ann.severity === 'string' ? ann.severity : 'info') as string
+        const severityStyles: Record<string, string> = {
+          info: 'bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-700/30',
+          warning: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700/30',
+          critical: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700/30',
+        }
+        const severityText: Record<string, string> = {
+          info: 'text-primary-700 dark:text-primary-300',
+          warning: 'text-yellow-700 dark:text-yellow-300',
+          critical: 'text-red-700 dark:text-red-300',
+        }
+        const severityBody: Record<string, string> = {
+          info: 'text-primary-600 dark:text-primary-400/80',
+          warning: 'text-yellow-600 dark:text-yellow-400/80',
+          critical: 'text-red-600 dark:text-red-400/80',
+        }
+        const severityIcons: Record<string, string> = {
+          info: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+          warning: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z',
+          critical: 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+        }
+        return (
+          <div className={`mt-2 rounded-xl border px-5 py-4 ${severityStyles[severity] || severityStyles.info}`}>
+            <div className="flex items-start gap-3">
+              <svg
+                className={`w-5 h-5 flex-shrink-0 mt-0.5 ${severityText[severity] || severityText.info}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d={severityIcons[severity] || severityIcons.info} />
+              </svg>
+              <div className="min-w-0 flex-1">
+                {typeof ann.title === 'string' && (
+                  <p className={`text-sm font-semibold ${severityText[severity] || severityText.info}`}>
+                    {ann.title}
+                  </p>
+                )}
+                {typeof ann.body === 'string' && ann.body && (
+                  <p className={`text-sm mt-1 whitespace-pre-wrap ${severityBody[severity] || severityBody.info}`}>{ann.body}</p>
+                )}
+                {typeof ann.url === 'string' && ann.url && (
+                  <a
+                    href={ann.url}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    className={`inline-flex items-center gap-1 text-sm mt-1.5 hover:underline ${severityText[severity] || severityText.info}`}
+                  >
+                    Learn more
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                )}
+                <p className="text-xs text-dao-text-hint mt-2 capitalize">
+                  Severity: {severity}
+                </p>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
       if (typeof content === 'object' && content !== null) {
         return <ProfileChanges content={content as Record<string, unknown>} />
       }
@@ -124,31 +194,51 @@ function ActionDetail({ action }: { action: DecodedAction }) {
         return labels[p] ?? `Permission ${p}`
       }
       return (
-        <div className="mt-2 space-y-1">
-          {navs.map((n, i) => (
-            <div key={i} className="text-xs flex items-center gap-2">
-              <AddressDisplay address={n.address} />
-              <span className={n.permission === 0 ? 'text-red-400' : 'text-dao-text-secondary'}>
-                {permLabel(n.permission)}
-              </span>
-            </div>
-          ))}
+        <div className="mt-2 space-y-2">
+          {navs.map((n, i) => {
+            const meta = navigatorMap?.get(n.address.toLowerCase())
+            return (
+              <div
+                key={i}
+                className={`rounded-lg border px-3 py-2 ${
+                  n.permission === 0
+                    ? 'border-red-500/30 bg-red-50 dark:bg-red-900/10'
+                    : 'border-dao-border bg-dao-dark-2'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {meta?.name ? (
+                    <span className="text-sm font-medium text-dao-text">{meta.name}</span>
+                  ) : (
+                    <AddressDisplay address={n.address} />
+                  )}
+                  {meta?.navigator_type && (
+                    <span className="text-[11px] bg-dao-dark-3 text-dao-text-hint rounded px-1.5 py-0.5">{meta.navigator_type}</span>
+                  )}
+                  <span className={`text-xs ml-auto flex-shrink-0 ${n.permission === 0 ? 'text-red-400 font-medium' : 'text-dao-text-secondary'}`}>
+                    {permLabel(n.permission)}
+                  </span>
+                </div>
+                {meta?.name && (
+                  <p className="text-[11px] text-dao-text-hint font-mono mt-0.5">{n.address.slice(0, 10)}...{n.address.slice(-4)}</p>
+                )}
+                {meta?.description && (
+                  <p className="text-xs text-dao-text-muted mt-0.5 line-clamp-2">{meta.description}</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       )
     }
 
     case 'custom':
       return (
-        <div className="mt-2 text-xs space-y-1">
-          <div><span className="text-dao-text-muted">Target:</span> <AddressDisplay address={d.target as string} /></div>
-          {d.value !== '0' && (
-            <div><span className="text-dao-text-muted">Value:</span> <span className="text-dao-text-secondary font-mono">{d.value as string} wei</span></div>
-          )}
-          <div>
-            <span className="text-dao-text-muted">Calldata:</span>{' '}
-            <span className="text-dao-text-hint font-mono text-[11px] break-all">{(d.calldata as string).slice(0, 66)}...</span>
-          </div>
-        </div>
+        <CustomActionDetail
+          target={d.target as string}
+          value={d.value as string}
+          calldata={d.calldata as string}
+        />
       )
 
     default:
@@ -156,8 +246,18 @@ function ActionDetail({ action }: { action: DecodedAction }) {
   }
 }
 
-export function ProposalActionSummary({ proposalData }: ProposalActionSummaryProps) {
+export function ProposalActionSummary({ proposalData, daoId }: ProposalActionSummaryProps) {
   const actions = useMemo(() => decodeProposalActions(proposalData), [proposalData])
+  const hasNavigatorActions = actions.some((a) => a.type === 'setNavigators')
+  const { data: navigators } = useNavigators(hasNavigatorActions ? daoId : undefined)
+  const navigatorMap = useMemo(() => {
+    if (!navigators) return undefined
+    const map = new Map<string, Navigator>()
+    for (const nav of navigators) {
+      map.set(nav.navigator_address.toLowerCase(), nav)
+    }
+    return map
+  }, [navigators])
 
   if (actions.length === 0) {
     return (
@@ -184,7 +284,7 @@ export function ProposalActionSummary({ proposalData }: ProposalActionSummaryPro
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-dao-text">{action.label}</p>
-              <ActionDetail action={action} />
+              <ActionDetail action={action} navigatorMap={navigatorMap} />
             </div>
           </div>
         ))}

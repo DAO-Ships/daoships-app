@@ -192,9 +192,11 @@ export function Sidebar() {
           <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
             <SidebarSection items={globalNavItems} />
 
-            {daoNavItems && (
-              <SidebarSection title="Current DAO" items={daoNavItems} />
-            )}
+            <div className={`transition-all duration-300 overflow-hidden ${daoNavItems ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+              {daoNavItems && (
+                <SidebarSection title="Current DAO" items={daoNavItems} />
+              )}
+            </div>
           </nav>
 
           {/* Theme toggle + Footer */}

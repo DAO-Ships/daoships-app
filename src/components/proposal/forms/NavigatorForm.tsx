@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Button } from '@/components/common/Button'
 import { OfferingField } from './OfferingField'
+import { ProposalSettingsFields } from './ProposalSettingsFields'
+import { ProposalActionSection } from './ProposalActionSection'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import type { Navigator } from '@/types/navigator'
 import { NavigatorPermission } from '@/types/navigator'
@@ -19,6 +21,8 @@ interface NavigatorFormData {
   title: string
   description: string
   offering: string
+  expiration: string
+  discussionUrl: string
   navigators: NavigatorChange[]
 }
 
@@ -57,6 +61,8 @@ export function NavigatorForm({
 }: NavigatorFormProps) {
   const [title, setTitle] = useState(prefill ? `Register navigator ${prefill.address.slice(0, 10)}...` : '')
   const [description, setDescription] = useState('')
+  const [expiration, setExpiration] = useState('')
+  const [discussionUrl, setDiscussionUrl] = useState('')
   const [offering, setOffering] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -151,6 +157,8 @@ export function NavigatorForm({
       title: title.trim(),
       description: description.trim(),
       offering,
+      expiration,
+      discussionUrl,
       navigators,
     })
   }
@@ -174,9 +182,10 @@ export function NavigatorForm({
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Update navigator permissions"
             className="input w-full"
-            maxLength={240}
+            maxLength={120}
             disabled={isSubmitting}
           />
+          <p className="text-xs text-dao-text-hint mt-1 text-right">{title.length}/120</p>
           {errors.title && <p className="text-xs text-red-400 mt-1">{errors.title}</p>}
         </div>
 
@@ -189,15 +198,34 @@ export function NavigatorForm({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Explain why this navigator change is needed..."
-            className="input w-full min-h-[80px] resize-y"
-            maxLength={5000}
+            className="input w-full min-h-[60px] resize-y"
+            maxLength={2000}
             disabled={isSubmitting}
-            rows={3}
+            rows={2}
           />
+          <p className="text-xs text-dao-text-hint mt-1 text-right">{description.length}/2000</p>
+        </div>
+
+        {/* Discussion Link */}
+        <div>
+          <label htmlFor="nav-discussion-url" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+            Discussion Link
+          </label>
+          <input
+            id="nav-discussion-url"
+            type="url"
+            value={discussionUrl}
+            onChange={(e) => setDiscussionUrl(e.target.value)}
+            placeholder="https://forum.mydao.xyz/t/..."
+            className="input w-full font-mono text-sm"
+            maxLength={200}
+            disabled={isSubmitting}
+          />
+          <p className="text-xs text-dao-text-hint mt-1 text-right">{discussionUrl.length}/200</p>
         </div>
       </div>
 
-      <div className="border-t border-dao-border" />
+      <ProposalActionSection title="Navigator Changes">
 
       {/* Existing navigators */}
       {currentNavigators.length > 0 && (
@@ -222,12 +250,22 @@ export function NavigatorForm({
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <AddressDisplay address={nav.navigator_address} />
+                    <div className="flex items-center gap-2 mb-0.5">
+                      {nav.name ? (
+                        <span className="text-sm font-medium text-dao-text">{nav.name}</span>
+                      ) : (
+                        <AddressDisplay address={nav.navigator_address} />
+                      )}
                       {nav.navigator_type && (
-                        <span className="text-xs text-dao-text-hint">{nav.navigator_type}</span>
+                        <span className="text-[11px] bg-dao-dark-3 text-dao-text-hint rounded px-1.5 py-0.5">{nav.navigator_type}</span>
                       )}
                     </div>
+                    {nav.name && (
+                      <p className="text-[11px] text-dao-text-hint font-mono mb-0.5">{nav.navigator_address.slice(0, 10)}...{nav.navigator_address.slice(-4)}</p>
+                    )}
+                    {nav.description && (
+                      <p className="text-xs text-dao-text-muted mb-0.5 line-clamp-1">{nav.description}</p>
+                    )}
                     {isChanged && (
                       <p className="text-xs text-accent-500">
                         {isRemoval
@@ -331,8 +369,13 @@ export function NavigatorForm({
       </div>
 
       {errors.changes && <p className="text-xs text-red-400">{errors.changes}</p>}
+      </ProposalActionSection>
 
-      <div className="border-t border-dao-border" />
+      <ProposalSettingsFields
+        expiration={expiration}
+        onExpirationChange={setExpiration}
+        disabled={isSubmitting}
+      />
 
       <OfferingField
         value={offering}

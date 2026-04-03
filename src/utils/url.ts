@@ -14,10 +14,10 @@ const IPFS_GATEWAY = (typeof import.meta !== 'undefined' && import.meta.env?.VIT
 const SAFE_SCHEME = /^(https?|ipfs):\/\//i
 
 /**
- * IPFS CID format: must start with alphanumeric (CIDv0: Qm..., CIDv1: bafy...).
- * Allows subdirectory paths but blocks traversal.
+ * IPFS CID format: CIDv0 (Qm + 44 base58) or CIDv1 (bafy + base32).
+ * Allows subdirectory paths after the CID but blocks traversal.
  */
-const VALID_CID = /^[a-zA-Z0-9]/
+const VALID_CID = /^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$/
 
 /**
  * Check whether a string is a safe URL (http, https, or ipfs scheme).
@@ -50,7 +50,7 @@ export function resolveUrl(url: string | null | undefined): string | null {
     // Validate CID format
     if (!cid || !VALID_CID.test(cid)) return null
     // Block path traversal (raw and URL-encoded)
-    if (cid.includes('..') || cid.includes('%2e%2e') || cid.includes('%2E%2E')) return null
+    if (/\.\.|%2e/i.test(cid)) return null
     return `${IPFS_GATEWAY}${encodeURI(cid)}`
   }
 

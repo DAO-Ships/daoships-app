@@ -13,8 +13,8 @@ const ZERO_BYTES32 = '0x' + '00'.repeat(32)
 
 // IPFS CIDs extracted from compiled bytecode CBOR metadata appendix.
 // quais ContractFactory requires a valid 46-char IPFS CIDv0 for on-chain source verification.
-const ONBOARDER_IPFS_HASH = 'QmWycQqiFSuoXzQaHo7fgyxJ8o15nVCussfTTeEDjUWQWr'
-const ERC20_TRIBUTE_IPFS_HASH = 'QmUfM1rTQvbsMJrLw6ACsrPD4mZNA4prCun6enPXb9wymW'
+const ONBOARDER_IPFS_HASH = 'QmeFR5wgHwGL91BAUQoQrdfhmFGCagQKoUzBEsYRMCkgdn'
+const ERC20_TRIBUTE_IPFS_HASH = 'QmNkqVRbHfJVnEfa36XDRYV8xrPpJmsBJDm2XuyY2ufFJN'
 
 export interface OnboarderDeployParams {
   daoShipAddress: string
@@ -32,6 +32,8 @@ export interface OnboarderDeployParams {
   mintCap: bigint         // 0 = unlimited
   perAddressCap: bigint   // 0 = unlimited
   allowlistRoot?: string  // bytes32, default = open (no allowlist)
+  name: string            // Human-readable name (emitted in NavigatorDeployed event)
+  description: string     // Human-readable description
 }
 
 export interface ERC20TributeDeployParams {
@@ -43,6 +45,8 @@ export interface ERC20TributeDeployParams {
   mintCap: bigint
   perAddressCap: bigint
   allowlistRoot?: string
+  name: string
+  description: string
 }
 
 /**
@@ -55,7 +59,7 @@ class NavigatorDeployService {
    * Deploy an OnboarderNavigator.
    *
    * Constructor: (daoShip, shareMultiplier, lootMultiplier, pricePerUnit,
-   *   sharesPerUnit, lootPerUnit, minTribute, expiry, mintCap, perAddressCap, allowlistRoot)
+   *   sharesPerUnit, lootPerUnit, minTribute, expiry, mintCap, perAddressCap, allowlistRoot, name, description)
    *
    * @returns Deployed contract address
    */
@@ -96,6 +100,8 @@ class NavigatorDeployService {
       params.mintCap,
       params.perAddressCap,
       params.allowlistRoot || ZERO_BYTES32,
+      params.name,
+      params.description,
     )
 
     await contract.waitForDeployment()
@@ -119,7 +125,7 @@ class NavigatorDeployService {
    * Deploy an ERC20TributeNavigator.
    *
    * Constructor: (daoShip, tributeToken, pricePerShare, pricePerLoot,
-   *   expiry, mintCap, perAddressCap, allowlistRoot)
+   *   expiry, mintCap, perAddressCap, allowlistRoot, name, description)
    *
    * @returns Deployed contract address
    */
@@ -141,6 +147,8 @@ class NavigatorDeployService {
       params.mintCap,
       params.perAddressCap,
       params.allowlistRoot || ZERO_BYTES32,
+      params.name,
+      params.description,
     )
 
     await contract.waitForDeployment()

@@ -22,15 +22,32 @@ export function useTransactionFlow() {
     setResetKey((k) => k + 1)
   }, [])
 
-  const execute = useCallback(async (fn: () => Promise<string>) => {
+  /**
+   * Execute a transaction flow. The `fn` callback receives a `reportHash`
+   * function it should call as soon as the tx hash is available (before mining).
+   * This transitions the UI to "waiting" so the user sees confirmation progress.
+   *
+   * The callback should:
+   * 1. Submit the transaction (wallet signing prompt)
+   * 2. Call `reportHash(txHash)` once the hash is known
+   * 3. Await tx.wait() for on-chain confirmation
+   * 4. Return the tx hash
+   *
+   * The flow transitions: signing → waiting → success (or error).
+   */
+  const execute = useCallback(async (fn: (reportHash: (hash: string) => void) => Promise<string>) => {
     try {
       setStep('signing')
       setError(null)
-      const hash = await fn()
+
+      const reportHash = (hash: string) => {
+        setTxHash(hash)
+        setStep('waiting')
+      }
+
+      const hash = await fn(reportHash)
+      // Ensure hash is captured even if fn didn't call reportHash
       setTxHash(hash)
-      setStep('waiting')
-      // The caller should await tx.wait() inside fn() or externally;
-      // once resolved, transition to success:
       setStep('success')
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Transaction failed'

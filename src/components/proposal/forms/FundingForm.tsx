@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { Button } from '@/components/common/Button'
 import { OfferingField } from './OfferingField'
 import { ProposalSettingsFields } from './ProposalSettingsFields'
+import { ProposalActionSection } from './ProposalActionSection'
 import { formatTokenAmount } from '@/utils/format'
+import { ZERO_ADDRESS } from '@/config/contracts'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FundingForm - Transfer tokens from treasury proposal form
 // ═══════════════════════════════════════════════════════════════════════════
-
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 export interface VaultTokenOption {
   address: string
@@ -27,7 +27,7 @@ interface FundingFormData {
   amount: string
   offering: string
   expiration: string
-  rationale: string
+  discussionUrl: string
 }
 
 interface FundingFormProps {
@@ -49,7 +49,7 @@ export function FundingForm({ daoId: _daoId, vaultTokens, minOfferingDisplay, ca
   const [amount, setAmount] = useState('')
   const [offering, setOffering] = useState('')
   const [expiration, setExpiration] = useState('')
-  const [rationale, setRationale] = useState('')
+  const [discussionUrl, setDiscussionUrl] = useState('')
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({})
 
   const selectedToken = vaultTokens.find((t) => t.address === tokenAddress)
@@ -85,7 +85,7 @@ export function FundingForm({ daoId: _daoId, vaultTokens, minOfferingDisplay, ca
         amount,
         offering,
         expiration,
-        rationale,
+        discussionUrl,
       })
     }
   }
@@ -104,9 +104,10 @@ export function FundingForm({ daoId: _daoId, vaultTokens, minOfferingDisplay, ca
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Funding proposal title"
           className="input w-full"
-          maxLength={240}
+          maxLength={120}
           disabled={isSubmitting}
         />
+        <p className="text-xs text-dao-text-hint mt-1 text-right">{title.length}/120</p>
         {errors.title && <p className="text-xs text-red-400 mt-1">{errors.title}</p>}
       </div>
 
@@ -120,87 +121,106 @@ export function FundingForm({ daoId: _daoId, vaultTokens, minOfferingDisplay, ca
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Describe the purpose of this funding request..."
-          className="input w-full min-h-[100px] resize-y"
-          maxLength={5000}
+          className="input w-full min-h-[60px] resize-y"
+          maxLength={2000}
           disabled={isSubmitting}
-          rows={4}
+          rows={2}
         />
+        <p className="text-xs text-dao-text-hint mt-1 text-right">{description.length}/2000</p>
       </div>
 
-      {/* Recipient */}
+      {/* Discussion Link */}
       <div>
-        <label htmlFor="funding-recipient" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
-          Recipient Address
+        <label htmlFor="funding-discussion-url" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+          Discussion Link
         </label>
         <input
-          id="funding-recipient"
-          type="text"
-          value={recipient}
-          onChange={(e) => setRecipient(e.target.value)}
-          placeholder="0x..."
-          className="input w-full font-mono"
+          id="funding-discussion-url"
+          type="url"
+          value={discussionUrl}
+          onChange={(e) => setDiscussionUrl(e.target.value)}
+          placeholder="https://forum.mydao.xyz/t/..."
+          className="input w-full font-mono text-sm"
+          maxLength={200}
           disabled={isSubmitting}
         />
-        {errors.recipient && <p className="text-xs text-red-400 mt-1">{errors.recipient}</p>}
+        <p className="text-xs text-dao-text-hint mt-1 text-right">{discussionUrl.length}/200</p>
       </div>
 
-      {/* Token Select */}
-      <div>
-        <label htmlFor="funding-token" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
-          Token
-        </label>
-        <select
-          id="funding-token"
-          value={tokenAddress}
-          onChange={(e) => setTokenAddress(e.target.value)}
-          className="input w-full"
-          disabled={isSubmitting}
-        >
-          {vaultTokens.length === 0 && (
-            <option value="">No tokens available</option>
+      <ProposalActionSection title="Transfer Details">
+        {/* Recipient */}
+        <div>
+          <label htmlFor="funding-recipient" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+            Recipient Address
+          </label>
+          <input
+            id="funding-recipient"
+            type="text"
+            value={recipient}
+            onChange={(e) => setRecipient(e.target.value)}
+            placeholder="0x..."
+            className="input w-full font-mono"
+            disabled={isSubmitting}
+          />
+          {errors.recipient && <p className="text-xs text-red-400 mt-1">{errors.recipient}</p>}
+        </div>
+
+        {/* Token Select */}
+        <div>
+          <label htmlFor="funding-token" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+            Token
+          </label>
+          <select
+            id="funding-token"
+            value={tokenAddress}
+            onChange={(e) => setTokenAddress(e.target.value)}
+            className="input w-full"
+            disabled={isSubmitting}
+          >
+            {vaultTokens.length === 0 && (
+              <option value="">No tokens available</option>
+            )}
+            {vaultTokens.map((token) => (
+              <option key={token.address} value={token.address}>
+                {token.name}{token.symbol !== token.name ? ` (${token.symbol})` : ''} — {formatTokenAmount(token.balance, token.decimals, 4, 2)} available
+              </option>
+            ))}
+          </select>
+          {errors.tokenAddress && <p className="text-xs text-red-400 mt-1">{errors.tokenAddress}</p>}
+          {selectedToken && selectedToken.balance === 0n && (
+            <p className="text-xs text-yellow-400 mt-1">
+              The vault has no balance of this token.
+            </p>
           )}
-          {vaultTokens.map((token) => (
-            <option key={token.address} value={token.address}>
-              {token.name}{token.symbol !== token.name ? ` (${token.symbol})` : ''} — {formatTokenAmount(token.balance, token.decimals, 4, 2)} available
-            </option>
-          ))}
-        </select>
-        {errors.tokenAddress && <p className="text-xs text-red-400 mt-1">{errors.tokenAddress}</p>}
-        {selectedToken && selectedToken.balance === 0n && (
-          <p className="text-xs text-yellow-400 mt-1">
-            The vault has no balance of this token.
-          </p>
-        )}
-      </div>
+        </div>
 
-      {/* Amount */}
-      <div>
-        <label htmlFor="funding-amount" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
-          Amount
-        </label>
-        <input
-          id="funding-amount"
-          type="text"
-          value={amount}
-          onChange={(e) => {
-            const val = e.target.value
-            if (val === '' || /^\d*\.?\d*$/.test(val)) {
-              setAmount(val)
-            }
-          }}
-          placeholder="0.0"
-          className="input w-full font-mono"
-          disabled={isSubmitting}
-        />
-        {errors.amount && <p className="text-xs text-red-400 mt-1">{errors.amount}</p>}
-      </div>
+        {/* Amount */}
+        <div>
+          <label htmlFor="funding-amount" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+            Amount
+          </label>
+          <input
+            id="funding-amount"
+            type="text"
+            value={amount}
+            onChange={(e) => {
+              const val = e.target.value
+              if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                setAmount(val)
+              }
+            }}
+            placeholder="0.0"
+            className="input w-full font-mono"
+            disabled={isSubmitting}
+          />
+          {errors.amount && <p className="text-xs text-red-400 mt-1">{errors.amount}</p>}
+        </div>
+      </ProposalActionSection>
 
-      {/* Proposal Settings (expiration + rationale) */}
+      {/* Proposal Settings */}
       <ProposalSettingsFields
         expiration={expiration}
         onExpirationChange={setExpiration}
-        rationale={rationale}
-        onRationaleChange={setRationale}
         disabled={isSubmitting}
       />
 

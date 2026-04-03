@@ -34,15 +34,15 @@ export const summonBasicInfoSchema = z.object({
   name: z
     .string()
     .min(1, 'DAO name is required')
-    .max(120, 'DAO name must be 120 characters or fewer'),
+    .max(64, 'DAO name must be 64 characters or fewer'),
   description: z
     .string()
-    .max(2000, 'Description must be 2000 characters or fewer')
+    .max(280, 'Description must be 280 characters or fewer')
     .optional()
     .default(''),
   shareTokenName: z
     .string()
-    .max(60, 'Token name must be 60 characters or fewer')
+    .max(32, 'Token name must be 32 characters or fewer')
     .optional()
     .default(''),
   shareTokenSymbol: z
@@ -52,7 +52,7 @@ export const summonBasicInfoSchema = z.object({
     .default(''),
   lootTokenName: z
     .string()
-    .max(60, 'Token name must be 60 characters or fewer')
+    .max(32, 'Token name must be 32 characters or fewer')
     .optional()
     .default(''),
   lootTokenSymbol: z
@@ -82,9 +82,10 @@ export const summonMembersSchema = z.object({
 export type SummonMembers = z.infer<typeof summonMembersSchema>
 
 /**
- * Step 3: Governance configuration.
+ * Shared governance configuration fields.
+ * Used by both the launch wizard and governance-change proposals.
  */
-export const summonGovernanceSchema = z.object({
+const governanceFieldsSchema = z.object({
   votingPeriod: z
     .number()
     .int()
@@ -116,6 +117,11 @@ export const summonGovernanceSchema = z.object({
     .default(0),
 })
 
+/**
+ * Step 3: Governance configuration (summon wizard).
+ */
+export const summonGovernanceSchema = governanceFieldsSchema
+
 export type SummonGovernance = z.infer<typeof summonGovernanceSchema>
 
 // ── Proposal Form Schemas ─────────────────────────────────────────────────
@@ -127,10 +133,10 @@ export const proposalSchema = z.object({
   title: z
     .string()
     .min(1, 'Proposal title is required')
-    .max(240, 'Title must be 240 characters or fewer'),
+    .max(120, 'Title must be 120 characters or fewer'),
   description: z
     .string()
-    .max(5000, 'Description must be 5000 characters or fewer')
+    .max(2000, 'Description must be 2000 characters or fewer')
     .optional()
     .default(''),
   proposalType: z.enum(['signal', 'funding', 'membership', 'govconfig', 'custom'], {
@@ -170,39 +176,9 @@ export const membershipFormSchema = z.object({
 export type MembershipForm = z.infer<typeof membershipFormSchema>
 
 /**
- * Governance config change proposal.
+ * Governance config change proposal (same fields as summon governance).
  */
-export const governanceFormSchema = z.object({
-  votingPeriod: z
-    .number()
-    .int()
-    .min(60, 'Voting period must be at least 60 seconds (contract minimum)')
-    .max(4_294_967_295, 'Voting period exceeds uint32 max (4294967295)'),
-  gracePeriod: z
-    .number()
-    .int()
-    .min(0, 'Grace period cannot be negative')
-    .max(4_294_967_295, 'Grace period exceeds uint32 max (4294967295)'),
-  quorumPercent: z
-    .number()
-    .min(0, 'Quorum percent must be 0 or greater')
-    .max(100, 'Quorum percent must be 100 or less'),
-  proposalOffering: cappedBigintString.optional().default('0'),
-  sponsorThreshold: cappedBigintString.optional().default('1'),
-  minRetentionPercent: z
-    .number()
-    .min(0, 'Min retention percent must be 0 or greater')
-    .max(100, 'Min retention percent must be 100 or less')
-    .optional()
-    .default(0),
-  defaultExpiryWindow: z
-    .number()
-    .int()
-    .min(0, 'Default expiry window cannot be negative')
-    .max(4_294_967_295, 'Default expiry window exceeds uint32 max (4294967295)')
-    .optional()
-    .default(0),
-})
+export const governanceFormSchema = governanceFieldsSchema
 
 export type GovernanceForm = z.infer<typeof governanceFormSchema>
 

@@ -23,6 +23,7 @@ class ProposalIndexerService {
       .select('*')
       .eq('dao_id', daoId)
       .order('proposal_id', { ascending: false })
+      .limit(200)
 
     if (filters?.status === 'active') {
       query = query.eq('cancelled', false).eq('processed', false)

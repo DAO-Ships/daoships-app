@@ -18,7 +18,7 @@ export function DaoCard({ dao }: DaoCardProps) {
   return (
     <Link
       to={`/dao/${dao.id}`}
-      className="card group block transition-all duration-200 hover:border-accent-500/50 hover:shadow-accent-500/10 hover:shadow-lg"
+      className="card group block transition-all duration-200 hover:border-accent-500/50 hover:shadow-accent-500/10 hover:shadow-lg hover:-translate-y-0.5"
     >
       <div className="px-6 py-5">
         {/* Header: Avatar + Name */}

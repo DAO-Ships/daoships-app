@@ -68,6 +68,16 @@ export interface Dao {
 }
 
 /**
+ * Minimal config needed for proposal status derivation (expiry calculation).
+ * Used by deriveProposalStatus, useProposalStatus, ProposalActions, etc.
+ */
+export interface DaoExpiryConfig {
+  voting_period: number
+  grace_period: number
+  default_expiry_window: number
+}
+
+/**
  * Governance configuration subset extracted from Dao for convenience.
  */
 export interface DaoConfig {

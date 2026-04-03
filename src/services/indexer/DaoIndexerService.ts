@@ -7,15 +7,23 @@ import type { Dao, GuildToken } from '@/types'
 
 class DaoIndexerService {
   /**
-   * List all DAOs, ordered by creation date descending (newest first).
+   * List DAOs, ordered by creation date descending (newest first).
+   * Optionally filter by name (server-side ilike search).
    */
-  async listDaos(): Promise<Dao[]> {
+  async listDaos(search?: string): Promise<Dao[]> {
     if (!supabase) return []
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('ds_daos')
       .select('*')
       .order('created_at', { ascending: false })
+      .limit(200)
+
+    if (search?.trim()) {
+      query = query.ilike('name', `%${search.trim()}%`)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('[DaoIndexerService] listDaos error:', error.message)

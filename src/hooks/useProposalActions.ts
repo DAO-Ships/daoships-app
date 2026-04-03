@@ -10,8 +10,18 @@ export function useProposalActions(daoId: string, proposalId: string) {
   const queryClient = useQueryClient()
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
-    queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
+    const run = () => {
+      queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
+      queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
+      queryClient.invalidateQueries({ queryKey: ['dao', daoId] })
+      queryClient.invalidateQueries({ queryKey: ['members', daoId] })
+      queryClient.invalidateQueries({ queryKey: ['member', daoId] })
+      queryClient.invalidateQueries({ queryKey: ['treasury', daoId] })
+      queryClient.invalidateQueries({ queryKey: ['treasuryBalances'] })
+    }
+    run()
+    // Re-fetch after a delay to catch indexer lag
+    setTimeout(run, 4000)
   }
 
   const sponsorMutation = useMutation({

@@ -2,6 +2,9 @@ import { useEffect } from 'react'
 import { Outlet, useParams } from 'react-router-dom'
 import { useDao } from '@/hooks/useDao'
 import { useDaoStore } from '@/store/daoStore'
+import { useRealtimeMembers } from '@/hooks/useRealtimeMembers'
+import { useRealtimeProposals } from '@/hooks/useRealtimeProposals'
+import { useRealtimeRecords } from '@/hooks/useRealtimeRecords'
 import { Loading } from '@/components/common/Loading'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -13,14 +16,19 @@ export function DaoLayout() {
   const { data: dao, isLoading, error } = useDao(daoId)
   const { setCurrentDao, clearCurrentDao } = useDaoStore()
 
+  // DAO-scoped realtime subscriptions — active for all sub-pages
+  useRealtimeMembers(daoId)
+  useRealtimeProposals(daoId)
+  useRealtimeRecords(daoId)
+
   useEffect(() => {
     if (daoId) {
-      setCurrentDao(daoId)
+      setCurrentDao(daoId, dao?.name ?? undefined)
     }
     return () => {
       clearCurrentDao()
     }
-  }, [daoId, setCurrentDao, clearCurrentDao])
+  }, [daoId, dao?.name, setCurrentDao, clearCurrentDao])
 
   if (isLoading) {
     return <Loading fullPage size="lg" />

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from '@/components/common/Button'
 import { OfferingField } from './OfferingField'
 import { ProposalSettingsFields } from './ProposalSettingsFields'
+import { ProposalActionSection } from './ProposalActionSection'
 import { DaoAvatar } from '@/components/dao/DaoAvatar'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -12,6 +13,8 @@ export interface ProfileFormData {
   title: string
   description: string
   offering: string
+  expiration: string
+  discussionUrl: string
   profile: {
     name: string
     description: string
@@ -63,7 +66,7 @@ export function ProfileForm({
   const [proposalDescription, setProposalDescription] = useState('')
   const [offering, setOffering] = useState('')
   const [expiration, setExpiration] = useState('')
-  const [rationale, setRationale] = useState('')
+  const [discussionUrl, setDiscussionUrl] = useState('')
 
   // Profile fields — pre-filled from current values
   const [name, setName] = useState(currentProfile.name || '')
@@ -99,19 +102,19 @@ export function ProfileForm({
     const newErrors: Record<string, string> = {}
     if (!title.trim()) {
       newErrors.title = 'Proposal title is required'
-    } else if (title.length > 240) {
-      newErrors.title = 'Title must be 240 characters or fewer'
+    } else if (title.length > 120) {
+      newErrors.title = 'Title must be 120 characters or fewer'
     }
     if (!name.trim()) {
       newErrors.name = 'DAO name is required'
-    } else if (name.length > 120) {
-      newErrors.name = 'Name must be 120 characters or fewer'
+    } else if (name.length > 64) {
+      newErrors.name = 'Name must be 64 characters or fewer'
     }
-    if (description.length > 2000) {
-      newErrors.description = 'Description must be 2000 characters or fewer'
+    if (description.length > 280) {
+      newErrors.description = 'Description must be 280 characters or fewer'
     }
-    if (avatar && avatar.length > 2048) {
-      newErrors.avatar = 'Avatar URL must be 2048 characters or fewer'
+    if (avatar && avatar.length > 200) {
+      newErrors.avatar = 'Avatar URL must be 200 characters or fewer'
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -138,6 +141,8 @@ export function ProfileForm({
       title: title.trim(),
       description: proposalDescription.trim(),
       offering,
+      expiration,
+      discussionUrl,
       profile: {
         name: name.trim(),
         description: description.trim(),
@@ -164,11 +169,11 @@ export function ProfileForm({
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Update DAO profile"
             className="input w-full"
-            maxLength={240}
+            maxLength={120}
             disabled={isSubmitting}
           />
+          <p className="text-xs text-dao-text-hint mt-1 text-right">{title.length}/120</p>
           {errors.title && <p className="text-xs text-red-400 mt-1">{errors.title}</p>}
-          <p className="text-xs text-dao-text-hint mt-1">{title.length}/240</p>
         </div>
 
         <div>
@@ -180,18 +185,35 @@ export function ProfileForm({
             value={proposalDescription}
             onChange={(e) => setProposalDescription(e.target.value)}
             placeholder="Explain why the profile should be updated..."
-            className="input w-full min-h-[80px] resize-y"
-            maxLength={5000}
+            className="input w-full min-h-[60px] resize-y"
+            maxLength={2000}
             disabled={isSubmitting}
-            rows={3}
+            rows={2}
           />
+          <p className="text-xs text-dao-text-hint mt-1 text-right">{proposalDescription.length}/2000</p>
+        </div>
+
+        {/* Discussion Link */}
+        <div>
+          <label htmlFor="profile-discussion-url" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+            Discussion Link
+          </label>
+          <input
+            id="profile-discussion-url"
+            type="url"
+            value={discussionUrl}
+            onChange={(e) => setDiscussionUrl(e.target.value)}
+            placeholder="https://forum.mydao.xyz/t/..."
+            className="input w-full font-mono text-sm"
+            maxLength={200}
+            disabled={isSubmitting}
+          />
+          <p className="text-xs text-dao-text-hint mt-1 text-right">{discussionUrl.length}/200</p>
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-dao-border" />
-
       {/* Profile fields */}
+      <ProposalActionSection title="Profile Details">
       <div className="space-y-5">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-dao-text-secondary">Profile Details</h3>
@@ -215,11 +237,11 @@ export function ProfileForm({
             onChange={(e) => setName(e.target.value)}
             placeholder="My Awesome DAO"
             className="input w-full"
-            maxLength={120}
+            maxLength={64}
             disabled={isSubmitting}
           />
           {errors.name && <p className="text-xs text-red-400 mt-1">{errors.name}</p>}
-          <p className="text-xs text-dao-text-hint mt-1">{name.length}/120</p>
+          <p className="text-xs text-dao-text-hint mt-1">{name.length}/64</p>
         </div>
 
         {/* Description */}
@@ -234,12 +256,12 @@ export function ProfileForm({
             onChange={(e) => setDescription(e.target.value)}
             placeholder="What is your DAO about?"
             className="input w-full min-h-[100px] resize-y"
-            maxLength={2000}
+            maxLength={280}
             disabled={isSubmitting}
             rows={4}
           />
           {errors.description && <p className="text-xs text-red-400 mt-1">{errors.description}</p>}
-          <p className="text-xs text-dao-text-hint mt-1">{description.length}/2000</p>
+          <p className="text-xs text-dao-text-hint mt-1">{description.length}/280</p>
         </div>
 
         {/* Avatar URL with preview */}
@@ -258,7 +280,7 @@ export function ProfileForm({
                 onChange={(e) => setAvatar(e.target.value)}
                 placeholder="https://example.com/logo.png or ipfs://..."
                 className="input w-full"
-                maxLength={2048}
+                maxLength={200}
                 disabled={isSubmitting}
               />
               <p className="text-xs text-dao-text-hint mt-1">
@@ -288,7 +310,7 @@ export function ProfileForm({
                   onChange={(e) => updateLink(key, e.target.value)}
                   placeholder={placeholder}
                   className="input w-full text-sm"
-                  maxLength={2048}
+                  maxLength={200}
                   disabled={isSubmitting}
                 />
               </div>
@@ -317,9 +339,14 @@ export function ProfileForm({
           </p>
         </div>
       </div>
+      </ProposalActionSection>
 
-      {/* Divider */}
-      <div className="border-t border-dao-border" />
+      {/* Settings */}
+      <ProposalSettingsFields
+        expiration={expiration}
+        onExpirationChange={setExpiration}
+        disabled={isSubmitting}
+      />
 
       {/* Offering */}
       <OfferingField

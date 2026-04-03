@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { resolveUrl, isValidUrl } from '@/utils/url'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MemberAvatar - Avatar image with person icon fallback
@@ -31,11 +32,12 @@ const ICON_SIZE_CLASSES = {
 
 export function MemberAvatar({ avatar, size = 8, className = '' }: MemberAvatarProps) {
   const [imgError, setImgError] = useState(false)
+  const resolvedAvatar = avatar && isValidUrl(avatar) ? resolveUrl(avatar) : null
 
-  if (avatar && !imgError) {
+  if (resolvedAvatar && !imgError) {
     return (
       <img
-        src={avatar}
+        src={resolvedAvatar}
         alt=""
         className={`${SIZE_CLASSES[size]} rounded-full object-cover bg-dao-surface flex-shrink-0 ${className}`}
         onError={() => setImgError(true)}

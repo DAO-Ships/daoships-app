@@ -145,9 +145,11 @@ export function RagequitModal({
   const isSubmittingRef = useRef(false)
   const { ragequit, isRagequitting } = useRagequit(daoId)
 
-  // Reset state when modal opens/closes or guild tokens change
+  // Reset state only when modal opens (not on guild token changes, which happen after ragequit)
+  const prevOpenRef = useRef(false)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevOpenRef.current) {
+      // Modal just opened — reset to initial state
       setStep('configure')
       setSharesToBurn('')
       setLootToBurn('')
@@ -156,6 +158,7 @@ export function RagequitModal({
       setTxHash(null)
       isSubmittingRef.current = false
     }
+    prevOpenRef.current = isOpen
   }, [isOpen, guildTokens])
 
   const sharesToBurnBigInt = sharesToBurn ? parseTokenAmount(sharesToBurn) : 0n

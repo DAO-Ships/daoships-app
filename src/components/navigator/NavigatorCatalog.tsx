@@ -2,9 +2,12 @@ import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getGroupedCatalog, type NavigatorCatalogEntry } from '@/config/navigatorCatalog'
 import { navigatorDeployService } from '@/services/core/NavigatorDeployService'
+import { posterService } from '@/services/core/PosterService'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
 import { parseTokenAmount } from '@/utils/format'
+import { parseAllowlistInput, buildAllowlistTree, downloadAllowlistBackup } from '@/utils/allowlist'
+import { AllowlistInput, MAX_ALLOWLIST_ADDRESSES } from '@/components/common/AllowlistInput'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NavigatorCatalog - Browse, deploy, and propose navigator contracts
@@ -28,6 +31,9 @@ interface OnboarderFormState {
   expiry: string
   mintCap: string
   perAddressCap: string
+  allowlistAddresses: string
+  navigatorName: string
+  navigatorDescription: string
 }
 
 interface ERC20TributeFormState {
@@ -37,6 +43,9 @@ interface ERC20TributeFormState {
   expiry: string
   mintCap: string
   perAddressCap: string
+  allowlistAddresses: string
+  navigatorName: string
+  navigatorDescription: string
 }
 
 const DEFAULT_ONBOARDER: OnboarderFormState = {
@@ -50,6 +59,9 @@ const DEFAULT_ONBOARDER: OnboarderFormState = {
   expiry: '',
   mintCap: '0',
   perAddressCap: '0',
+  allowlistAddresses: '',
+  navigatorName: '',
+  navigatorDescription: '',
 }
 
 const DEFAULT_ERC20: ERC20TributeFormState = {
@@ -59,6 +71,9 @@ const DEFAULT_ERC20: ERC20TributeFormState = {
   expiry: '',
   mintCap: '0',
   perAddressCap: '0',
+  allowlistAddresses: '',
+  navigatorName: '',
+  navigatorDescription: '',
 }
 
 // ─── Permission badge colors ──────────────────────────────────────────────
@@ -264,6 +279,12 @@ function DeployConfigPanel({
     try {
       let address: string
       if (entry.type === 'OnboarderNavigator') {
+        const obAllowlist = parseAllowlistInput(onboarderForm.allowlistAddresses)
+        if (obAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) {
+          throw new Error(`Allowlist exceeds ${MAX_ALLOWLIST_ADDRESSES} addresses`)
+        }
+        const obTree = buildAllowlistTree(obAllowlist.addresses)
+
         address = await navigatorDeployService.deployOnboarderNavigator({
           daoShipAddress: daoAddress,
           mode: onboarderForm.mode,
@@ -278,8 +299,33 @@ function DeployConfigPanel({
           perAddressCap: onboarderForm.perAddressCap
             ? parseTokenAmount(onboarderForm.perAddressCap)
             : 0n,
+          allowlistRoot: obTree?.root,
+          name: onboarderForm.navigatorName,
+          description: onboarderForm.navigatorDescription,
         })
+
+        if (obTree) {
+          const treeDump = obTree.dump()
+          try {
+            await posterService.postNavigatorAllowlist({
+              daoAddress: daoAddress.toLowerCase(),
+              navigatorAddress: address.toLowerCase(),
+              root: obTree.root,
+              addresses: obAllowlist.addresses,
+              treeDump,
+            })
+          } catch (err) {
+            console.error('[NavigatorCatalog] Failed to post onboarder allowlist:', err)
+            downloadAllowlistBackup(address, obTree.root, obAllowlist.addresses, treeDump)
+          }
+        }
       } else if (entry.type === 'ERC20TributeNavigator') {
+        const ercAllowlist = parseAllowlistInput(erc20Form.allowlistAddresses)
+        if (ercAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) {
+          throw new Error(`Allowlist exceeds ${MAX_ALLOWLIST_ADDRESSES} addresses`)
+        }
+        const ercTree = buildAllowlistTree(ercAllowlist.addresses)
+
         address = await navigatorDeployService.deployERC20TributeNavigator({
           daoShipAddress: daoAddress,
           tributeToken: erc20Form.tributeToken,
@@ -290,10 +336,31 @@ function DeployConfigPanel({
           perAddressCap: erc20Form.perAddressCap
             ? parseTokenAmount(erc20Form.perAddressCap)
             : 0n,
+          allowlistRoot: ercTree?.root,
+          name: erc20Form.navigatorName,
+          description: erc20Form.navigatorDescription,
         })
+
+        if (ercTree) {
+          const treeDump = ercTree.dump()
+          try {
+            await posterService.postNavigatorAllowlist({
+              daoAddress: daoAddress.toLowerCase(),
+              navigatorAddress: address.toLowerCase(),
+              root: ercTree.root,
+              addresses: ercAllowlist.addresses,
+              treeDump,
+            })
+          } catch (err) {
+            console.error('[NavigatorCatalog] Failed to post ERC20 tribute allowlist:', err)
+            downloadAllowlistBackup(address, ercTree.root, ercAllowlist.addresses, treeDump)
+          }
+        }
       } else {
         throw new Error(`Unknown navigator type: ${entry.type}`)
       }
+
+
       setDeployedAddress(address)
     } catch (e: unknown) {
       setDeployError(e instanceof Error ? e.message : 'Deployment failed')
@@ -339,6 +406,38 @@ function DeployConfigPanel({
       </div>
 
       {/* Config form */}
+      {/* Navigator metadata */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-dao-text-secondary mb-1.5">Navigator Name</label>
+          <input
+            type="text"
+            value={entry.type === 'OnboarderNavigator' ? onboarderForm.navigatorName : erc20Form.navigatorName}
+            onChange={(e) => entry.type === 'OnboarderNavigator'
+              ? updateOnboarder({ navigatorName: e.target.value })
+              : updateERC20({ navigatorName: e.target.value })}
+            placeholder="e.g. Open Onboarding"
+            maxLength={64}
+            className="input w-full"
+          />
+          <p className="text-xs text-dao-text-hint mt-1">{(entry.type === 'OnboarderNavigator' ? onboarderForm.navigatorName : erc20Form.navigatorName).length}/64</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-dao-text-secondary mb-1.5">Description</label>
+          <input
+            type="text"
+            value={entry.type === 'OnboarderNavigator' ? onboarderForm.navigatorDescription : erc20Form.navigatorDescription}
+            onChange={(e) => entry.type === 'OnboarderNavigator'
+              ? updateOnboarder({ navigatorDescription: e.target.value })
+              : updateERC20({ navigatorDescription: e.target.value })}
+            placeholder="Short description of this navigator"
+            maxLength={280}
+            className="input w-full"
+          />
+          <p className="text-xs text-dao-text-hint mt-1">{(entry.type === 'OnboarderNavigator' ? onboarderForm.navigatorDescription : erc20Form.navigatorDescription).length}/280</p>
+        </div>
+      </div>
+
       <Card header={<h3 className="text-sm font-semibold text-dao-text">Configuration</h3>}>
         <div className="space-y-5">
           {entry.type === 'OnboarderNavigator' && (
@@ -443,6 +542,20 @@ function DeployConfigPanel({
                     When this navigator stops accepting new members. Leave empty for no expiry.
                   </p>
                 </div>
+
+                {/* Allowlist */}
+                <AllowlistInput
+                  value={
+                    entry.type === 'OnboarderNavigator'
+                      ? onboarderForm.allowlistAddresses
+                      : erc20Form.allowlistAddresses
+                  }
+                  onChange={(v) =>
+                    entry.type === 'OnboarderNavigator'
+                      ? updateOnboarder({ allowlistAddresses: v })
+                      : updateERC20({ allowlistAddresses: v })
+                  }
+                />
               </div>
             )}
           </div>

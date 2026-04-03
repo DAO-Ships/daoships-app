@@ -29,6 +29,10 @@ import { baseService } from '@/services/core/BaseService'
 import { indexerHealthService } from '@/services/indexer/IndexerHealthService'
 import { daoIndexerService } from '@/services/indexer/DaoIndexerService'
 import { proposalIndexerService } from '@/services/indexer/ProposalIndexerService'
+import { memberIndexerService } from '@/services/indexer/MemberIndexerService'
+import { voteIndexerService } from '@/services/indexer/VoteIndexerService'
+import { navigatorIndexerService } from '@/services/indexer/NavigatorIndexerService'
+import { recordIndexerService } from '@/services/indexer/RecordIndexerService'
 import type { ProposalFilters } from '@/services/indexer/ProposalIndexerService'
 import type {
   Dao,
@@ -49,10 +53,6 @@ import LootERC20Abi from '@/config/abi/LootERC20.json'
 import PosterAbi from '@/config/abi/Poster.json'
 import ERC20TributeNavigatorAbi from '@/config/abi/ERC20TributeNavigator.json'
 import OnboarderNavigatorAbi from '@/config/abi/OnboarderNavigator.json'
-
-// ── Supabase table helpers ───────────────────────────────────────────────
-
-import { supabase } from '@/config/supabase'
 
 // ── Indexer availability cache ───────────────────────────────────────────
 
@@ -301,7 +301,7 @@ class DaoService {
   async getMembers(daoId: string): Promise<Member[]> {
     if (await isIndexerAvailable()) {
       try {
-        const members = await this.getMembersFromIndexer(daoId)
+        const members = await memberIndexerService.listMembers(daoId)
         if (members.length > 0) return members
       } catch {
         // Fall through
@@ -318,7 +318,7 @@ class DaoService {
   async getMember(daoId: string, memberAddress: string): Promise<Member | null> {
     if (await isIndexerAvailable()) {
       try {
-        return await this.getMemberFromIndexer(daoId, memberAddress)
+        return await memberIndexerService.getMember(daoId, memberAddress)
       } catch {
         // Fall through to on-chain
       }
@@ -336,7 +336,7 @@ class DaoService {
   async getVotes(proposalCompositeId: string): Promise<Vote[]> {
     if (await isIndexerAvailable()) {
       try {
-        return await this.getVotesFromIndexer(proposalCompositeId)
+        return await voteIndexerService.getProposalVotes(proposalCompositeId)
       } catch {
         // Fall through
       }
@@ -352,7 +352,7 @@ class DaoService {
   async hasVoted(daoId: string, proposalId: number, memberAddress: string): Promise<boolean> {
     if (await isIndexerAvailable()) {
       try {
-        const votes = await this.getVotesFromIndexer(`${daoId}-${proposalId}`)
+        const votes = await voteIndexerService.getProposalVotes(`${daoId}-${proposalId}`)
         const normalizedAddress = memberAddress.toLowerCase()
         return votes.some((v) => v.voter.toLowerCase() === normalizedAddress)
       } catch {
@@ -373,7 +373,7 @@ class DaoService {
   async getNavigators(daoId: string): Promise<Navigator[]> {
     if (await isIndexerAvailable()) {
       try {
-        return await this.getNavigatorsFromIndexer(daoId)
+        return await navigatorIndexerService.listNavigators(daoId)
       } catch {
         // Fall through
       }
@@ -388,7 +388,7 @@ class DaoService {
   async getNavigatorPermission(daoId: string, navigatorAddress: string): Promise<number> {
     if (await isIndexerAvailable()) {
       try {
-        const navigators = await this.getNavigatorsFromIndexer(daoId)
+        const navigators = await navigatorIndexerService.listNavigators(daoId)
         const navigator = navigators.find(
           (s) => s.navigator_address.toLowerCase() === navigatorAddress.toLowerCase()
         )
@@ -409,7 +409,7 @@ class DaoService {
   async getNavigatorEvents(daoId: string): Promise<NavigatorEvent[]> {
     if (await isIndexerAvailable()) {
       try {
-        return await this.getNavigatorEventsFromIndexer(daoId)
+        return await navigatorIndexerService.listNavigatorEvents(daoId)
       } catch {
         // Fall through
       }
@@ -425,7 +425,7 @@ class DaoService {
   async getRecords(daoId: string): Promise<DaoRecord[]> {
     if (await isIndexerAvailable()) {
       try {
-        return await this.getRecordsFromIndexer(daoId)
+        return await recordIndexerService.getRecords(daoId)
       } catch {
         // Fall through
       }
@@ -619,8 +619,12 @@ class DaoService {
    */
   async processProposal(daoId: string, proposalId: number, proposalData: string): Promise<void> {
     const daoShip = getDAOShipContractWithSigner(daoId)
-    await estimateGasOrThrow(daoShip, 'processProposal', [proposalId, proposalData], 'Process Proposal')
-    const tx = await daoShip.processProposal(proposalId, proposalData)
+    // Workaround: Quai gas estimation follows the try/catch failure path in processProposal,
+    // underestimating gas for the inner DelegateCall chain. Add 50% headroom.
+    // See: daoships-contracts/docs/GAS_ESTIMATION_BUG_REPORT.md
+    const gasEstimate = await estimateGasOrThrow(daoShip, 'processProposal', [proposalId, proposalData], 'Process Proposal')
+    const gasLimit = gasEstimate ? (gasEstimate * 150n) / 100n : undefined
+    const tx = await daoShip.processProposal(proposalId, proposalData, gasLimit ? { gasLimit } : undefined)
     await tx.wait()
   }
 
@@ -968,7 +972,7 @@ class DaoService {
       return {
         id: `${daoId}-${proposalId}`,
         dao_id: daoId,
-        proposal_id: proposalId.toString(),
+        proposal_id: Number(proposalId),
         created_at: votingStarts > 0
           ? new Date(votingStarts * 1000).toISOString()
           : now,
@@ -977,13 +981,13 @@ class DaoService {
         proposal_data_hash: p.proposalDataHash,
         proposal_data: null,
         details: p.details || null,
-        prev_proposal_id: Number(p.prevProposalId) > 0 ? p.prevProposalId.toString() : null,
+        prev_proposal_id: Number(p.prevProposalId) > 0 ? Number(p.prevProposalId) : null,
         sponsored: votingStarts > 0,
         sponsor: p.sponsor !== '0x0000000000000000000000000000000000000000' ? p.sponsor : null,
         sponsor_tx_hash: null,
         sponsor_tx_at: votingStarts > 0 ? new Date(votingStarts * 1000).toISOString() : null,
         self_sponsored: p.submitter.toLowerCase() === p.sponsor?.toLowerCase(),
-        voting_period: (votingEnds - votingStarts).toString(),
+        voting_period: votingEnds - votingStarts,
         voting_starts: votingStarts > 0 ? new Date(votingStarts * 1000).toISOString() : null,
         voting_ends: votingEnds > 0 ? new Date(votingEnds * 1000).toISOString() : null,
         grace_ends: graceEnds > 0 ? new Date(graceEnds * 1000).toISOString() : null,
@@ -998,13 +1002,13 @@ class DaoService {
         processed_by: null,
         action_failed: status[3] ?? false,
         passed: status[2] ?? false,
-        yes_votes: p.yesVotes.toString(),
-        no_votes: p.noVotes.toString(),
+        yes_votes: Number(p.yesVotes),
+        no_votes: Number(p.noVotes),
         yes_balance: p.yesBalance.toString(),
         no_balance: p.noBalance.toString(),
-        max_total_shares_and_loot_at_vote: p.maxTotalSharesAtSponsor?.toString() ?? null,
-        proposal_offering: null,
-        block_number: '0',
+        max_total_shares_and_loot_at_vote: p.maxTotalSharesAtSponsor?.toString() ?? '0',
+        proposal_offering: '0',
+        block_number: 0,
       }
     } catch {
       return null
@@ -1053,115 +1057,6 @@ class DaoService {
     }
   }
 
-  // ═════════════════════════════════════════════════════════════════════════
-  // PRIVATE: Indexer query helpers (direct Supabase)
-  // ═════════════════════════════════════════════════════════════════════════
-
-  private async getMembersFromIndexer(daoId: string): Promise<Member[]> {
-    if (!supabase) return []
-
-    const { data, error } = await supabase
-      .from('ds_members')
-      .select('*')
-      .eq('dao_id', daoId)
-      .or('shares.gt.0,loot.gt.0')
-      .order('shares', { ascending: false })
-
-    if (error) {
-      console.error('[DaoService] getMembersFromIndexer error:', error.message)
-      return []
-    }
-
-    return (data as Member[]) ?? []
-  }
-
-  private async getMemberFromIndexer(daoId: string, memberAddress: string): Promise<Member | null> {
-    if (!supabase) return null
-
-    const compositeId = `${daoId.toLowerCase()}-${memberAddress.toLowerCase()}`
-    const { data, error } = await supabase
-      .from('ds_members')
-      .select('*')
-      .eq('id', compositeId)
-      .single()
-
-    if (error) {
-      if (error.code !== 'PGRST116') {
-        console.error('[DaoService] getMemberFromIndexer error:', error.message)
-      }
-      return null
-    }
-
-    return (data as Member) ?? null
-  }
-
-  private async getVotesFromIndexer(proposalCompositeId: string): Promise<Vote[]> {
-    if (!supabase) return []
-
-    const { data, error } = await supabase
-      .from('ds_votes')
-      .select('*')
-      .eq('proposal_id', proposalCompositeId)
-      .order('created_at', { ascending: true })
-
-    if (error) {
-      console.error('[DaoService] getVotesFromIndexer error:', error.message)
-      return []
-    }
-
-    return (data as Vote[]) ?? []
-  }
-
-  private async getNavigatorsFromIndexer(daoId: string): Promise<Navigator[]> {
-    if (!supabase) return []
-
-    const { data, error } = await supabase
-      .from('ds_navigators')
-      .select('*')
-      .eq('dao_id', daoId)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('[DaoService] getNavigatorsFromIndexer error:', error.message)
-      return []
-    }
-
-    return (data as Navigator[]) ?? []
-  }
-
-  private async getNavigatorEventsFromIndexer(daoId: string): Promise<NavigatorEvent[]> {
-    if (!supabase) return []
-
-    const { data, error } = await supabase
-      .from('ds_navigator_events')
-      .select('*')
-      .eq('dao_id', daoId)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('[DaoService] getNavigatorEventsFromIndexer error:', error.message)
-      return []
-    }
-
-    return (data as NavigatorEvent[]) ?? []
-  }
-
-  private async getRecordsFromIndexer(daoId: string): Promise<DaoRecord[]> {
-    if (!supabase) return []
-
-    const { data, error } = await supabase
-      .from('ds_records')
-      .select('*')
-      .eq('dao_id', daoId)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('[DaoService] getRecordsFromIndexer error:', error.message)
-      return []
-    }
-
-    return (data as DaoRecord[]) ?? []
-  }
 }
 
 // ── Singleton export ─────────────────────────────────────────────────────

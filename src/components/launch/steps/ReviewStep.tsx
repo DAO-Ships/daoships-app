@@ -7,6 +7,8 @@ import { parseTokenAmount } from '@/utils/format'
 import { NETWORK_CONFIG } from '@/config/contracts'
 import { posterService } from '@/services/core/PosterService'
 import { navigatorDeployService } from '@/services/core/NavigatorDeployService'
+import { parseAllowlistInput, buildAllowlistTree, downloadAllowlistBackup } from '@/utils/allowlist'
+import { MAX_ALLOWLIST_ADDRESSES } from '@/components/common/AllowlistInput'
 import type { LaunchFormValues } from './BasicInfoStep'
 import type { SaltMiningResult } from '@/hooks/useSaltMining'
 
@@ -202,6 +204,14 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
             const salts = localSaltResults || pipelineRef.current.saltResults
             if (!salts) throw new Error('Salt mining results not available')
             const ob = formData.onboarderConfig
+
+            // Compute allowlist root if addresses were provided
+            const obAllowlist = parseAllowlistInput(ob.allowlistAddresses || '')
+            if (obAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) {
+              throw new Error(`Onboarder allowlist exceeds ${MAX_ALLOWLIST_ADDRESSES} addresses`)
+            }
+            const obTree = buildAllowlistTree(obAllowlist.addresses)
+
             const address = await navigatorDeployService.deployOnboarderNavigator({
               daoShipAddress: salts.daoShip.address,
               mode: ob.mode,
@@ -214,7 +224,31 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
               expiry: BigInt(ob.expiry || '0'),
               mintCap: parseTokenAmount(ob.mintCap || '0'),
               perAddressCap: parseTokenAmount(ob.perAddressCap || '0'),
+              allowlistRoot: obTree?.root,
+              name: ob.navigatorName || '',
+              description: ob.navigatorDescription || '',
             })
+
+            // Post allowlist data to Poster so proofs can be generated later
+            if (obTree) {
+              const treeDump = obTree.dump()
+              try {
+                await posterService.postNavigatorAllowlist({
+                  daoAddress: salts.daoShip.address.toLowerCase(),
+                  navigatorAddress: address.toLowerCase(),
+                  root: obTree.root,
+                  addresses: obAllowlist.addresses,
+                  treeDump,
+                })
+              } catch (err) {
+                console.error('[ReviewStep] Failed to post onboarder allowlist to Poster:', err)
+                // Auto-download backup so the deployer can recover
+                downloadAllowlistBackup(address, obTree.root, obAllowlist.addresses, treeDump)
+              }
+            }
+
+
+
             localOnboarderAddress = address
             updatePipeline(prev => ({ ...prev, onboarderAddress: address }))
             updateStepStatus(step.id, 'done')
@@ -225,6 +259,14 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
             const salts = localSaltResults || pipelineRef.current.saltResults
             if (!salts) throw new Error('Salt mining results not available')
             const erc = formData.erc20TributeConfig
+
+            // Compute allowlist root if addresses were provided
+            const ercAllowlist = parseAllowlistInput(erc.allowlistAddresses || '')
+            if (ercAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) {
+              throw new Error(`ERC20 Tribute allowlist exceeds ${MAX_ALLOWLIST_ADDRESSES} addresses`)
+            }
+            const ercTree = buildAllowlistTree(ercAllowlist.addresses)
+
             const address = await navigatorDeployService.deployERC20TributeNavigator({
               daoShipAddress: salts.daoShip.address,
               tributeToken: erc.tributeToken,
@@ -233,7 +275,29 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
               expiry: BigInt(erc.expiry || '0'),
               mintCap: parseTokenAmount(erc.mintCap || '0'),
               perAddressCap: parseTokenAmount(erc.perAddressCap || '0'),
+              allowlistRoot: ercTree?.root,
+              name: erc.navigatorName || '',
+              description: erc.navigatorDescription || '',
             })
+
+            // Post allowlist data to Poster so proofs can be generated later
+            if (ercTree) {
+              const treeDump = ercTree.dump()
+              try {
+                await posterService.postNavigatorAllowlist({
+                  daoAddress: salts.daoShip.address.toLowerCase(),
+                  navigatorAddress: address.toLowerCase(),
+                  root: ercTree.root,
+                  addresses: ercAllowlist.addresses,
+                  treeDump,
+                })
+              } catch (err) {
+                console.error('[ReviewStep] Failed to post ERC20 tribute allowlist to Poster:', err)
+                downloadAllowlistBackup(address, ercTree.root, ercAllowlist.addresses, treeDump)
+              }
+            }
+
+
             localERC20TributeAddress = address
             updatePipeline(prev => ({ ...prev, erc20TributeAddress: address }))
             updateStepStatus(step.id, 'done')

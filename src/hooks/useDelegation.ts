@@ -12,7 +12,14 @@ export function useDelegation(daoId: string) {
     mutationFn: ({ sharesAddress, to }: { sharesAddress: string; to: string }) =>
       daoService.delegate(sharesAddress, to),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['members', daoId] })
+      const invalidateAll = () => {
+        queryClient.invalidateQueries({ queryKey: ['members', daoId] })
+        queryClient.invalidateQueries({ queryKey: ['member', daoId] })
+        queryClient.invalidateQueries({ queryKey: ['dao', daoId] })
+      }
+      invalidateAll()
+      // Re-fetch after a delay to catch indexer lag
+      setTimeout(invalidateAll, 4000)
     },
   })
 

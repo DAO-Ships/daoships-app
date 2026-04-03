@@ -25,7 +25,8 @@ export function AddressDisplay({
   showCopy = true,
   showExplorer = true,
 }: AddressDisplayProps) {
-  const explorerUrl = `${NETWORK_CONFIG.blockExplorerUrl}/address/${address}`
+  const isValidAddress = /^0x[0-9a-fA-F]{40}$/.test(address)
+  const explorerUrl = isValidAddress ? `${NETWORK_CONFIG.blockExplorerUrl}/address/${address}` : '#'
 
   return (
     <span className="inline-flex items-center gap-1.5 font-mono text-sm">

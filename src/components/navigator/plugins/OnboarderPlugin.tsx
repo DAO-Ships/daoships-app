@@ -8,6 +8,11 @@ import type { OnboarderNavigatorConfig } from '@/services/core/NavigatorService'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
 import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
+import { useNavigatorAllowlist } from '@/hooks/useNavigatorAllowlist'
+import { useMember } from '@/hooks/useMember'
+import { isOpenAllowlist } from '@/utils/allowlist'
+import { safeBigInt } from '@/utils/bigint'
+import { AllowlistDownloadButton, AllowlistRestore } from '@/components/navigator/AllowlistActions'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OnboarderPlugin - Multiplier or fixed-price native QUAI onboarding
@@ -87,6 +92,13 @@ function OnboarderInteraction({
   const [mintedTo, setMintedTo] = useState<bigint>(0n)
   const [quaiBalance, setQuaiBalance] = useState<bigint | null>(null)
 
+  // Allowlist
+  const allowlist = useNavigatorAllowlist(daoId, navigatorAddress, config.allowlistRoot)
+  const userAllowlisted = !userAddress ? false : allowlist.checkAddress(userAddress)
+  const hasAllowlist = !isOpenAllowlist(config.allowlistRoot)
+  const { data: memberData } = useMember(daoId, userAddress ?? undefined)
+  const isMember = memberData ? (safeBigInt(memberData.shares) > 0n || safeBigInt(memberData.loot) > 0n) : false
+
   const amountBigInt = amount ? parseTokenAmount(amount) : 0n
   const insufficientBalance = quaiBalance !== null && amountBigInt > 0n && amountBigInt > quaiBalance
   const isFixedPrice = config.mode === 'fixedPrice'
@@ -157,7 +169,8 @@ function OnboarderInteraction({
         return
       }
 
-      await navigatorService.onboarderOnboard(navigatorAddress, amountBigInt)
+      const proof = hasAllowlist && userAddress ? (allowlist.getProof(userAddress) ?? []) : []
+      await navigatorService.onboarderOnboard(navigatorAddress, amountBigInt, proof)
       setAmount('')
       setSuccess(true)
     } catch (e: unknown) {
@@ -225,6 +238,7 @@ function OnboarderInteraction({
                 <p className="font-mono text-dao-text-secondary">
                   {(Number(config.shareMultiplier) / 10000).toFixed(2)}x
                 </p>
+                <p className="text-[10px] text-dao-text-hint">{Number(config.shareMultiplier).toLocaleString()} bps</p>
               </div>
               {config.lootMultiplier > 0n && (
                 <div>
@@ -297,8 +311,41 @@ function OnboarderInteraction({
         )}
       </Card>
 
+      {/* Allowlist status */}
+      {hasAllowlist && (
+        <div className={`rounded-lg px-4 py-3 space-y-2 ${
+          allowlist.dataUnavailable
+            ? 'bg-amber-500/10 border border-amber-500/30'
+            : userAddress && userAllowlisted
+              ? 'bg-emerald-500/10 border border-emerald-500/30'
+              : userAddress
+                ? 'bg-red-500/10 border border-red-500/30'
+                : 'bg-primary-500/10 border border-primary-500/30'
+        }`}>
+          {allowlist.dataUnavailable ? (
+            <>
+              <p className="text-sm text-amber-400">Allowlist data unavailable. Proofs cannot be generated.</p>
+              {isMember && <AllowlistRestore daoId={daoId} navigatorAddress={navigatorAddress} allowlistRoot={config.allowlistRoot} />}
+            </>
+          ) : (
+            <>
+              {userAddress && userAllowlisted ? (
+                <p className="text-sm text-emerald-400">Your address is on the allowlist ({allowlist.addressCount} addresses).</p>
+              ) : userAddress ? (
+                <p className="text-sm text-red-400">Your address is not on the allowlist for this navigator.</p>
+              ) : (
+                <p className="text-sm text-primary-400">This navigator has an allowlist ({allowlist.addressCount} addresses). Connect your wallet to check eligibility.</p>
+              )}
+              {isMember && allowlist.treeDump && (
+                <AllowlistDownloadButton navigatorAddress={navigatorAddress} root={config.allowlistRoot} addresses={allowlist.addresses} treeDump={allowlist.treeDump} />
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Onboard form */}
-      {!isExpired && !config.paused && !mintCapReached && (
+      {!isExpired && !config.paused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
         <Card header={<h3 className="text-sm font-semibold text-dao-text">Join DAO</h3>}>
           <div className="space-y-4">
             <div>

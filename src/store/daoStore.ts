@@ -11,11 +11,13 @@ const MAX_RECENT_DAOS = 10
 interface DaoStore {
   /** Contract address of the currently selected DAO, or null */
   currentDaoId: string | null
+  /** Human-readable name of the current DAO, or null */
+  currentDaoName: string | null
   /** Most recently visited DAO IDs (newest first, max 10) */
   recentDaoIds: string[]
 
   // Actions
-  setCurrentDao: (daoId: string) => void
+  setCurrentDao: (daoId: string, name?: string) => void
   clearCurrentDao: () => void
 }
 
@@ -23,20 +25,20 @@ export const useDaoStore = create<DaoStore>()(
   persist(
     (set) => ({
       currentDaoId: null,
+      currentDaoName: null,
       recentDaoIds: [],
 
-      setCurrentDao: (daoId) =>
+      setCurrentDao: (daoId, name) =>
         set((state) => {
-          // Remove daoId if it already exists, then prepend it
           const filtered = state.recentDaoIds.filter(
             (id) => id.toLowerCase() !== daoId.toLowerCase()
           )
           const recentDaoIds = [daoId, ...filtered].slice(0, MAX_RECENT_DAOS)
-          return { currentDaoId: daoId, recentDaoIds }
+          return { currentDaoId: daoId, currentDaoName: name ?? null, recentDaoIds }
         }),
 
       clearCurrentDao: () =>
-        set({ currentDaoId: null }),
+        set({ currentDaoId: null, currentDaoName: null }),
     }),
     {
       name: 'dao-storage',

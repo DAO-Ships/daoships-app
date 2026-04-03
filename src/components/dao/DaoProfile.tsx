@@ -6,9 +6,6 @@ import { safeString, safeEntries } from '@/utils/contentJson'
 import { NETWORK_CONFIG } from '@/config/contracts'
 import { TrustBadge } from '@/components/common/TrustBadge'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
-import { useMember } from '@/hooks/useMember'
-import { useWallet } from '@/hooks/useWallet'
-import { safeBigInt } from '@/utils/bigint'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DaoProfile - DAO identity: name, description, avatar, links, trust, tags
@@ -54,12 +51,11 @@ function sanitizeLinkKey(key: string): string {
 interface DaoProfileProps {
   dao: Dao
   profile?: DaoRecord | null
+  /** Whether the connected user is an active member (pass from parent to avoid duplicate query) */
+  isMember?: boolean
 }
 
-export function DaoProfile({ dao, profile }: DaoProfileProps) {
-  const { address } = useWallet()
-  const { data: member } = useMember(dao.id, address ?? undefined)
-  const isMember = member && (safeBigInt(member.shares) > 0n || safeBigInt(member.loot) > 0n)
+export function DaoProfile({ dao, profile, isMember = false }: DaoProfileProps) {
 
   // Use indexer-validated content_json (not raw content string)
   const profileContent = (profile?.content_json as Record<string, unknown> | null) ?? null

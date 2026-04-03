@@ -8,11 +8,15 @@ import { useMemberProfile, useMemberProfiles } from '@/hooks/useMemberProfile'
 import type { MemberProfile } from '@/hooks/useMemberProfile'
 import { useWallet } from '@/hooks/useWallet'
 import { useDelegation } from '@/hooks/useDelegation'
+import { useProposals } from '@/hooks/useProposals'
+import { ProposalStatus, deriveProposalStatus } from '@/types/proposal'
+import { parseProposalDetails } from '@/utils/format'
 import { useTreasury } from '@/hooks/useTreasury'
 import { useTreasuryBalances } from '@/hooks/useTreasuryBalances'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
 import { Loading } from '@/components/common/Loading'
+import { SkeletonMemberRow } from '@/components/common/Skeleton'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { TokenAmount } from '@/components/common/TokenAmount'
@@ -22,6 +26,8 @@ import { MemberProfileForm } from '@/components/member/MemberProfileForm'
 import { RagequitModal } from '@/components/member/RagequitModal'
 import { DelegateCard } from '@/components/member/DelegateCard'
 import { safeBigInt } from '@/utils/bigint'
+import { Breadcrumb } from '@/components/common/Breadcrumb'
+import { useDebounce } from '@/hooks/useDebounce'
 
 type MembersTab = 'all' | 'delegates'
 
@@ -44,55 +50,54 @@ function formatPct(numerator: bigint, denominator: bigint): string {
   return `${whole}.${fracStr}`
 }
 
-function MemberRow({ member, profile, totalShares }: { member: Member; profile?: MemberProfile; totalShares: bigint }) {
-  const shares = safeBigInt(member.shares)
+function MemberRow({ member, profile, totalShares, sponsoredCount, isCurrentUser }: {
+  member: Member; profile?: MemberProfile; totalShares: bigint; sponsoredCount: number; isCurrentUser: boolean
+}) {
   const votingPower = safeBigInt(member.voting_power)
   const pct = formatPct(votingPower, totalShares)
 
   return (
-    <div className="flex items-center justify-between py-3 border-b border-dao-border last:border-0">
-      <div className="flex items-center gap-3">
-        {/* Avatar */}
-        <MemberAvatar avatar={profile?.avatar} size={8} />
-        <div className="min-w-0">
-          {/* Name + address */}
-          {profile?.name ? (
-            <div>
-              <p className="text-sm font-medium text-dao-text truncate">{profile.name}</p>
+    <tr className={`border-b border-dao-border last:border-0 ${isCurrentUser ? 'bg-primary-500/5' : ''}`}>
+      {/* Identity */}
+      <td className="py-3 pr-4">
+        <div className="flex items-center gap-3">
+          <MemberAvatar avatar={profile?.avatar} size={8} />
+          <div className="min-w-0">
+            {profile?.name ? (
+              <>
+                <p className="text-sm font-medium text-dao-text truncate">{profile.name}</p>
+                <AddressDisplay address={member.member_address} />
+              </>
+            ) : (
               <AddressDisplay address={member.member_address} />
-            </div>
-          ) : (
-            <AddressDisplay address={member.member_address} />
-          )}
-
-          {/* Delegation info */}
-          {member.delegating_to && member.delegating_to !== member.member_address && (
-            <p className="text-xs text-dao-text-hint mt-0.5">
-              Delegating to <AddressDisplay address={member.delegating_to} showCopy={false} />
-            </p>
-          )}
-
+            )}
+            {member.delegating_to && member.delegating_to.toLowerCase() !== member.member_address.toLowerCase() && (
+              <p className="text-[10px] text-dao-text-hint mt-0.5">
+                Delegating to <AddressDisplay address={member.delegating_to} showCopy={false} prefixLen={4} suffixLen={3} />
+              </p>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-6 text-sm flex-shrink-0">
-        <div className="text-right">
-          <p className="text-dao-text-hint text-xs">Shares</p>
-          <TokenAmount amount={member.shares} />
-        </div>
-        <div className="text-right">
-          <p className="text-dao-text-hint text-xs">Loot</p>
-          <TokenAmount amount={member.loot} />
-        </div>
-        <div className="text-right">
-          <p className="text-dao-text-hint text-xs">Voting Power</p>
-          <TokenAmount amount={member.voting_power || '0'} />
-        </div>
-        <div className="text-right">
-          <p className="text-dao-text-hint text-xs">Power %</p>
-          <span className="font-mono text-accent-400">{pct}%</span>
-        </div>
-      </div>
-    </div>
+      </td>
+      {/* Stats — hidden on mobile, visible on md+ */}
+      <td className="hidden md:table-cell text-right py-3 font-mono text-sm">
+        <TokenAmount amount={member.shares} />
+      </td>
+      <td className="hidden md:table-cell text-right py-3 font-mono text-sm">
+        <TokenAmount amount={member.loot} />
+      </td>
+      <td className="text-right py-3 font-mono text-sm">
+        <TokenAmount amount={member.voting_power || '0'} />
+      </td>
+      <td className="text-right py-3">
+        <span className="font-mono text-accent-400 text-sm">{pct}%</span>
+      </td>
+      <td className="hidden md:table-cell text-right py-3">
+        <span className={`font-mono text-sm ${sponsoredCount > 0 ? 'text-primary-400' : 'text-dao-text-hint'}`}>
+          {sponsoredCount || '—'}
+        </span>
+      </td>
+    </tr>
   )
 }
 
@@ -104,17 +109,26 @@ export function Members() {
   const { data: profiles } = useMemberProfiles(dao.id)
   const { data: myProfile } = useMemberProfile(dao.id, address ?? undefined)
   const { delegate, isDelegating } = useDelegation(dao.id)
-  const { data: guildTokens } = useTreasury(dao.id)
-  const { data: treasuryBalances } = useTreasuryBalances(dao.avatar, guildTokens)
+  const { data: proposals } = useProposals(dao.id)
   const queryClient = useQueryClient()
 
   const [activeTab, setActiveTab] = useState<MembersTab>('all')
+  const [memberSearch, setMemberSearch] = useState('')
+  const [memberSort, setMemberSort] = useState<'power' | 'shares' | 'sponsored'>('power')
   const [delegateAddress, setDelegateAddress] = useState('')
+  const [delegateInput, setDelegateInput] = useState('')
+  const [showDelegateDropdown, setShowDelegateDropdown] = useState(false)
+  const [delegateError, setDelegateError] = useState<string | null>(null)
   const [showRagequitModal, setShowRagequitModal] = useState(false)
+  // Defer treasury fetches until ragequit modal is first opened
+  const [ragequitOpened, setRagequitOpened] = useState(false)
+  const { data: guildTokens } = useTreasury(ragequitOpened ? dao.id : undefined)
+  const { data: treasuryBalances } = useTreasuryBalances(ragequitOpened ? dao.avatar : undefined, guildTokens)
   const [showProfileModal, setShowProfileModal] = useState(false)
 
   // Refetch treasury and DAO data when ragequit modal opens for fresh previews
   const openRagequitModal = useCallback(() => {
+    setRagequitOpened(true)
     queryClient.invalidateQueries({ queryKey: ['treasuryBalances', dao.avatar] })
     queryClient.invalidateQueries({ queryKey: ['treasury', dao.id] })
     queryClient.invalidateQueries({ queryKey: ['dao', dao.id] })
@@ -165,26 +179,128 @@ export function Members() {
       .sort((a, b) => Number(safeBigInt(b.member.voting_power) - safeBigInt(a.member.voting_power)))
   }, [members])
 
-  const handleDelegate = async () => {
-    if (!delegateAddress) return
-    await delegate({
-      sharesAddress: dao.shares_address,
-      to: delegateAddress,
-    })
-    setDelegateAddress('')
+  const daoConfig = useMemo(() => ({
+    voting_period: dao.voting_period,
+    grace_period: dao.grace_period,
+    default_expiry_window: dao.default_expiry_window,
+  }), [dao.voting_period, dao.grace_period, dao.default_expiry_window])
+
+  // Count sponsored proposals per member (lifetime total for display, active for delegation warning)
+  const activeStatuses = useMemo(() => new Set([ProposalStatus.Voting, ProposalStatus.Grace, ProposalStatus.Ready]), [])
+
+  const { sponsoredCountMap, sponsoredActiveProposals } = useMemo(() => {
+    const countMap = new Map<string, number>()
+    const myActive: typeof proposals = []
+    if (!proposals) return { sponsoredCountMap: countMap, sponsoredActiveProposals: myActive ?? [] }
+
+    for (const p of proposals) {
+      if (!p.sponsor) continue
+      const key = p.sponsor.toLowerCase()
+      // Lifetime total for display
+      countMap.set(key, (countMap.get(key) ?? 0) + 1)
+      // Active only for delegation warning
+      if (address && key === address.toLowerCase() && activeStatuses.has(deriveProposalStatus(p, daoConfig))) {
+        myActive.push(p)
+      }
+    }
+    return { sponsoredCountMap: countMap, sponsoredActiveProposals: myActive }
+  }, [proposals, daoConfig, activeStatuses, address])
+
+  // Filtered members for delegation dropdown
+  const delegateOptions = useMemo(() => {
+    if (!members) return []
+    const lowerInput = delegateInput.toLowerCase()
+    return members
+      .filter((m) => {
+        if (address && m.member_address.toLowerCase() === address.toLowerCase()) return false
+        if (!delegateInput) return true
+        const profile = profiles?.get(m.member_address.toLowerCase())
+        return (
+          m.member_address.toLowerCase().includes(lowerInput) ||
+          (profile?.name && profile.name.toLowerCase().includes(lowerInput))
+        )
+      })
+      .slice(0, 20) // limit dropdown size
+  }, [members, delegateInput, address, profiles])
+
+  const selectDelegate = (addr: string) => {
+    setDelegateAddress(addr)
+    const p = profiles?.get(addr.toLowerCase())
+    setDelegateInput(p?.name ? `${p.name} (${addr.slice(0, 6)}...${addr.slice(-4)})` : addr)
+    setShowDelegateDropdown(false)
+    setDelegateError(null)
   }
 
+  // Verify a pasted/typed address is a member
+  const verifyDelegateAddress = (input: string) => {
+    setDelegateInput(input)
+    setDelegateError(null)
+    // If it looks like an address, validate membership
+    const trimmed = input.trim()
+    if (/^0x[0-9a-fA-F]{40}$/.test(trimmed)) {
+      const isMemberAddr = members?.some(
+        (m) => m.member_address.toLowerCase() === trimmed.toLowerCase(),
+      )
+      if (!isMemberAddr) {
+        setDelegateAddress('')
+        setDelegateError('This address is not a member of this DAO')
+      } else if (address && trimmed.toLowerCase() === address.toLowerCase()) {
+        setDelegateAddress('')
+        setDelegateError('You cannot delegate to yourself')
+      } else {
+        setDelegateAddress(trimmed)
+      }
+    } else {
+      setDelegateAddress('')
+    }
+  }
+
+  const handleDelegate = async () => {
+    if (!delegateAddress) return
+    setDelegateError(null)
+    try {
+      await delegate({
+        sharesAddress: dao.shares_address,
+        to: delegateAddress,
+      })
+      setDelegateAddress('')
+      setDelegateInput('')
+    } catch (e: unknown) {
+      setDelegateError(e instanceof Error ? e.message : 'Delegation failed')
+    }
+  }
+
+  // Search and sort members
+  const debouncedSearch = useDebounce(memberSearch, 300)
+  const filteredSortedMembers = useMemo(() => {
+    if (!members) return []
+    let filtered = members
+    if (debouncedSearch) {
+      const lower = debouncedSearch.toLowerCase()
+      filtered = members.filter((m) => {
+        const profile = profiles?.get(m.member_address.toLowerCase())
+        return m.member_address.toLowerCase().includes(lower) ||
+          profile?.name?.toLowerCase().includes(lower)
+      })
+    }
+    return [...filtered].sort((a, b) => {
+      if (memberSort === 'shares') return Number(safeBigInt(b.shares) - safeBigInt(a.shares))
+      if (memberSort === 'sponsored') {
+        const as = sponsoredCountMap.get(a.member_address.toLowerCase()) ?? 0
+        const bs = sponsoredCountMap.get(b.member_address.toLowerCase()) ?? 0
+        return bs - as
+      }
+      return Number(safeBigInt(b.voting_power) - safeBigInt(a.voting_power))
+    })
+  }, [members, debouncedSearch, memberSort, profiles, sponsoredCountMap])
 
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-dao-text-hint">
-        <Link to={`/dao/${dao.id}`} className="hover:text-primary-400 transition-colors">
-          {dao.name || `DAO ${dao.id.slice(0, 8)}...`}
-        </Link>
-        <span>/</span>
-        <span className="text-dao-text-secondary">Members</span>
-      </nav>
+      <Breadcrumb items={[
+        { label: dao.name || `DAO ${dao.id.slice(0, 8)}...`, href: `/dao/${dao.id}` },
+        { label: 'Members' },
+      ]} />
 
       <h1 className="text-2xl font-bold font-display text-dao-text">Members</h1>
 
@@ -220,27 +336,94 @@ export function Members() {
           {/* Delegation widget — only when member data loaded */}
           {currentMember && (
           <Card header={<h3 className="text-sm font-semibold text-dao-text">Delegate Shares</h3>}>
-            <p className="text-sm text-dao-text-muted mb-3">
-              Delegate your voting power to another member.
-              {currentMember.delegating_to &&
-                currentMember.delegating_to !== currentMember.member_address && (
-                  <span className="block mt-1">
-                    Currently delegating to{' '}
-                    <AddressDisplay address={currentMember.delegating_to} showCopy={false} />
-                  </span>
+            {currentMember.delegating_to &&
+              currentMember.delegating_to.toLowerCase() !== currentMember.member_address.toLowerCase() ? (
+              <div className="mb-3">
+                <p className="text-sm text-dao-text-muted">
+                  Currently delegating to{' '}
+                  <AddressDisplay address={currentMember.delegating_to} showCopy={false} />
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => delegate({ sharesAddress: dao.shares_address, to: address! })}
+                  loading={isDelegating}
+                  disabled={isDelegating}
+                >
+                  Reclaim Votes
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm text-dao-text-muted mb-3">
+                Delegate your voting power to another member.
+              </p>
+            )}
+            {sponsoredActiveProposals.length > 0 && delegateAddress && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 mb-3">
+                <p className="text-sm text-amber-400 font-medium">
+                  You are the sponsor of {sponsoredActiveProposals.length} active proposal{sponsoredActiveProposals.length > 1 ? 's' : ''}.
+                </p>
+                <p className="text-xs text-amber-400/80 mt-1">
+                  Delegating your voting power could cause {sponsoredActiveProposals.length > 1 ? 'these proposals' : 'this proposal'} to be cancelled if your shares drop below the sponsor threshold.
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {sponsoredActiveProposals.slice(0, 5).map((p) => (
+                    <li key={p.id} className="text-xs text-amber-400/70">
+                      <Link to={`/dao/${dao.id}/proposals/${p.proposal_id}`} className="hover:underline">
+                        #{p.proposal_id} — {parseProposalDetails(p.details ?? null).title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1 min-w-0">
+                <input
+                  type="text"
+                  value={delegateInput}
+                  onChange={(e) => {
+                    verifyDelegateAddress(e.target.value)
+                    setShowDelegateDropdown(true)
+                  }}
+                  onFocus={() => setShowDelegateDropdown(true)}
+                  onBlur={() => {
+                    // Delay to allow click on dropdown option
+                    setTimeout(() => setShowDelegateDropdown(false), 200)
+                  }}
+                  placeholder="Search members or paste address (0x...)"
+                  className="input w-full text-sm font-mono"
+                  disabled={isDelegating}
+                />
+                {showDelegateDropdown && delegateOptions.length > 0 && !delegateAddress && (
+                  <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-dao-dark-2 border border-dao-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {delegateOptions.map((m) => {
+                      const p = profiles?.get(m.member_address.toLowerCase())
+                      const vp = safeBigInt(m.voting_power)
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => selectDelegate(m.member_address)}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-dao-dark-3 transition-colors flex items-center justify-between gap-2"
+                        >
+                          <span className="truncate">
+                            {p?.name && <span className="text-dao-text mr-1">{p.name}</span>}
+                            <span className="text-dao-text-muted font-mono">{m.member_address.slice(0, 10)}...{m.member_address.slice(-4)}</span>
+                          </span>
+                          <span className="text-xs text-dao-text-hint flex-shrink-0">{formatPct(vp, totalShares)}%</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 )}
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={delegateAddress}
-                onChange={(e) => setDelegateAddress(e.target.value)}
-                placeholder="Delegate to address (0x...)"
-                className="input flex-1 font-mono text-sm"
-              />
+              </div>
               <Button
                 variant="primary"
                 size="sm"
+                className="flex-shrink-0"
                 onClick={handleDelegate}
                 loading={isDelegating}
                 disabled={!delegateAddress || isDelegating}
@@ -248,6 +431,9 @@ export function Members() {
                 Delegate
               </Button>
             </div>
+            {delegateError && (
+              <p className="text-xs text-red-400 mt-2">{delegateError}</p>
+            )}
           </Card>
           )}
 
@@ -306,26 +492,73 @@ export function Members() {
         </button>
       </div>
 
+      {/* Search + sort (only for All Members tab) */}
+      {activeTab === 'all' && members && members.length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dao-text-hint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={memberSearch}
+              onChange={(e) => setMemberSearch(e.target.value)}
+              placeholder="Search by name or address..."
+              className="input w-full pl-9"
+            />
+          </div>
+          <select
+            value={memberSort}
+            onChange={(e) => setMemberSort(e.target.value as 'power' | 'shares' | 'sponsored')}
+            className="input w-full sm:w-44"
+          >
+            <option value="power">Sort: Voting Power</option>
+            <option value="shares">Sort: Shares</option>
+            <option value="sponsored">Sort: Sponsored</option>
+          </select>
+        </div>
+      )}
+
       {/* Tab content */}
       {isLoading ? (
-        <Loading fullPage />
+        <Card>
+          <div className="space-y-1">
+            {Array.from({ length: 5 }, (_, i) => <SkeletonMemberRow key={i} />)}
+          </div>
+        </Card>
       ) : error ? (
         <EmptyState
           title="Failed to load members"
           description={error instanceof Error ? error.message : 'An unexpected error occurred.'}
         />
       ) : activeTab === 'all' ? (
-        members && members.length > 0 ? (
+        filteredSortedMembers.length > 0 ? (
           <Card>
-            <div className="divide-y divide-dao-border">
-              {members.map((member) => (
-                <MemberRow
-                  key={member.id}
-                  member={member}
-                  profile={profiles?.get(member.member_address.toLowerCase())}
-                  totalShares={totalShares}
-                />
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-[10px] font-semibold text-dao-text-hint uppercase tracking-wider border-b border-dao-border">
+                    <th className="text-left py-2 pr-4">Member</th>
+                    <th className="hidden md:table-cell text-right py-2">Shares</th>
+                    <th className="hidden md:table-cell text-right py-2">Loot</th>
+                    <th className="text-right py-2">Power</th>
+                    <th className="text-right py-2">%</th>
+                    <th className="hidden md:table-cell text-right py-2">Sponsored</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSortedMembers.map((member) => (
+                    <MemberRow
+                      key={member.id}
+                      member={member}
+                      profile={profiles?.get(member.member_address.toLowerCase())}
+                      totalShares={totalShares}
+                      sponsoredCount={sponsoredCountMap.get(member.member_address.toLowerCase()) ?? 0}
+                      isCurrentUser={!!address && member.member_address.toLowerCase() === address.toLowerCase()}
+                    />
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Card>
         ) : (
@@ -346,6 +579,7 @@ export function Members() {
                 profile: profiles?.get(d.member_address.toLowerCase()),
               }))}
               totalShares={totalShares}
+              sponsoredCount={sponsoredCountMap.get(member.member_address.toLowerCase()) ?? 0}
             />
           ))}
         </div>

@@ -17,6 +17,8 @@ interface DelegateCardProps {
   delegators: { member: Member; profile?: MemberProfile }[]
   /** Sum of all shares in the DAO, used for percentage calculation */
   totalShares: bigint
+  /** Number of active proposals this member is sponsoring */
+  sponsoredCount?: number
 }
 
 function formatPct(numerator: bigint, denominator: bigint): string {
@@ -29,7 +31,7 @@ function formatPct(numerator: bigint, denominator: bigint): string {
   return `${whole}.${fracStr}`
 }
 
-export function DelegateCard({ member, profile, delegators, totalShares }: DelegateCardProps) {
+export function DelegateCard({ member, profile, delegators, totalShares, sponsoredCount = 0 }: DelegateCardProps) {
   const shares = safeBigInt(member.shares)
   const votingPower = safeBigInt(member.voting_power)
   const totalPower = votingPower > shares ? votingPower : shares
@@ -88,7 +90,7 @@ export function DelegateCard({ member, profile, delegators, totalShares }: Deleg
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-4 gap-4 bg-dao-dark-2 rounded-lg p-3">
+      <div className="grid grid-cols-5 gap-4 bg-dao-dark-2 rounded-lg p-3">
         <div className="text-center">
           <p className="text-xs text-dao-text-hint">Own Shares</p>
           <p className="text-sm font-mono text-primary-400 mt-0.5">
@@ -110,6 +112,12 @@ export function DelegateCard({ member, profile, delegators, totalShares }: Deleg
         <div className="text-center">
           <p className="text-xs text-dao-text-hint">Votes Cast</p>
           <p className="text-sm font-mono text-dao-text-secondary mt-0.5">{member.votes ?? 0}</p>
+        </div>
+        <div className="text-center">
+          <p className="text-xs text-dao-text-hint">Sponsored</p>
+          <p className={`text-sm font-mono mt-0.5 ${sponsoredCount > 0 ? 'text-primary-400' : 'text-dao-text-hint'}`}>
+            {sponsoredCount || '—'}
+          </p>
         </div>
       </div>
 

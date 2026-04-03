@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Control, FieldErrors } from 'react-hook-form'
 import { useController } from 'react-hook-form'
 import type { LaunchFormValues } from './BasicInfoStep'
+import { AllowlistInput } from '@/components/common/AllowlistInput'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NavigatorsStep - Step 4: Configure navigator contracts for deployment
@@ -65,6 +66,34 @@ export function NavigatorsStep({ control, errors: _errors }: NavigatorsStepProps
 
         {enableOnboarder.field.value && (
           <div className="px-6 pb-5 border-t border-dao-border pt-4 space-y-5">
+            {/* Navigator name + description */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-dao-text-secondary mb-1.5">Name</label>
+                <input
+                  type="text"
+                  value={onboarder.navigatorName}
+                  onChange={(e) => updateOnboarder({ navigatorName: e.target.value })}
+                  placeholder="e.g. Open Onboarding"
+                  maxLength={64}
+                  className="input w-full"
+                />
+                <p className="text-xs text-dao-text-hint mt-1">{onboarder.navigatorName.length}/64</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-dao-text-secondary mb-1.5">Description</label>
+                <input
+                  type="text"
+                  value={onboarder.navigatorDescription}
+                  onChange={(e) => updateOnboarder({ navigatorDescription: e.target.value })}
+                  placeholder="e.g. 2x share multiplier, 0.01 QUAI minimum"
+                  maxLength={280}
+                  className="input w-full"
+                />
+                <p className="text-xs text-dao-text-hint mt-1">{onboarder.navigatorDescription.length}/280</p>
+              </div>
+            </div>
+
             {/* Mode selector */}
             <div>
               <label className="block text-sm font-medium text-dao-text-secondary mb-2">Mode</label>
@@ -298,6 +327,12 @@ export function NavigatorsStep({ control, errors: _errors }: NavigatorsStepProps
                       </p>
                     </div>
                   )}
+
+                  {/* Allowlist */}
+                  <AllowlistInput
+                    value={onboarder.allowlistAddresses}
+                    onChange={(v) => updateOnboarder({ allowlistAddresses: v })}
+                  />
                 </div>
               )}
             </div>
@@ -328,6 +363,34 @@ export function NavigatorsStep({ control, errors: _errors }: NavigatorsStepProps
 
         {enableERC20Tribute.field.value && (
           <div className="px-6 pb-5 border-t border-dao-border pt-4 space-y-4">
+            {/* Navigator name + description */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-dao-text-secondary mb-1.5">Name</label>
+                <input
+                  type="text"
+                  value={erc20.navigatorName}
+                  onChange={(e) => updateERC20({ navigatorName: e.target.value })}
+                  placeholder="e.g. USDT Tribute"
+                  maxLength={64}
+                  className="input w-full"
+                />
+                <p className="text-xs text-dao-text-hint mt-1">{erc20.navigatorName.length}/64</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-dao-text-secondary mb-1.5">Description</label>
+                <input
+                  type="text"
+                  value={erc20.navigatorDescription}
+                  onChange={(e) => updateERC20({ navigatorDescription: e.target.value })}
+                  placeholder="e.g. Pay USDT for shares"
+                  maxLength={280}
+                  className="input w-full"
+                />
+                <p className="text-xs text-dao-text-hint mt-1">{erc20.navigatorDescription.length}/280</p>
+              </div>
+            </div>
+
             <div>
               <label htmlFor="erc20-token" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
                 Tribute Token Address
@@ -465,6 +528,12 @@ export function NavigatorsStep({ control, errors: _errors }: NavigatorsStepProps
                       </p>
                     </div>
                   )}
+
+                  {/* Allowlist */}
+                  <AllowlistInput
+                    value={erc20.allowlistAddresses}
+                    onChange={(v) => updateERC20({ allowlistAddresses: v })}
+                  />
                 </div>
               )}
             </div>
