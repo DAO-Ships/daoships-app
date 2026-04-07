@@ -1,4 +1,5 @@
 import { useParams, useOutletContext, Link } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao, NavigatorEvent } from '@/types'
 import { NAVIGATOR_PERMISSION_LABELS, type NavigatorPermissionLabel } from '@/types'
 import { useQuery } from '@tanstack/react-query'
@@ -48,6 +49,7 @@ function formatPermissionLabel(label: string): string {
 
 export function NavigatorDetail() {
   const { dao } = useOutletContext<DaoContext>()
+  usePageTitle('Navigator', dao.name)
   const { navigatorAddress } = useParams<{ navigatorAddress: string }>()
   const { address: userAddress, connected } = useWallet()
   const { data: navigators, isLoading: navigatorsLoading } = useNavigators(dao.id)

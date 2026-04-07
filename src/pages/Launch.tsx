@@ -1,3 +1,4 @@
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useWallet } from '@/hooks/useWallet'
 import { LaunchWizard } from '@/components/launch/LaunchWizard'
 import { ConnectWallet } from '@/components/common/ConnectWallet'
@@ -7,6 +8,7 @@ import { ConnectWallet } from '@/components/common/ConnectWallet'
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function Launch() {
+  usePageTitle('Launch a DAO')
   const { connected } = useWallet()
 
   if (!connected) {

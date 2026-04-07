@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao, Proposal, DaoExpiryConfig } from '@/types'
 import { ProposalStatus, deriveProposalStatus } from '@/types/proposal'
 import { useProposals } from '@/hooks/useProposals'
@@ -115,6 +116,7 @@ function ProposalCard({ proposal, daoId, status }: { proposal: Proposal; daoId: 
 
 export function Proposals() {
   const { dao } = useOutletContext<DaoContext>()
+  usePageTitle('Proposals', dao.name)
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
   const { data: proposals, isLoading, error } = useProposals(dao.id)
 

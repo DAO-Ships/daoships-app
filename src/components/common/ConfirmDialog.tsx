@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Modal } from './Modal'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -11,7 +12,7 @@ interface ConfirmDialogProps {
   onClose: () => void
   onConfirm: () => void
   title: string
-  message: string
+  message: ReactNode
   confirmText?: string
   cancelText?: string
   variant?: ConfirmVariant
@@ -79,7 +80,7 @@ export function ConfirmDialog({
         <div className="flex items-start gap-4">
           <div className="flex-shrink-0">{styles.icon}</div>
           <div className="flex-1">
-            <p className="text-base text-dao-text-secondary leading-relaxed">{message}</p>
+            <div className="text-base text-dao-text-secondary leading-relaxed">{message}</div>
           </div>
         </div>
 

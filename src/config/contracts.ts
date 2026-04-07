@@ -24,7 +24,7 @@ export interface NetworkConfig {
 
 export const NETWORK_CONFIG: NetworkConfig = {
   chainId: parseInt(import.meta.env.VITE_CHAIN_ID || '15000', 10),
-  chainName: import.meta.env.VITE_CHAIN_NAME || 'Quai Network Cyprus-1',
+  chainName: import.meta.env.VITE_CHAIN_NAME || 'Orchard Testnet',
   rpcUrl: import.meta.env.VITE_RPC_URL || 'https://rpc.cyprus1.colosseum.quai.network',
   blockExplorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://cyprus1.colosseum.quaiscan.io',
   quaiVaultUrl: (import.meta.env.VITE_QUAIVAULT_URL as string) || 'https://testnet.quaivault.org',

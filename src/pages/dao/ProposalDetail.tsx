@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback } from 'react'
 import { useParams, useOutletContext, Link } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao } from '@/types'
 import { ProposalStatus } from '@/types/proposal'
 import { useProposal } from '@/hooks/useProposal'
@@ -103,6 +104,7 @@ export function ProposalDetail() {
     () => proposal ? parseProposalDetails(proposal.details) : { title: '', description: '' },
     [proposal],
   )
+  usePageTitle(details.title, dao.name)
 
   if (isLoading) return <Loading fullPage />
 

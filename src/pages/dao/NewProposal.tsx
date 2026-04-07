@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useOutletContext, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { quais } from 'quais'
 import { ZERO_ADDRESS } from '@/config/contracts'
@@ -113,6 +114,7 @@ const PROPOSAL_CATEGORIES = ['Treasury', 'Members', 'Governance', 'Communication
 export function NewProposal() {
   const { daoId } = useParams()
   const { dao } = useOutletContext<DaoContext>()
+  usePageTitle('New Proposal', dao.name)
   const { connected, address } = useWallet()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -655,10 +657,56 @@ export function NewProposal() {
         isOpen={showConfirm}
         onClose={() => { setShowConfirm(false); pendingSubmission.current = null }}
         onConfirm={confirmSubmit}
-        title="Submit Proposal"
-        message={`Submit "${pendingSubmission.current?.title ?? ''}" as a governance proposal? ${
-          minOffering > 0n ? `This will require a ${minOfferingDisplay} QUAI offering.` : ''
-        } The proposal will need to be sponsored and pass a vote before execution.`}
+        title="Confirm Proposal Submission"
+        message={(() => {
+          const p = pendingSubmission.current
+          if (!p) return null
+          let parsed: Record<string, string> = {}
+          try { parsed = JSON.parse(p.details) } catch { /* ok */ }
+          return (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-dao-text-hint text-xs mb-0.5">Title</p>
+                <p className="text-dao-text font-medium">{parsed.title || p.title}</p>
+              </div>
+              {parsed.description && (
+                <div>
+                  <p className="text-dao-text-hint text-xs mb-0.5">Description</p>
+                  <p className="text-dao-text-secondary line-clamp-3">{parsed.description}</p>
+                </div>
+              )}
+              {parsed.type && (
+                <div>
+                  <p className="text-dao-text-hint text-xs mb-0.5">Type</p>
+                  <p className="text-dao-text-secondary capitalize">{parsed.type.replace(/_/g, ' ')}</p>
+                </div>
+              )}
+              {parsed.discussionUrl && (
+                <div>
+                  <p className="text-dao-text-hint text-xs mb-0.5">Discussion</p>
+                  <p className="text-dao-text-secondary font-mono text-xs truncate">{parsed.discussionUrl}</p>
+                </div>
+              )}
+              {!canSelfSponsor && p.offering > 0n && (
+                <div>
+                  <p className="text-dao-text-hint text-xs mb-0.5">Offering</p>
+                  <p className="text-dao-text-secondary">{formatTokenAmount(p.offering)} QUAI</p>
+                </div>
+              )}
+              {p.expiration > 0 && (
+                <div>
+                  <p className="text-dao-text-hint text-xs mb-0.5">Expiration</p>
+                  <p className="text-dao-text-secondary">{new Date(p.expiration * 1000).toLocaleString()}</p>
+                </div>
+              )}
+              <p className="text-dao-text-hint text-xs pt-1 border-t border-dao-border">
+                {canSelfSponsor
+                  ? 'This proposal will be self-sponsored and enter voting immediately.'
+                  : 'This proposal will need to be sponsored before voting can begin.'}
+              </p>
+            </div>
+          )
+        })()}
         confirmText="Submit Proposal"
         variant="info"
         isLoading={submitMutation.isPending}

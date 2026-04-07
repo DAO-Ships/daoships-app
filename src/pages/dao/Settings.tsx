@@ -1,4 +1,5 @@
 import { useOutletContext, Link } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao } from '@/types'
 import { extractDaoConfig } from '@/types/dao'
 import { Card } from '@/components/common/Card'
@@ -24,6 +25,7 @@ interface ConfigRow {
 
 export function Settings() {
   const { dao } = useOutletContext<DaoContext>()
+  usePageTitle('Settings', dao.name)
   const config = extractDaoConfig(dao)
 
   const configRows: ConfigRow[] = [

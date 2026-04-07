@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Dao, Member } from '@/types'
 import { useMembers } from '@/hooks/useMembers'
@@ -103,6 +104,7 @@ function MemberRow({ member, profile, totalShares, sponsoredCount, isCurrentUser
 
 export function Members() {
   const { dao } = useOutletContext<DaoContext>()
+  usePageTitle('Members', dao.name)
   const { connected, address } = useWallet()
   const { data: members, isLoading, error } = useMembers(dao.id)
   const { data: currentMember, isLoading: memberLoading } = useMember(dao.id, address ?? undefined)

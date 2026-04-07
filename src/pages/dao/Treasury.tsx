@@ -1,4 +1,5 @@
 import { useOutletContext } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao } from '@/types'
 import { useTreasury } from '@/hooks/useTreasury'
 import { useTreasuryBalances } from '@/hooks/useTreasuryBalances'
@@ -24,6 +25,7 @@ interface DaoContext {
 
 export function Treasury() {
   const { dao } = useOutletContext<DaoContext>()
+  usePageTitle('Treasury', dao.name)
   const { data: treasury, isLoading, error } = useTreasury(dao.id)
   const { data: balances, isLoading: balancesLoading, error: balancesError } = useTreasuryBalances(dao.avatar, treasury)
   const { address } = useWallet()

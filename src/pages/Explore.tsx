@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useDaos } from '@/hooks/useDaos'
 import { useDebounce } from '@/hooks/useDebounce'
 import { DaoCard } from '@/components/dao/DaoCard'
@@ -37,6 +38,7 @@ function sortDaos(daos: Dao[], sortBy: SortOption): Dao[] {
 }
 
 export function Explore() {
+  usePageTitle('Explore DAOs')
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortOption>('newest')
   const debouncedSearch = useDebounce(search, 300)

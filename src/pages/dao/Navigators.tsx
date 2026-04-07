@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao } from '@/types'
 import { useNavigators } from '@/hooks/useNavigators'
 import { useWallet } from '@/hooks/useWallet'
@@ -20,6 +21,7 @@ interface DaoContext {
 
 export function Navigators() {
   const { dao } = useOutletContext<DaoContext>()
+  usePageTitle('Navigators', dao.name)
   const { data: navigators, isLoading, error } = useNavigators(dao.id)
   const { connected } = useWallet()
   const [showCatalog, setShowCatalog] = useState(false)

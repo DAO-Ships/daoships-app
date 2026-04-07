@@ -54,7 +54,9 @@ export function Header() {
 
       {/* Center: network + indexer status */}
       <div className="hidden sm:flex items-center gap-3">
-        <span className="text-sm text-dao-text-muted">{NETWORK_CONFIG.chainName}</span>
+        <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+          {NETWORK_CONFIG.chainName}
+        </span>
         {isEnabled && (
           <StatusDot
             status={indexerStatus}

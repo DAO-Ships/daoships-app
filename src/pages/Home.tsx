@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useDaos } from '@/hooks/useDaos'
 import { useUserDaos } from '@/hooks/useUserDaos'
 import { useWallet } from '@/hooks/useWallet'
@@ -14,6 +15,7 @@ import { Loading } from '@/components/common/Loading'
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function Home() {
+  usePageTitle()
   const { connected } = useWallet()
   const { theme } = useUiStore()
   const isDark = theme === 'dark'

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao } from '@/types'
 import { ProposalStatus, deriveProposalStatus } from '@/types/proposal'
 import { useProposals } from '@/hooks/useProposals'
@@ -34,6 +35,7 @@ interface DaoContext {
 
 export function Overview() {
   const { dao } = useOutletContext<DaoContext>()
+  usePageTitle('Overview', dao.name)
   const { data: profileRecord } = useDaoProfile(dao.id)
   const { data: proposals, isLoading: proposalsLoading } = useProposals(dao.id)
   const daoConfig = { voting_period: dao.voting_period, grace_period: dao.grace_period, default_expiry_window: dao.default_expiry_window }
