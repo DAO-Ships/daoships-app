@@ -57,7 +57,7 @@ const CUSTOM_ERROR_MESSAGES: Record<string, string> = {
 function findRevertData(error: unknown, depth = 0): string | null {
   if (!error || typeof error !== 'object' || depth > 5) return null
 
-  const err = error as Record<string, any>
+  const err = error as Record<string, unknown>
 
   // Check common locations where quais attaches revert data
   for (const key of ['data', 'revert', 'value', 'body']) {
@@ -101,6 +101,17 @@ function tryDecodeCustomError(error: unknown): string | null {
 }
 
 /**
+ * An Error enriched with the parsed transaction-error fields, attached by
+ * estimateGasOrThrow so callers can surface a structured message.
+ */
+interface EnhancedError extends Error {
+  title?: string
+  suggestion?: string
+  code?: string
+  originalError?: unknown
+}
+
+/**
  * Estimate gas for a contract method call, throwing a descriptive error if the
  * call would revert.
  *
@@ -122,15 +133,17 @@ function tryDecodeCustomError(error: unknown): string | null {
  * @throws Error with a user-friendly message if a specific contract error was decoded
  */
 export async function estimateGasOrThrow(
-  contract: any,
+  contract: quais.Contract,
   method: string,
-  args: any[],
+  args: unknown[],
   operationName: string,
-  overrides?: Record<string, any>,
+  overrides?: Record<string, unknown>,
 ): Promise<bigint | undefined> {
   try {
     // quais contracts expose estimateGas as a namespace: contract[method].estimateGas(...)
-    const estimateFn = contract[method]?.estimateGas
+    // The method namespace is dynamic, so narrow via a contained cast rather than `any`.
+    const methods = contract as unknown as Record<string, { estimateGas?: (...a: unknown[]) => Promise<bigint> }>
+    const estimateFn = methods[method]?.estimateGas
     if (typeof estimateFn !== 'function') {
       // Can't estimate, let the transaction attempt proceed
       console.warn(`[GasEstimator] Method "${method}" does not support gas estimation, skipping`)
@@ -173,11 +186,11 @@ export async function estimateGasOrThrow(
       parts.push(parsed.suggestion)
     }
 
-    const enhancedError = new Error(parts.join('\n\n'))
-    ;(enhancedError as any).title = parsed.title
-    ;(enhancedError as any).suggestion = parsed.suggestion
-    ;(enhancedError as any).code = parsed.code
-    ;(enhancedError as any).originalError = error
+    const enhancedError = new Error(parts.join('\n\n')) as EnhancedError
+    enhancedError.title = parsed.title
+    enhancedError.suggestion = parsed.suggestion
+    enhancedError.code = parsed.code
+    enhancedError.originalError = error
 
     throw enhancedError
   }

@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { supabase } from '@/config/supabase'
+import { indexerError } from './indexerError'
 import type { Dao, GuildToken } from '@/types'
 
 class DaoIndexerService {
@@ -20,15 +21,13 @@ class DaoIndexerService {
       .limit(200)
 
     if (search?.trim()) {
-      query = query.ilike('name', `%${search.trim()}%`)
+      const escaped = search.trim().replace(/[%_\\]/g, '\\$&')
+      query = query.ilike('name', `%${escaped}%`)
     }
 
     const { data, error } = await query
 
-    if (error) {
-      console.error('[DaoIndexerService] listDaos error:', error.message)
-      return []
-    }
+    if (error) indexerError('[DaoIndexerService] listDaos', error)
 
     return (data as Dao[]) ?? []
   }
@@ -39,16 +38,15 @@ class DaoIndexerService {
   async getDao(id: string): Promise<Dao | null> {
     if (!supabase) return null
 
+    // maybeSingle so a genuinely missing DAO resolves to null (not an error) — only real
+    // query failures throw.
     const { data, error } = await supabase
       .from('ds_daos')
       .select('*')
       .eq('id', id.toLowerCase())
-      .single()
+      .maybeSingle()
 
-    if (error) {
-      console.error('[DaoIndexerService] getDao error:', error.message)
-      return null
-    }
+    if (error) indexerError('[DaoIndexerService] getDao', error)
 
     return (data as Dao) ?? null
   }
@@ -68,12 +66,8 @@ class DaoIndexerService {
       .select('dao_id')
       .eq('member_address', normalizedAddress)
 
-    if (memberError || !memberRows || memberRows.length === 0) {
-      if (memberError) {
-        console.error('[DaoIndexerService] getDaosByMember member query error:', memberError.message)
-      }
-      return []
-    }
+    if (memberError) indexerError('[DaoIndexerService] getDaosByMember member query', memberError)
+    if (!memberRows || memberRows.length === 0) return []
 
     const daoIds = memberRows.map((row) => row.dao_id)
 
@@ -83,10 +77,7 @@ class DaoIndexerService {
       .in('id', daoIds)
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('[DaoIndexerService] getDaosByMember dao query error:', error.message)
-      return []
-    }
+    if (error) indexerError('[DaoIndexerService] getDaosByMember dao query', error)
 
     return (data as Dao[]) ?? []
   }
@@ -102,10 +93,7 @@ class DaoIndexerService {
       .select('*')
       .eq('dao_id', daoId)
 
-    if (error) {
-      console.error('[DaoIndexerService] getGuildTokens error:', error.message)
-      return []
-    }
+    if (error) indexerError('[DaoIndexerService] getGuildTokens', error)
 
     return (data as GuildToken[]) ?? []
   }

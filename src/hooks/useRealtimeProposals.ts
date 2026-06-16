@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase, INDEXER_CONFIG } from '@/config/supabase'
+import { useDebouncedCallback } from './useDebouncedCallback'
 
 /**
  * Subscribes to realtime INSERT/UPDATE events on ds_proposals for a specific DAO.
@@ -10,6 +11,11 @@ import { supabase, INDEXER_CONFIG } from '@/config/supabase'
 export function useRealtimeProposals(daoId: string | undefined) {
   const queryClient = useQueryClient()
 
+  // Debounced so a burst of proposal row events collapses into one list refetch.
+  const invalidate = useDebouncedCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
+  })
+
   useEffect(() => {
     if (!supabase || !daoId) return
 
@@ -18,19 +24,21 @@ export function useRealtimeProposals(daoId: string | undefined) {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: '*', // INSERT | UPDATE | DELETE — DELETE fires on reorg tombstones
           schema: INDEXER_CONFIG.NETWORK_SCHEMA,
           table: 'ds_proposals',
           filter: `dao_id=eq.${daoId}`,
         },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
-        },
+        invalidate,
       )
-      .subscribe()
+      .subscribe((status) => {
+        // Force-refetch after a successful (re)connect — fills in events missed
+        // during the disconnect window. Supabase does not replay missed events.
+        if (status === 'SUBSCRIBED') invalidate()
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [supabase, daoId, queryClient])
+  }, [daoId, invalidate])
 }

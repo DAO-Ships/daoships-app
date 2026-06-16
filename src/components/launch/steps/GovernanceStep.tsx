@@ -129,7 +129,7 @@ export function GovernanceStep({ control, errors }: GovernanceStepProps) {
             <p className="text-xs text-accent-400 mt-1">{formatDuration(graceSecs)}</p>
           )}
           {graceSecs === 0 && (
-            <p className="text-xs text-yellow-400 mt-1">
+            <p className="text-xs text-amber-400 mt-1">
               Warning: A grace period of 0 means members cannot ragequit before proposals are processed.
             </p>
           )}

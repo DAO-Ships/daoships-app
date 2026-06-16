@@ -8,7 +8,8 @@ import { DaoCard } from '@/components/dao/DaoCard'
 import { Button } from '@/components/common/Button'
 import { ConnectWallet } from '@/components/common/ConnectWallet'
 import { EmptyState } from '@/components/common/EmptyState'
-import { Loading } from '@/components/common/Loading'
+import { SkeletonDaoCard } from '@/components/common/Skeleton'
+import { BrandPattern } from '@/components/common/BrandPattern'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Home - Landing page with hero, recent DAOs, and user DAOs
@@ -28,30 +29,37 @@ export function Home() {
   return (
     <div className="space-y-12">
       {/* Hero Section */}
-      <section className="text-center py-16 px-4">
-        <img
-          src={isDark ? '/logos/dao_ships_helm_dark_transparent.svg' : '/logos/dao_ships_helm_light_transparent.svg'}
-          alt="DAO Ships"
-          className="w-24 h-24 mx-auto mb-6 rounded-2xl"
-        />
-        <h1 className="text-4xl sm:text-5xl font-bold font-display text-dao-text mb-4">
-          DAO Ships
-        </h1>
-        <p className="text-lg text-dao-text-muted max-w-2xl mx-auto mb-8">
-          Launch, govern, and manage decentralized autonomous organizations on
-          Quai Network. Transparent on-chain governance for the Quai ecosystem.
-        </p>
-        <div className="flex items-center justify-center gap-4 flex-wrap">
-          <Link to="/launch">
-            <Button variant="primary" size="lg">
-              Launch a DAO
-            </Button>
-          </Link>
-          <Link to="/explore">
-            <Button variant="secondary" size="lg">
-              Explore DAOs
-            </Button>
-          </Link>
+      <section className="relative overflow-hidden rounded-3xl border border-dao-border/60 bg-gradient-dao-radial text-center py-16 sm:py-20 px-4">
+        {/* Ambient helm-logo motif, bleeding off the corners. */}
+        <BrandPattern className="absolute -right-20 -top-24 h-80 w-80 z-0 text-primary-500/[0.07]" />
+        <BrandPattern className="absolute -left-24 -bottom-24 h-72 w-72 z-0 text-accent-500/[0.05]" />
+        <div className="relative z-10">
+          <img
+            src={isDark ? '/logos/dao_ships_helm_dark_transparent.svg' : '/logos/dao_ships_helm_light_transparent.svg'}
+            alt="DAOShips"
+            className="w-24 h-24 mx-auto mb-6 rounded-2xl shadow-indigo-glow"
+          />
+          <h1 className="text-4xl sm:text-5xl font-bold font-display mb-4">
+            <span className="bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent">
+              DAOShips
+            </span>
+          </h1>
+          <p className="text-lg text-dao-text-muted max-w-2xl mx-auto mb-8">
+            Charter a DAO and govern it on-chain. Transparent proposals, voting, and
+            treasury management for the Quai ecosystem.
+          </p>
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            <Link to="/launch">
+              <Button variant="primary" size="lg">
+                Launch a DAO
+              </Button>
+            </Link>
+            <Link to="/explore">
+              <Button variant="secondary" size="lg">
+                Explore DAOs
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -62,7 +70,9 @@ export function Home() {
             <h2 className="text-2xl font-bold font-display text-dao-text">Your DAOs</h2>
           </div>
           {userDaosLoading ? (
-            <Loading fullPage />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }, (_, i) => <SkeletonDaoCard key={i} />)}
+            </div>
           ) : userDaos && userDaos.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {userDaos.map((dao) => (
@@ -85,7 +95,9 @@ export function Home() {
 
       {/* Not connected prompt */}
       {!connected && (
-        <section className="card px-8 py-10 text-center max-w-xl mx-auto">
+        <section className="card relative overflow-hidden px-8 py-10 text-center max-w-xl mx-auto">
+          <BrandPattern className="absolute -right-16 -bottom-20 h-64 w-64 z-0 text-primary-500/[0.06]" />
+          <div className="relative z-10">
           <h3 className="text-xl font-semibold text-dao-text mb-2">
             Connect your wallet
           </h3>
@@ -95,6 +107,7 @@ export function Home() {
           </p>
           <div className="flex justify-center">
             <ConnectWallet />
+          </div>
           </div>
         </section>
       )}
@@ -111,7 +124,9 @@ export function Home() {
           </Link>
         </div>
         {daosLoading ? (
-          <Loading fullPage />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }, (_, i) => <SkeletonDaoCard key={i} />)}
+          </div>
         ) : recentDaos.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {recentDaos.map((dao) => (
@@ -120,8 +135,8 @@ export function Home() {
           </div>
         ) : (
           <EmptyState
-            title="No DAOs found"
-            description="Be the first to launch a DAO on Quai Network."
+            title="Calm waters ahead"
+            description="No DAOs have launched yet. Be the first to chart a course on Quai Network."
             action={
               <Link to="/launch">
                 <Button variant="primary">Launch a DAO</Button>

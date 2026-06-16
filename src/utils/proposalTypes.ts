@@ -10,7 +10,9 @@ export const PROPOSAL_TYPE_COLORS: Record<string, string> = {
   membership: 'bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400',
   governance_config: 'bg-purple-50 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400',
   profile_update: 'bg-cyan-50 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-400',
-  announcement: 'bg-yellow-50 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400',
+  announcement: 'bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400',
+  navigator: 'bg-orange-50 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
+  // Alias: pre-2026-06 proposals stored 'navigator_add' regardless of intent
   navigator_add: 'bg-orange-50 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
   custom: 'bg-dao-surface text-dao-text-muted',
   signal: 'bg-dao-surface text-dao-text-muted',
@@ -22,6 +24,7 @@ export const PROPOSAL_TYPE_LABELS: Record<string, string> = {
   governance_config: 'Governance',
   profile_update: 'Profile',
   announcement: 'Announcement',
+  navigator: 'Navigator',
   navigator_add: 'Navigator',
   custom: 'Custom',
   signal: 'Signal',
@@ -58,7 +61,7 @@ export function getProposalType(details: string | null | undefined, proposalData
         return { type: 'membership', label: 'Membership', color: PROPOSAL_TYPE_COLORS.membership }
       }
       if (action.type === 'setGovernanceConfig') return { type: 'governance_config', label: 'Governance', color: PROPOSAL_TYPE_COLORS.governance_config }
-      if (action.type === 'setNavigators') return { type: 'navigator_add', label: 'Navigator', color: PROPOSAL_TYPE_COLORS.navigator_add }
+      if (action.type === 'setNavigators') return { type: 'navigator', label: 'Navigator', color: PROPOSAL_TYPE_COLORS.navigator }
       if (action.type === 'setGuildTokens') return { type: 'custom', label: 'Guild Tokens', color: PROPOSAL_TYPE_COLORS.custom }
       if (action.type === 'posterPost') {
         const tag = (action.details as Record<string, unknown>)?.tag as string | undefined

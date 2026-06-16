@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { Outlet, useParams } from 'react-router-dom'
 import { useDao } from '@/hooks/useDao'
+import { useDaoProfile } from '@/hooks/useDaoProfile'
+import { useDaoTheme } from '@/hooks/useDaoTheme'
 import { useDaoStore } from '@/store/daoStore'
 import { useRealtimeMembers } from '@/hooks/useRealtimeMembers'
 import { useRealtimeProposals } from '@/hooks/useRealtimeProposals'
@@ -14,7 +16,11 @@ import { Loading } from '@/components/common/Loading'
 export function DaoLayout() {
   const { daoId } = useParams<{ daoId: string }>()
   const { data: dao, isLoading, error } = useDao(daoId)
+  const { data: profile } = useDaoProfile(daoId)
   const { setCurrentDao, clearCurrentDao } = useDaoStore()
+
+  // Apply the DAO's posted color scheme across the UI while on its routes.
+  useDaoTheme(profile)
 
   // DAO-scoped realtime subscriptions — active for all sub-pages
   useRealtimeMembers(daoId)
@@ -34,11 +40,16 @@ export function DaoLayout() {
     return <Loading fullPage size="lg" />
   }
 
-  if (error || !dao) {
+  // Only show the not-found / error state when we have NO DAO at all. If a DAO was already
+  // loaded, keep rendering it through a transient background refetch error (e.g. the indexer
+  // briefly blipped and the wallet-dependent fallback couldn't run) so the user's flow isn't
+  // interrupted by a momentary "DAO Not Found".
+  if (!dao) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="card p-8 text-center max-w-md">
           <svg
+            aria-hidden="true"
             className="w-12 h-12 text-red-400 mx-auto mb-4"
             fill="none"
             viewBox="0 0 24 24"
@@ -62,5 +73,5 @@ export function DaoLayout() {
     )
   }
 
-  return <Outlet context={{ dao, daoId }} />
+  return <Outlet context={{ dao, daoId, profile }} />
 }

@@ -21,6 +21,19 @@ export function checksumAddress(address: string): string {
 }
 
 /**
+ * The app's canonical check for a user-enterable address: a well-formed,
+ * checksum-valid address that lives on this network (Cyprus-1 shard, non-zero).
+ *
+ * This is the strict validator used by every form. For a lenient "is this a
+ * well-formed address value" check that accepts the zero/native sentinel or a
+ * foreign-shard address (e.g. display, or counting the native token), call
+ * `quais.isAddress` directly instead.
+ */
+export function isAddress(value: unknown): value is string {
+  return typeof value === 'string' && isValidCyprus1Address(value)
+}
+
+/**
  * Return the lowercase form of an address for case-insensitive comparisons.
  *
  * @param address - A 0x-prefixed hex address
@@ -39,6 +52,7 @@ export function lowercaseAddress(address: string): string {
  * @returns Truncated address string
  */
 export function formatAddress(address: string, prefixLen: number = 6, suffixLen: number = 4): string {
+  if (!address || typeof address !== 'string') return ''
   if (address.length <= prefixLen + suffixLen + 2) {
     return address
   }
@@ -56,14 +70,14 @@ export function isZeroAddress(address: string): boolean {
 }
 
 /**
- * Validate a Quai Cyprus-1 address.
- * Must be 42-char hex string starting with 0x00 and not the zero address.
+ * Validate a Quai Cyprus-1 address: well-formed + EIP-55 checksum (via quais),
+ * on the Cyprus-1 shard (0x00… prefix), and not the zero address.
  */
 export function isValidCyprus1Address(address: string): boolean {
-  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return false
-  if (address.toLowerCase() === ZERO_ADDRESS) return false
-  if (!address.toLowerCase().startsWith('0x00')) return false
-  return true
+  if (!quais.isAddress(address)) return false // format + checksum
+  const lower = address.toLowerCase()
+  if (lower === ZERO_ADDRESS) return false
+  return lower.startsWith('0x00') // Cyprus-1 shard byte
 }
 
 /**

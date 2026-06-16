@@ -1,11 +1,12 @@
 import type { Dao, DaoRecord, TrustLevel } from '@/types'
 import { TRUST_LEVEL_CONFIG } from '@/types'
-import { resolveUrl, isValidUrl, safeHref } from '@/utils/url'
+import { isValidUrl, safeHref } from '@/utils/url'
 import { DaoAvatar } from './DaoAvatar'
 import { safeString, safeEntries } from '@/utils/contentJson'
 import { NETWORK_CONFIG } from '@/config/contracts'
 import { TrustBadge } from '@/components/common/TrustBadge'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
+import { SafeMarkdown } from '@/components/common/SafeMarkdown'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DaoProfile - DAO identity: name, description, avatar, links, trust, tags
@@ -63,7 +64,6 @@ export function DaoProfile({ dao, profile, isMember = false }: DaoProfileProps) 
   const name = dao.name || safeString(profileContent, 'name') || `DAO ${dao.id.slice(0, 8)}...`
   const description = dao.description || safeString(profileContent, 'description') || null
   const rawAvatarUrl = dao.avatar_img || safeString(profileContent, 'avatar') || null
-  const avatarUrl = resolveUrl(rawAvatarUrl)
 
   // Extract links from content_json (validate type and each URL)
   const rawLinks = profileContent && typeof profileContent === 'object'
@@ -102,11 +102,11 @@ export function DaoProfile({ dao, profile, isMember = false }: DaoProfileProps) 
 
   // Trust level — use the indexed trust_level if available, fall back to profile_source
   const trustLevel: TrustLevel | null = profile?.trust_level
-    ? (profile.trust_level.toLowerCase() as TrustLevel)
+    ? (profile.trust_level as TrustLevel)
     : dao.profile_source === 'vault'
-      ? 'verified'
+      ? 'VERIFIED'
       : dao.profile_source === 'launcher'
-        ? 'verified_initial'
+        ? 'VERIFIED_INITIAL'
         : null
 
   return (
@@ -129,7 +129,7 @@ export function DaoProfile({ dao, profile, isMember = false }: DaoProfileProps) 
             )}
             {isMember && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-700/50">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <svg aria-hidden="true" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
                 Member
@@ -153,8 +153,8 @@ export function DaoProfile({ dao, profile, isMember = false }: DaoProfileProps) 
             )}
           </div>
           {description && (
-            <p className="text-sm text-dao-text-muted leading-relaxed whitespace-pre-wrap max-w-2xl">
-              {description}
+            <p className="text-sm text-dao-text-muted leading-relaxed max-w-2xl">
+              <SafeMarkdown>{description}</SafeMarkdown>
             </p>
           )}
         </div>
@@ -187,11 +187,11 @@ export function DaoProfile({ dao, profile, isMember = false }: DaoProfileProps) 
               title={url}
             >
               {icon ? (
-                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                   <path d={icon} />
                 </svg>
               ) : (
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
               )}

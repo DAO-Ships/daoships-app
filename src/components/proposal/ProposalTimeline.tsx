@@ -1,5 +1,6 @@
 import type { Proposal } from '@/types'
 import { ProposalStatus } from '@/types'
+import { formatIndexerDate } from '@/utils/time'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ProposalTimeline - Visual step-by-step timeline for proposal lifecycle
@@ -103,14 +104,14 @@ export function ProposalTimeline({ proposal, status }: ProposalTimelineProps) {
                 <div
                   className={`relative z-10 flex-shrink-0 w-7 h-7 rounded-full border-2 flex items-center justify-center ${
                     isComplete
-                      ? 'bg-green-500 border-green-500'
+                      ? 'bg-emerald-500 border-emerald-500'
                       : isCurrent
                         ? 'bg-accent-500 border-accent-500'
                         : 'bg-dao-dark-3 border-dao-border'
                   }`}
                 >
                   {isComplete && (
-                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <svg aria-hidden="true" className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   )}
@@ -124,7 +125,7 @@ export function ProposalTimeline({ proposal, status }: ProposalTimelineProps) {
                   <p
                     className={`text-sm font-medium ${
                       isComplete
-                        ? 'text-green-400'
+                        ? 'text-emerald-400'
                         : isCurrent
                           ? 'text-accent-400'
                           : 'text-dao-text-hint'
@@ -134,7 +135,7 @@ export function ProposalTimeline({ proposal, status }: ProposalTimelineProps) {
                   </p>
                   {step.timestamp && (isComplete || isCurrent) && (
                     <p className="text-xs text-dao-text-hint mt-0.5">
-                      {new Date(step.timestamp).toLocaleString()}
+                      {formatIndexerDate(step.timestamp, { withTime: true })}
                     </p>
                   )}
                 </div>
@@ -154,7 +155,7 @@ export function ProposalTimeline({ proposal, status }: ProposalTimelineProps) {
                       : 'bg-dao-surface border-dao-surface'
                 }`}
               >
-                <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <svg aria-hidden="true" className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
@@ -164,7 +165,7 @@ export function ProposalTimeline({ proposal, status }: ProposalTimelineProps) {
                 </p>
                 {status === ProposalStatus.Cancelled && proposal.cancelled_tx_at && (
                   <p className="text-xs text-dao-text-hint mt-0.5">
-                    {new Date(proposal.cancelled_tx_at).toLocaleString()}
+                    {formatIndexerDate(proposal.cancelled_tx_at, { withTime: true })}
                   </p>
                 )}
               </div>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { ProposalStatus } from '@/types/proposal'
 import type { Proposal } from '@/types'
 import { Card } from '@/components/common/Card'
-import { formatCountdown } from '@/utils/time'
+import { formatCountdown, formatIndexerDate } from '@/utils/time'
 
 /**
  * Isolated countdown timeline that owns its own 1-second tick state.
@@ -26,14 +26,14 @@ export function CountdownTimeline({ proposal, status }: { proposal: Proposal; st
         <div className="flex items-center justify-between">
           <span className="text-dao-text-muted">Submitted</span>
           <span className="text-dao-text-secondary">
-            {new Date(proposal.created_at).toLocaleString()}
+            {formatIndexerDate(proposal.created_at, { withTime: true })}
           </span>
         </div>
         {proposal.voting_starts && (
           <div className="flex items-center justify-between">
             <span className="text-dao-text-muted">Voting started</span>
             <span className="text-dao-text-secondary">
-              {new Date(proposal.voting_starts).toLocaleString()}
+              {formatIndexerDate(proposal.voting_starts, { withTime: true })}
             </span>
           </div>
         )}
@@ -45,7 +45,7 @@ export function CountdownTimeline({ proposal, status }: { proposal: Proposal; st
             <span className="text-dao-text-secondary">
               {status === ProposalStatus.Voting
                 ? formatCountdown(new Date(proposal.voting_ends).getTime())
-                : new Date(proposal.voting_ends).toLocaleString()}
+                : formatIndexerDate(proposal.voting_ends, { withTime: true })}
             </span>
           </div>
         )}
@@ -57,7 +57,7 @@ export function CountdownTimeline({ proposal, status }: { proposal: Proposal; st
             <span className="text-dao-text-secondary">
               {status === ProposalStatus.Grace
                 ? formatCountdown(new Date(proposal.grace_ends).getTime())
-                : new Date(proposal.grace_ends).toLocaleString()}
+                : formatIndexerDate(proposal.grace_ends, { withTime: true })}
             </span>
           </div>
         )}
@@ -65,7 +65,7 @@ export function CountdownTimeline({ proposal, status }: { proposal: Proposal; st
           <div className="flex items-center justify-between">
             <span className="text-dao-text-muted">Processed</span>
             <span className="text-dao-text-secondary">
-              {new Date(proposal.process_tx_at).toLocaleString()}
+              {formatIndexerDate(proposal.process_tx_at, { withTime: true })}
             </span>
           </div>
         )}

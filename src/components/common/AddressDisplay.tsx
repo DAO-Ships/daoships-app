@@ -1,3 +1,4 @@
+import { quais } from 'quais'
 import { CopyButton } from './CopyButton'
 import { NETWORK_CONFIG } from '@/config/contracts'
 
@@ -25,8 +26,20 @@ export function AddressDisplay({
   showCopy = true,
   showExplorer = true,
 }: AddressDisplayProps) {
-  const isValidAddress = /^0x[0-9a-fA-F]{40}$/.test(address)
-  const explorerUrl = isValidAddress ? `${NETWORK_CONFIG.blockExplorerUrl}/address/${address}` : '#'
+  // Lenient on purpose: display should render a link for any well-formed address
+  // (incl. foreign-shard or sentinel), not just strict Cyprus-1 user input.
+  const isValidAddress = quais.isAddress(address)
+  // Display and copy in EIP-55 checksum format so users can cross-reference
+  // against their wallet (which uses mixed case) without seeing a mismatch.
+  // Lower-case comparisons elsewhere in the codebase are unaffected.
+  const checksummed = (() => {
+    try {
+      return quais.getAddress(address)
+    } catch {
+      return address
+    }
+  })()
+  const explorerUrl = isValidAddress ? `${NETWORK_CONFIG.blockExplorerUrl}/address/${checksummed}` : '#'
 
   return (
     <span className="inline-flex items-center gap-1.5 font-mono text-sm">
@@ -38,14 +51,14 @@ export function AddressDisplay({
           className="text-primary-400 hover:text-primary-300 transition-colors hover:underline"
           title="View on block explorer"
         >
-          {truncateAddress(address, prefixLen, suffixLen)}
+          {truncateAddress(checksummed, prefixLen, suffixLen)}
         </a>
       ) : (
         <span className="text-dao-text-secondary">
-          {truncateAddress(address, prefixLen, suffixLen)}
+          {truncateAddress(checksummed, prefixLen, suffixLen)}
         </span>
       )}
-      {showCopy && <CopyButton text={address} size="sm" />}
+      {showCopy && <CopyButton text={checksummed} size="sm" />}
     </span>
   )
 }

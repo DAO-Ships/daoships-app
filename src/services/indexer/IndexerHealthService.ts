@@ -10,6 +10,11 @@ export interface HealthStatus {
   blocksBehind: number | null
   currentBlock: number | null
   daoCount: number | null
+  /** Indexer flagged that historical totals need recomputing (e.g. deep reorg). */
+  requiresFullReindex: boolean
+  reindexReason: string | null
+  /** ISO-8601 timestamp from the indexer. */
+  reindexFlaggedAt: string | null
   lastChecked: number
 }
 
@@ -42,6 +47,9 @@ class IndexerHealthService {
         blocksBehind: null,
         currentBlock: null,
         daoCount: null,
+        requiresFullReindex: false,
+        reindexReason: null,
+        reindexFlaggedAt: null,
         lastChecked: Date.now(),
       }
       return this.cache
@@ -57,8 +65,9 @@ class IndexerHealthService {
       }
 
       const data = await response.json()
+      const details = data.details ?? {}
 
-      const blocksBehind: number | null = data.details?.blocksBehind ?? data.blocksBehind ?? null
+      const blocksBehind: number | null = details.blocksBehind ?? data.blocksBehind ?? null
       const healthy = data.status === 'healthy'
       const synced = healthy && (blocksBehind === null || blocksBehind < 50)
 
@@ -66,8 +75,11 @@ class IndexerHealthService {
         healthy,
         synced,
         blocksBehind,
-        currentBlock: data.details?.currentBlock ?? data.currentBlock ?? null,
-        daoCount: data.details?.daoCount ?? data.daoCount ?? null,
+        currentBlock: details.currentBlock ?? data.currentBlock ?? null,
+        daoCount: details.daoCount ?? data.daoCount ?? null,
+        requiresFullReindex: Boolean(details.requiresFullReindex ?? false),
+        reindexReason: details.reindexReason ?? null,
+        reindexFlaggedAt: details.reindexFlaggedAt ?? null,
         lastChecked: Date.now(),
       }
     } catch {
@@ -77,6 +89,9 @@ class IndexerHealthService {
         blocksBehind: null,
         currentBlock: null,
         daoCount: null,
+        requiresFullReindex: false,
+        reindexReason: null,
+        reindexFlaggedAt: null,
         lastChecked: Date.now(),
       }
     }

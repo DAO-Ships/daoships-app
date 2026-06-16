@@ -11,6 +11,12 @@ interface ProposalSettingsFieldsProps {
   disabled?: boolean
   /** Force the section open (e.g., when validation fails on a contained field) */
   forceOpen?: boolean
+  /**
+   * Minimum seconds a proposal needs to be processable — the DAO's current voting + grace
+   * period. If an explicit expiration is shorter than this, the proposal would expire before it
+   * could ever be processed, so we warn. Optional; pass the current config's voting+grace.
+   */
+  minProcessableSeconds?: number
 }
 
 export function ProposalSettingsFields({
@@ -18,12 +24,16 @@ export function ProposalSettingsFields({
   onExpirationChange,
   disabled = false,
   forceOpen = false,
+  minProcessableSeconds,
 }: ProposalSettingsFieldsProps) {
   const hasContent = !!expiration
   const [open, setOpen] = useState(hasContent)
   const isOpen = open || forceOpen
 
   const expirationSeconds = parseDurationToSeconds(expiration)
+  const tooShort =
+    expirationSeconds !== null && expirationSeconds > 0 &&
+    !!minProcessableSeconds && expirationSeconds < minProcessableSeconds
 
   return (
     <div className="border-t border-dao-border pt-3">
@@ -33,6 +43,7 @@ export function ProposalSettingsFields({
         className="flex items-center gap-2 text-sm text-dao-text-muted hover:text-dao-text transition-colors w-full text-left py-1"
       >
         <svg
+          aria-hidden="true"
           className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-90' : ''}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
         >
@@ -63,6 +74,13 @@ export function ProposalSettingsFields({
             {expirationSeconds !== null && expirationSeconds > 0 && (
               <p className="text-xs text-dao-text-hint mt-1">
                 Expires in {formatDuration(expirationSeconds)} after submission
+              </p>
+            )}
+            {tooShort && (
+              <p className="text-xs text-amber-400 mt-1">
+                ⚠ Shorter than the DAO's voting + grace period
+                ({formatDuration(minProcessableSeconds!)}). The proposal could expire before it can be
+                processed. Leave blank to use the DAO's default window.
               </p>
             )}
           </div>

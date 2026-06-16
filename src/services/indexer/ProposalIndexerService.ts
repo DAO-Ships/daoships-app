@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { supabase } from '@/config/supabase'
+import { indexerError } from './indexerError'
 import type { Proposal } from '@/types'
 
 export interface ProposalFilters {
@@ -35,10 +36,7 @@ class ProposalIndexerService {
 
     const { data, error } = await query
 
-    if (error) {
-      console.error('[ProposalIndexerService] listProposals error:', error.message)
-      return []
-    }
+    if (error) indexerError('[ProposalIndexerService] listProposals', error)
 
     return (data as Proposal[]) ?? []
   }
@@ -54,12 +52,9 @@ class ProposalIndexerService {
       .from('ds_proposals')
       .select('*')
       .eq('id', compositeId)
-      .single()
+      .maybeSingle()
 
-    if (error) {
-      console.error('[ProposalIndexerService] getProposal error:', error.message)
-      return null
-    }
+    if (error) indexerError('[ProposalIndexerService] getProposal', error)
 
     return (data as Proposal) ?? null
   }

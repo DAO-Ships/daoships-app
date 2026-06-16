@@ -13,7 +13,7 @@ import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { TokenAmount } from '@/components/common/TokenAmount'
 import { formatTokenAmount } from '@/utils/format'
 import { safeBigInt } from '@/utils/bigint'
-import { NETWORK_CONFIG, NATIVE_TOKEN_SENTINEL } from '@/config/contracts'
+import { NETWORK_CONFIG, NATIVE_TOKEN_SENTINEL, MAX_GUILD_TOKENS } from '@/config/contracts'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Treasury - Guild token balances, vault address, and member share estimate
@@ -56,10 +56,10 @@ export function Treasury() {
       <Card>
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <p className="text-sm text-dao-text-hint mb-1">Vault Address (Gnosis Safe)</p>
+            <p className="text-sm text-dao-text-hint mb-1">Vault Address (Quai Vault)</p>
             <AddressDisplay address={dao.avatar} />
           </div>
-          <a href={vaultUrl} target="_blank" rel="noopener noreferrer"
+          <a href={vaultUrl} target="_blank" rel="noopener noreferrer nofollow"
             className="text-sm text-primary-400 hover:text-primary-300 transition-colors">
             Open in QuaiVault
           </a>
@@ -128,7 +128,22 @@ export function Treasury() {
 
       {/* Guild token balances */}
       <section>
-        <h2 className="text-xl font-semibold text-dao-text mb-4">Guild Token Balances</h2>
+        <div className="flex items-baseline justify-between mb-4 gap-3 flex-wrap">
+          <h2 className="text-xl font-semibold text-dao-text">Guild Token Balances</h2>
+          {treasury && Array.isArray(treasury) && (
+            <span className="text-xs text-dao-text-hint">
+              {treasury.filter((t) => t.enabled).length} / {MAX_GUILD_TOKENS} enabled
+            </span>
+          )}
+        </div>
+        {treasury && Array.isArray(treasury) && treasury.filter((t) => t.enabled).length >= MAX_GUILD_TOKENS && (
+          <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
+            <p className="text-sm text-amber-400 font-medium">Guild token limit reached</p>
+            <p className="text-xs text-amber-400/80 mt-1">
+              This DAO has the maximum {MAX_GUILD_TOKENS} enabled guild tokens. Adding more will revert. Disable a token via governance to make room.
+            </p>
+          </div>
+        )}
 
         {isLoading ? (
           <Loading fullPage />
@@ -200,13 +215,17 @@ export function Treasury() {
       {/* Token contract addresses */}
       <Card header={<h2 className="text-sm font-semibold text-dao-text">Token Contracts</h2>}>
         <div className="space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-dao-text-hint">Shares Token</span>
-            <AddressDisplay address={dao.shares_address} />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-dao-text-hint truncate">Shares Token</span>
+            <div className="min-w-0">
+              <AddressDisplay address={dao.shares_address} />
+            </div>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-dao-text-hint">Loot Token</span>
-            <AddressDisplay address={dao.loot_address} />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-dao-text-hint truncate">Loot Token</span>
+            <div className="min-w-0">
+              <AddressDisplay address={dao.loot_address} />
+            </div>
           </div>
         </div>
       </Card>

@@ -106,7 +106,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
-        className={`relative w-full ${sizeClasses[size]} mx-4 max-h-[90vh] overflow-y-auto bg-dao-dark-3 border border-dao-border rounded-xl shadow-2xl ${className}`}
+        className={`relative w-full ${sizeClasses[size]} mx-4 max-h-[90vh] max-h-[90dvh] overflow-y-auto bg-dao-dark-3 border border-dao-border rounded-xl shadow-2xl ${className}`}
       >
         {/* Header */}
         {title && (
@@ -118,7 +118,7 @@ export function Modal({
               aria-label="Close"
               disabled={preventClose}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg aria-hidden="true" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -126,7 +126,7 @@ export function Modal({
         )}
 
         {/* Body */}
-        <div className="px-6 py-4">
+        <div className="px-4 sm:px-6 py-4">
           {children}
         </div>
       </div>

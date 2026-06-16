@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Control, FieldErrors } from 'react-hook-form'
 import { useController } from 'react-hook-form'
+import { DaoThemeEditor } from '@/components/dao/DaoThemeEditor'
+import type { DaoTheme } from '@/utils/daoTheme'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BasicInfoStep - Step 1: DAO name (required), optional profile, tokens
@@ -25,6 +27,8 @@ export interface LaunchFormValues {
   name: string
   description: string
   avatarUrl: string
+  bannerUrl: string
+  theme?: DaoTheme
   links: Record<string, string>
   shareTokenName: string
   shareTokenSymbol: string
@@ -89,6 +93,8 @@ export function BasicInfoStep({ control, errors }: BasicInfoStepProps) {
   const name = useController({ control, name: 'name' })
   const description = useController({ control, name: 'description' })
   const avatarUrl = useController({ control, name: 'avatarUrl' })
+  const bannerUrl = useController({ control, name: 'bannerUrl' })
+  const theme = useController({ control, name: 'theme' })
   const links = useController({ control, name: 'links' })
   const shareTokenName = useController({ control, name: 'shareTokenName' })
   const shareTokenSymbol = useController({ control, name: 'shareTokenSymbol' })
@@ -160,6 +166,7 @@ export function BasicInfoStep({ control, errors }: BasicInfoStepProps) {
             </p>
           </div>
           <svg
+            aria-hidden="true"
             className={`w-5 h-5 text-dao-text-hint transition-transform ${showOptionalProfile ? 'rotate-180' : ''}`}
             fill="none"
             viewBox="0 0 24 24"
@@ -206,13 +213,38 @@ export function BasicInfoStep({ control, errors }: BasicInfoStepProps) {
               </p>
             </div>
 
+            {/* Banner URL */}
+            <div>
+              <label htmlFor="launch-banner" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+                Banner URL
+              </label>
+              <input
+                id="launch-banner"
+                type="url"
+                {...bannerUrl.field}
+                placeholder="https://example.com/banner.png or ipfs://..."
+                className="input w-full"
+                maxLength={2048}
+              />
+              <p className="text-xs text-dao-text-hint mt-1">Wide image shown across the top of your DAO page</p>
+            </div>
+
+            {/* Color scheme */}
+            <div>
+              <h4 className="text-sm font-medium text-dao-text-secondary mb-3">Color Scheme</h4>
+              <DaoThemeEditor
+                value={theme.field.value || {}}
+                onChange={(t) => theme.field.onChange(Object.keys(t).length > 0 ? t : undefined)}
+              />
+            </div>
+
             {/* Links */}
             <div>
               <h4 className="text-sm font-medium text-dao-text-secondary mb-3">Links</h4>
               <div className="space-y-3">
                 {STANDARD_LINKS.map(({ key, label, placeholder }) => (
-                  <div key={key} className="grid grid-cols-[120px_1fr] gap-3 items-center">
-                    <label htmlFor={`link-${key}`} className="text-xs text-dao-text-muted text-right">
+                  <div key={key} className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-1 sm:gap-3 sm:items-center">
+                    <label htmlFor={`link-${key}`} className="text-xs text-dao-text-muted sm:text-right">
                       {label}
                     </label>
                     <input

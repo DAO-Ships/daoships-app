@@ -9,11 +9,12 @@ describe('isNewerRecord', () => {
     )).toBe(true)
   })
 
-  it('returns true when incoming has equal block_number', () => {
+  it('returns false when incoming has equal block_number', () => {
+    // Strict > comparison — equal records are not considered "newer"
     expect(isNewerRecord(
       { block_number: 100 },
       { block_number: 100 },
-    )).toBe(true)
+    )).toBe(false)
   })
 
   it('returns false when incoming has lower block_number', () => {
@@ -49,11 +50,12 @@ describe('isNewerRecord', () => {
     )).toBe(false)
   })
 
-  it('returns true when created_at timestamps are equal', () => {
+  it('returns false when created_at timestamps are equal', () => {
+    // Strict > comparison
     expect(isNewerRecord(
       { created_at: '2025-06-01T00:00:00Z' },
       { created_at: '2025-06-01T00:00:00Z' },
-    )).toBe(true)
+    )).toBe(false)
   })
 
   it('returns true when ordering cannot be determined (both empty)', () => {

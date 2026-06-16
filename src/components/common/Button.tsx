@@ -46,6 +46,7 @@ export function Button({
     >
       {loading && (
         <svg
+          aria-hidden="true"
           className="animate-spin h-4 w-4 flex-shrink-0"
           fill="none"
           viewBox="0 0 24 24"

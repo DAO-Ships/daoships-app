@@ -32,6 +32,7 @@ export enum ProposalType {
   GuildTokens = 'guildtokens',
   GovConfig = 'govconfig',
   Navigator = 'navigator',
+  NavigatorSanction = 'navigator-sanction',
   Profile = 'profile',
   Announcement = 'announcement',
   Custom = 'custom',
@@ -179,4 +180,68 @@ export function deriveProposalStatus(
   }
 
   return ProposalStatus.Ready
+}
+
+/**
+ * Resolve a proposal's effective expiration time (ms epoch), or null if it has none.
+ *
+ * Mirrors the contract's expiry rules:
+ *   - An explicit `expiration` timestamp always wins.
+ *   - Otherwise, once sponsored, the M-7 auto-expiry applies: `graceEnds + window`,
+ *     where window = `default_expiry_window` (if > 0) else `2 * (voting_period + grace_period)`.
+ *
+ * The auto-expiry only meaningfully applies to a passed proposal sitting in Ready
+ * state; callers decide whether to surface it based on the proposal's phase.
+ */
+export function getProposalExpiry(
+  proposal: Proposal,
+  daoConfig?: DaoExpiryConfig,
+): number | null {
+  if (proposal.expiration) {
+    const explicit = new Date(proposal.expiration).getTime()
+    return Number.isNaN(explicit) ? null : explicit
+  }
+  if (proposal.grace_ends && daoConfig) {
+    const graceEndsMs = new Date(proposal.grace_ends).getTime()
+    if (Number.isNaN(graceEndsMs)) return null
+    const windowSeconds = daoConfig.default_expiry_window > 0
+      ? daoConfig.default_expiry_window
+      : 2 * (daoConfig.voting_period + daoConfig.grace_period)
+    return graceEndsMs + windowSeconds * 1000
+  }
+  return null
+}
+
+/**
+ * Predict whether an unprocessed proposal is in the contract's "Ready" (passing)
+ * state — i.e. whether it must be processed with its original action bytes (true)
+ * or closed with empty `0x` as defeated (false).
+ *
+ * Mirrors the contract's `_didProposalPass()` EXACTLY — quorum then majority, both
+ * measured on yes_balance:
+ *   1. yes_balance >= quorum threshold (quorum_percent bps of max_total_shares_at_sponsor)
+ *   2. yes_balance > no_balance
+ *
+ * Min-retention is intentionally NOT checked here. The contract excludes it from the
+ * Ready/Defeated decision (`state()`/`_didProposalPass`); it applies only as a
+ * post-hash-check ragequit veto during processing, which can skip execution but never
+ * changes which data must be submitted. Including it here previously mispredicted
+ * defeat for passing proposals, so we sent `0x` and the contract reverted with
+ * HashMismatch (surfaced as "missing revert data").
+ */
+export function willProposalPass(
+  proposal: Proposal,
+  quorumPercent: string | bigint,
+): boolean {
+  const yes = BigInt(proposal.yes_balance || '0')
+  const no = BigInt(proposal.no_balance || '0')
+
+  const quorumBps = typeof quorumPercent === 'bigint' ? quorumPercent : BigInt(quorumPercent || '0')
+  if (quorumBps > 0n) {
+    const maxShares = BigInt(proposal.max_total_shares_at_sponsor || '0')
+    const quorumThreshold = (maxShares * quorumBps) / 10000n
+    if (yes < quorumThreshold) return false
+  }
+
+  return yes > no
 }

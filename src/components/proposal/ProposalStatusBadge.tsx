@@ -21,11 +21,11 @@ const STATUS_CONFIG: Record<ProposalStatus, { label: string; className: string }
   },
   [ProposalStatus.Ready]: {
     label: 'Ready',
-    className: 'bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30',
+    className: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
   },
   [ProposalStatus.Processed]: {
     label: 'Passed',
-    className: 'bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30',
+    className: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
   },
   [ProposalStatus.Defeated]: {
     label: 'Defeated',
@@ -37,7 +37,7 @@ const STATUS_CONFIG: Record<ProposalStatus, { label: string; className: string }
   },
   [ProposalStatus.Submitted]: {
     label: 'Submitted',
-    className: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30',
+    className: 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30',
   },
   [ProposalStatus.Expired]: {
     label: 'Expired',

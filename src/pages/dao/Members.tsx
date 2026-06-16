@@ -1,8 +1,10 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Dao, Member } from '@/types'
+import { extractDaoExpiryConfig } from '@/types'
+import { isAddress } from '@/services/utils/AddressUtils'
 import { useMembers } from '@/hooks/useMembers'
 import { useMember } from '@/hooks/useMember'
 import { useMemberProfile, useMemberProfiles } from '@/hooks/useMemberProfile'
@@ -16,7 +18,6 @@ import { useTreasury } from '@/hooks/useTreasury'
 import { useTreasuryBalances } from '@/hooks/useTreasuryBalances'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
-import { Loading } from '@/components/common/Loading'
 import { SkeletonMemberRow } from '@/components/common/Skeleton'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
@@ -31,6 +32,8 @@ import { Breadcrumb } from '@/components/common/Breadcrumb'
 import { useDebounce } from '@/hooks/useDebounce'
 
 type MembersTab = 'all' | 'delegates'
+
+const MEMBERS_PER_PAGE = 25
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Members - Member list with profiles, delegation and ragequit
@@ -73,7 +76,7 @@ function MemberRow({ member, profile, totalShares, sponsoredCount, isCurrentUser
               <AddressDisplay address={member.member_address} />
             )}
             {member.delegating_to && member.delegating_to.toLowerCase() !== member.member_address.toLowerCase() && (
-              <p className="text-[10px] text-dao-text-hint mt-0.5">
+              <p className="text-2xs text-dao-text-hint mt-0.5">
                 Delegating to <AddressDisplay address={member.delegating_to} showCopy={false} prefixLen={4} suffixLen={3} />
               </p>
             )}
@@ -88,7 +91,7 @@ function MemberRow({ member, profile, totalShares, sponsoredCount, isCurrentUser
         <TokenAmount amount={member.loot} />
       </td>
       <td className="text-right py-3 font-mono text-sm">
-        <TokenAmount amount={member.voting_power || '0'} />
+        <TokenAmount amount={member.voting_power || '0'} className="whitespace-nowrap" />
       </td>
       <td className="text-right py-3">
         <span className="font-mono text-accent-400 text-sm">{pct}%</span>
@@ -107,7 +110,7 @@ export function Members() {
   usePageTitle('Members', dao.name)
   const { connected, address } = useWallet()
   const { data: members, isLoading, error } = useMembers(dao.id)
-  const { data: currentMember, isLoading: memberLoading } = useMember(dao.id, address ?? undefined)
+  const { data: currentMember } = useMember(dao.id, address ?? undefined)
   const { data: profiles } = useMemberProfiles(dao.id)
   const { data: myProfile } = useMemberProfile(dao.id, address ?? undefined)
   const { delegate, isDelegating } = useDelegation(dao.id)
@@ -181,11 +184,8 @@ export function Members() {
       .sort((a, b) => Number(safeBigInt(b.member.voting_power) - safeBigInt(a.member.voting_power)))
   }, [members])
 
-  const daoConfig = useMemo(() => ({
-    voting_period: dao.voting_period,
-    grace_period: dao.grace_period,
-    default_expiry_window: dao.default_expiry_window,
-  }), [dao.voting_period, dao.grace_period, dao.default_expiry_window])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- extractDaoExpiryConfig reads only these three fields; depending on the whole `dao` over-recomputes on every poll
+  const daoConfig = useMemo(() => extractDaoExpiryConfig(dao), [dao.voting_period, dao.grace_period, dao.default_expiry_window])
 
   // Count sponsored proposals per member (lifetime total for display, active for delegation warning)
   const activeStatuses = useMemo(() => new Set([ProposalStatus.Voting, ProposalStatus.Grace, ProposalStatus.Ready]), [])
@@ -239,7 +239,7 @@ export function Members() {
     setDelegateError(null)
     // If it looks like an address, validate membership
     const trimmed = input.trim()
-    if (/^0x[0-9a-fA-F]{40}$/.test(trimmed)) {
+    if (isAddress(trimmed)) {
       const isMemberAddr = members?.some(
         (m) => m.member_address.toLowerCase() === trimmed.toLowerCase(),
       )
@@ -286,15 +286,28 @@ export function Members() {
       })
     }
     return [...filtered].sort((a, b) => {
-      if (memberSort === 'shares') return Number(safeBigInt(b.shares) - safeBigInt(a.shares))
+      if (memberSort === 'shares') {
+        const diff = safeBigInt(b.shares) - safeBigInt(a.shares)
+        return diff > 0n ? 1 : diff < 0n ? -1 : 0
+      }
       if (memberSort === 'sponsored') {
         const as = sponsoredCountMap.get(a.member_address.toLowerCase()) ?? 0
         const bs = sponsoredCountMap.get(b.member_address.toLowerCase()) ?? 0
         return bs - as
       }
-      return Number(safeBigInt(b.voting_power) - safeBigInt(a.voting_power))
+      const diff = safeBigInt(b.voting_power) - safeBigInt(a.voting_power)
+      return diff > 0n ? 1 : diff < 0n ? -1 : 0
     })
   }, [members, debouncedSearch, memberSort, profiles, sponsoredCountMap])
+
+  // Paginate the "all members" table so a large DAO doesn't mount thousands of rows.
+  const [memberPage, setMemberPage] = useState(1)
+  useEffect(() => { setMemberPage(1) }, [debouncedSearch, memberSort, activeTab])
+  const memberTotalPages = Math.max(1, Math.ceil(filteredSortedMembers.length / MEMBERS_PER_PAGE))
+  const paginatedMembers = useMemo(
+    () => filteredSortedMembers.slice((memberPage - 1) * MEMBERS_PER_PAGE, memberPage * MEMBERS_PER_PAGE),
+    [filteredSortedMembers, memberPage],
+  )
 
   return (
     <div className="space-y-6">
@@ -445,8 +458,8 @@ export function Members() {
             <p className="text-sm text-dao-text-muted mb-3">
               Burn shares/loot to withdraw proportional treasury tokens.
             </p>
-            <div className="flex items-center justify-between">
-              <div className="text-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-sm min-w-0">
                 <span className="text-dao-text-hint">Shares: </span>
                 <TokenAmount amount={currentMember.shares} />
                 <span className="text-dao-text-hint mx-2">|</span>
@@ -498,7 +511,7 @@ export function Members() {
       {activeTab === 'all' && members && members.length > 0 && (
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dao-text-hint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dao-text-hint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -539,7 +552,7 @@ export function Members() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="text-[10px] font-semibold text-dao-text-hint uppercase tracking-wider border-b border-dao-border">
+                  <tr className="text-2xs font-semibold text-dao-text-hint uppercase tracking-wider border-b border-dao-border">
                     <th className="text-left py-2 pr-4">Member</th>
                     <th className="hidden md:table-cell text-right py-2">Shares</th>
                     <th className="hidden md:table-cell text-right py-2">Loot</th>
@@ -549,7 +562,7 @@ export function Members() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSortedMembers.map((member) => (
+                  {paginatedMembers.map((member) => (
                     <MemberRow
                       key={member.id}
                       member={member}
@@ -562,6 +575,15 @@ export function Members() {
                 </tbody>
               </table>
             </div>
+            {memberTotalPages > 1 && (
+              <div className="flex items-center justify-center gap-4 pt-4 mt-3 border-t border-dao-border">
+                <button onClick={() => setMemberPage((p) => Math.max(1, p - 1))} disabled={memberPage === 1}
+                  className="btn-secondary px-4 py-2 text-sm disabled:opacity-50">Previous</button>
+                <span className="text-sm text-dao-text-muted">Page {memberPage} of {memberTotalPages}</span>
+                <button onClick={() => setMemberPage((p) => Math.min(memberTotalPages, p + 1))} disabled={memberPage === memberTotalPages}
+                  className="btn-secondary px-4 py-2 text-sm disabled:opacity-50">Next</button>
+              </div>
+            )}
           </Card>
         ) : (
           <EmptyState

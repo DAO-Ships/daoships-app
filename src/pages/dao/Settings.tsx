@@ -1,13 +1,16 @@
+import { useEffect, useState } from 'react'
 import { useOutletContext, Link } from 'react-router-dom'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao } from '@/types'
 import { extractDaoConfig } from '@/types/dao'
 import { Card } from '@/components/common/Card'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
+import { TimelockBypassWarning } from '@/components/dao/TimelockBypassWarning'
 import { formatDuration } from '@/utils/time'
-import { formatTokenAmount } from '@/utils/format'
+import { formatTokenAmount, bpsToPercent } from '@/utils/format'
 import { NETWORK_CONFIG } from '@/config/contracts'
 import { safeBigInt } from '@/utils/bigint'
+import { daoService } from '@/services/DaoService'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Settings - Read-only governance configuration display
@@ -27,6 +30,22 @@ export function Settings() {
   const { dao } = useOutletContext<DaoContext>()
   usePageTitle('Settings', dao.name)
   const config = extractDaoConfig(dao)
+
+  // Defense-in-depth: if the indexed value is 0, read from the contract directly.
+  // Covers DAOs launched before the indexer fix and brief post-launch indexer lag.
+  const [onChainExpiryWindow, setOnChainExpiryWindow] = useState<number | null>(null)
+  useEffect(() => {
+    if (!dao.id) return
+    if (config.default_expiry_window > 0) return
+    let cancelled = false
+    daoService.getDefaultExpiryWindow(dao.id)
+      .then((seconds) => { if (!cancelled && seconds > 0) setOnChainExpiryWindow(seconds) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [dao.id, config.default_expiry_window])
+  const effectiveExpiryWindow = config.default_expiry_window > 0
+    ? Number(config.default_expiry_window)
+    : (onChainExpiryWindow ?? 0)
 
   const configRows: ConfigRow[] = [
     {
@@ -49,7 +68,7 @@ export function Settings() {
     },
     {
       label: 'Quorum Percent',
-      value: `${(Number(config.quorum_percent) / 100).toFixed(1)}%`,
+      value: `${bpsToPercent(config.quorum_percent).toFixed(1)}%`,
       description:
         'The minimum percentage of total shares that must vote "yes" for a proposal to pass.',
     },
@@ -61,14 +80,14 @@ export function Settings() {
     },
     {
       label: 'Min Retention Percent',
-      value: `${(Number(config.min_retention_percent) / 100).toFixed(1)}%`,
+      value: `${bpsToPercent(config.min_retention_percent).toFixed(1)}%`,
       description:
         'The minimum percentage of shares that must remain after ragequit for a proposal to be processable.',
     },
     {
       label: 'Default Expiry Window',
-      value: Number(config.default_expiry_window) > 0
-        ? formatDuration(Number(config.default_expiry_window))
+      value: effectiveExpiryWindow > 0
+        ? formatDuration(effectiveExpiryWindow)
         : '2x(voting+grace) fallback',
       description:
         'The default time window after which unsponsored proposals expire. 0 uses 2x(voting+grace) as fallback.',
@@ -87,6 +106,9 @@ export function Settings() {
       </nav>
 
       <h1 className="text-2xl font-bold font-display text-dao-text">Settings</h1>
+
+      {/* Timelock bypass trust signal (only renders if a change skipped the timelock) */}
+      <TimelockBypassWarning daoId={dao.id} />
 
       {/* Governance configuration */}
       <Card header={<h2 className="text-lg font-semibold text-dao-text">Governance Configuration</h2>}>
@@ -115,7 +137,7 @@ export function Settings() {
             <a
               href={`${NETWORK_CONFIG.quaiVaultUrl}/wallet/${dao.avatar}`}
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener noreferrer nofollow"
               className="text-primary-400 hover:text-primary-300 transition-colors"
             >
               <AddressDisplay address={dao.avatar} />

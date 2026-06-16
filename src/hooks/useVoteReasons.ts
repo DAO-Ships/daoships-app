@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { recordIndexerService } from '@/services/indexer/RecordIndexerService'
-import type { DaoRecord } from '@/types'
+import type { DaoRecord, TrustLevel } from '@/types'
 
 /**
  * Parsed vote reason from Poster content_json.
@@ -12,6 +12,8 @@ export interface VoteReason {
   vote?: boolean
   proposalId?: number
   createdAt: string
+  /** Indexer-assigned trust level at posting time. */
+  trustLevel?: TrustLevel
 }
 
 /**
@@ -25,6 +27,7 @@ function extractVoteReason(record: DaoRecord): VoteReason {
     vote: typeof json.vote === 'boolean' ? json.vote : undefined,
     proposalId: typeof json.proposalId === 'number' ? json.proposalId : undefined,
     createdAt: record.created_at,
+    trustLevel: record.trust_level,
   }
 }
 

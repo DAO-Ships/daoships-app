@@ -292,7 +292,8 @@ class SaltMiner {
   cancel(): void {
     if (this.worker) {
       this.worker.postMessage({ type: 'cancel' })
-      setTimeout(() => this.cleanup(), 100)
+      // Terminate immediately — the worker's cancel handler is best-effort
+      this.cleanup()
     }
   }
 

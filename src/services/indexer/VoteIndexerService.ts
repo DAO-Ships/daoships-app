@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { supabase } from '@/config/supabase'
+import { indexerError } from './indexerError'
 import type { Vote } from '@/types'
 
 class VoteIndexerService {
@@ -22,10 +23,7 @@ class VoteIndexerService {
       .eq('proposal_id', proposalCompositeId)
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('[VoteIndexerService] getProposalVotes error:', error.message)
-      return []
-    }
+    if (error) indexerError('[VoteIndexerService] getProposalVotes', error)
 
     return (data as Vote[]) ?? []
   }
@@ -46,10 +44,7 @@ class VoteIndexerService {
       .eq('voter', normalizedAddress)
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('[VoteIndexerService] getMemberVotes error:', error.message)
-      return []
-    }
+    if (error) indexerError('[VoteIndexerService] getMemberVotes', error)
 
     return (data as Vote[]) ?? []
   }

@@ -49,7 +49,7 @@ export function ProposalCard({ proposal, daoId }: ProposalCardProps) {
         {/* Vote counts */}
         <div className="flex items-center gap-4 text-sm mb-2">
           <div className="flex items-center gap-1.5">
-            <span className="text-green-400 font-medium">Yes:</span>
+            <span className="text-emerald-400 font-medium">Yes:</span>
             <span className="text-dao-text-secondary font-mono text-xs">
               {formatTokenAmount(yesBalance)}
             </span>

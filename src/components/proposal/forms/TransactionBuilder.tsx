@@ -4,7 +4,11 @@ import { quais } from 'quais'
 import { useContractInteraction, type FunctionInfo } from '@/hooks/useContractInteraction'
 import { useDebounce } from '@/hooks/useDebounce'
 import { baseService } from '@/services/core/BaseService'
+import { isAddress } from '@/services/utils/AddressUtils'
 import { formatTokenAmount } from '@/utils/format'
+import { decodeKnownCalldata } from '@/utils/knownCalldata'
+import { decodeVestingAction } from '@/utils/vestingProposals'
+import { VestingActionDetail } from '@/components/proposal/VestingActionDetail'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TransactionBuilder — Intent-based transaction row for custom action proposals
@@ -36,9 +40,16 @@ interface TransactionBuilderProps {
   knownTokens?: KnownToken[]
   collapsed?: boolean
   onToggle?: () => void
+  /** Prefilled action (e.g. a navigator deep-link) — seeds the row so the proposer can see/verify it. */
+  initialAction?: TransactionAction
 }
 
-const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/
+/** Pick the starting intent for a prefilled action. Deep-links always carry calldata → 'raw'. */
+function deriveInitialIntent(a?: TransactionAction): Intent {
+  if (a && isAddress(a.to) && a.data && a.data !== '0x') return 'raw'
+  return null
+}
+
 
 const INTENT_LABELS: Record<string, string> = {
   send: 'Send QUAI',
@@ -50,10 +61,12 @@ const INTENT_LABELS: Record<string, string> = {
 export function TransactionBuilder({
   index, onChange, onRemove, disabled = false,
   vaultAddress, vaultQuaiBalance, knownTokens = [],
-  collapsed = false, onToggle,
+  collapsed = false, onToggle, initialAction,
 }: TransactionBuilderProps) {
-  const [intent, setIntent] = useState<Intent>(null)
-  const [action, setAction] = useState<TransactionAction>({ ...EMPTY_ACTION })
+  const [intent, setIntent] = useState<Intent>(() => deriveInitialIntent(initialAction))
+  const [action, setAction] = useState<TransactionAction>(
+    initialAction && isAddress(initialAction.to) ? { ...initialAction } : { ...EMPTY_ACTION },
+  )
 
   // Wrap onChange to also track locally for summary display
   const handleChange = useCallback((i: number, a: TransactionAction) => {
@@ -61,7 +74,7 @@ export function TransactionBuilder({
     onChange(i, a)
   }, [onChange])
 
-  const isConfigured = intent !== null && ADDRESS_REGEX.test(action.to)
+  const isConfigured = intent !== null && isAddress(action.to)
 
   // Build summary for collapsed view
   const summary = useMemo(() => {
@@ -75,6 +88,10 @@ export function TransactionBuilder({
     if (intent === 'token') {
       return `${label} → ${addr}`
     }
+    // For contract/raw, prefer a decoded function name or the carried summary over the bare label.
+    const decodedName = decodeKnownCalldata(action.data)?.name
+    if (decodedName) return `${decodedName}() on ${addr}`
+    if (action.summary) return `${action.summary} → ${addr}`
     if (intent === 'contract') {
       return `${label} on ${addr}`
     }
@@ -91,7 +108,7 @@ export function TransactionBuilder({
       {isCollapsed && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
-            <svg className="w-3.5 h-3.5 text-dao-text-hint flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg aria-hidden="true" className="w-3.5 h-3.5 text-dao-text-hint flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
             <span className="text-xs font-medium text-dao-text-muted">#{index + 1}</span>
@@ -100,7 +117,7 @@ export function TransactionBuilder({
           </div>
           <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(index) }}
             disabled={disabled} className="text-dao-text-hint hover:text-red-400 transition-colors flex-shrink-0 ml-2" title="Remove action">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg aria-hidden="true" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -113,26 +130,26 @@ export function TransactionBuilder({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {onToggle && isConfigured && (
-              <button type="button" onClick={onToggle} className="text-dao-text-hint hover:text-primary-400 transition-colors">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <button type="button" onClick={onToggle} aria-label="Collapse action" className="text-dao-text-hint hover:text-primary-400 transition-colors">
+                <svg aria-hidden="true" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
             )}
             <p className="text-sm font-semibold text-dao-text">Action #{index + 1}</p>
             {intent && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">{INTENT_LABELS[intent]}</span>
+              <span className="text-2xs px-2 py-0.5 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">{INTENT_LABELS[intent]}</span>
             )}
             {intent && (
               <button type="button" onClick={() => setIntent(null)}
-                className="text-[10px] text-dao-text-hint hover:text-primary-400 transition-colors">
+                className="text-2xs text-dao-text-hint hover:text-primary-400 transition-colors">
                 Change
               </button>
             )}
           </div>
           <button type="button" onClick={() => onRemove(index)} disabled={disabled}
             className="text-dao-text-hint hover:text-red-400 transition-colors" title="Remove action">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -154,7 +171,7 @@ export function TransactionBuilder({
           <ContractCallFields index={index} onChange={handleChange} disabled={disabled} vaultAddress={vaultAddress} knownTokens={knownTokens} vaultQuaiBalance={vaultQuaiBalance} />
         )}
         {intent === 'raw' && (
-          <RawTransactionFields index={index} onChange={handleChange} disabled={disabled} />
+          <RawTransactionFields index={index} onChange={handleChange} disabled={disabled} initial={initialAction} />
         )}
       </div>
     </div>
@@ -210,18 +227,18 @@ function IntentPicker({ onSelect, knownTokens, disabled }: {
           disabled={disabled}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-dao-surface border border-transparent hover:border-dao-border"
         >
-          <svg className="w-5 h-5 text-primary-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <svg aria-hidden="true" className="w-5 h-5 text-primary-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
           </svg>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-dao-text">
               {item.label}
-              {item.advanced && <span className="text-[10px] text-dao-text-hint ml-2">Advanced</span>}
+              {item.advanced && <span className="text-2xs text-dao-text-hint ml-2">Advanced</span>}
             </p>
             <p className="text-xs text-dao-text-hint">{item.description}</p>
           </div>
           {item.key === 'token' && knownTokens.length > 0 && (
-            <span className="text-[10px] text-dao-text-hint flex-shrink-0">{knownTokens.length} tokens</span>
+            <span className="text-2xs text-dao-text-hint flex-shrink-0">{knownTokens.length} tokens</span>
           )}
         </button>
       ))}
@@ -246,7 +263,7 @@ function SendQuaiFields({ index, onChange, disabled, vaultQuaiBalance }: {
 
   const lastEmitted = useRef('')
   useEffect(() => {
-    if (!ADDRESS_REGEX.test(recipient)) return
+    if (!isAddress(recipient)) return
     const key = `${recipient}|${amountWei}`
     if (key === lastEmitted.current) return
     lastEmitted.current = key
@@ -266,7 +283,7 @@ function SendQuaiFields({ index, onChange, disabled, vaultQuaiBalance }: {
           onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setAmount(e.target.value) }}
           placeholder="0.0" className="input w-full font-mono text-sm" disabled={disabled} />
         {vaultQuaiBalance != null && (
-          <p className="text-[10px] text-dao-text-hint mt-1">
+          <p className="text-2xs text-dao-text-hint mt-1">
             Vault balance: <span className="font-mono text-primary-400">{formatTokenAmount(vaultQuaiBalance)} QUAI</span>
           </p>
         )}
@@ -291,7 +308,7 @@ function TransferTokenFields({ index, onChange, disabled, vaultAddress, knownTok
   const effectiveToken = isCustom ? customToken : tokenAddress
 
   const debouncedToken = useDebounce(effectiveToken, 500)
-  const isValidToken = ADDRESS_REGEX.test(debouncedToken)
+  const isValidToken = isAddress(debouncedToken)
   const hasProvider = baseService.hasProvider()
 
   // Fetch token metadata for decimals + symbol
@@ -303,7 +320,7 @@ function TransferTokenFields({ index, onChange, disabled, vaultAddress, knownTok
         'function symbol() view returns (string)',
         'function decimals() view returns (uint8)',
       ], provider)
-      const [sym, dec] = await Promise.all([c.symbol() as Promise<string>, c.decimals().then((d: any) => Number(d))])
+      const [sym, dec] = await Promise.all([c.symbol() as Promise<string>, c.decimals().then((d: unknown) => Number(d))])
       return { symbol: sym, decimals: dec }
     },
     enabled: isValidToken && hasProvider,
@@ -330,7 +347,7 @@ function TransferTokenFields({ index, onChange, disabled, vaultAddress, knownTok
 
   // Encode the transfer(address, uint256) calldata
   const encodedData = useMemo(() => {
-    if (!ADDRESS_REGEX.test(recipient) || !amount || !isValidToken) return null
+    if (!isAddress(recipient) || !amount || !isValidToken) return null
     try {
       const iface = new quais.Interface(['function transfer(address to, uint256 amount)'])
       const rawAmount = quais.parseUnits(amount, decimals).toString()
@@ -379,7 +396,7 @@ function TransferTokenFields({ index, onChange, disabled, vaultAddress, knownTok
       {/* Vault token balance */}
       {vaultTokenBal != null && (
         <div className="flex items-center gap-2 bg-dao-dark-3/50 rounded px-3 py-1.5">
-          <span className="text-[10px] text-dao-text-hint">Vault balance:</span>
+          <span className="text-2xs text-dao-text-hint">Vault balance:</span>
           <span className="text-xs font-mono text-primary-400">
             {formatTokenAmount(vaultTokenBal, decimals)} {symbol}
           </span>
@@ -403,7 +420,7 @@ function TransferTokenFields({ index, onChange, disabled, vaultAddress, knownTok
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-dao-text-hint">{symbol}</span>
         </div>
         {amount && (
-          <p className="text-[10px] text-dao-text-hint mt-0.5 font-mono">
+          <p className="text-2xs text-dao-text-hint mt-0.5 font-mono">
             {(() => { try { return quais.parseUnits(amount, decimals).toString() } catch { return '—' } })()} raw units
           </p>
         )}
@@ -431,7 +448,7 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
   const [pasteAbiError, setPasteAbiError] = useState<string | null>(null)
 
   const debouncedTarget = useDebounce(target, 500)
-  const isValidTarget = ADDRESS_REGEX.test(debouncedTarget)
+  const isValidTarget = isAddress(debouncedTarget)
   const hasProvider = baseService.hasProvider()
 
   const {
@@ -452,7 +469,7 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
         ], provider)
         const [bal, dec, sym] = await Promise.all([
           contract.balanceOf(vaultAddress!) as Promise<bigint>,
-          contract.decimals().then((d: any) => Number(d)),
+          contract.decimals().then((d: unknown) => Number(d)),
           contract.symbol() as Promise<string>,
         ])
         return { balance: BigInt(bal), decimals: dec, symbol: sym }
@@ -484,7 +501,7 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
       }
       return encoded
     } catch (e) { setEncodingError(e instanceof Error ? e.message : 'Encoding failed'); return null }
-  }, [selectedFn, argValues, abi])
+  }, [selectedFn, argValues, abi, isErc20, tokenMetadata])
 
   const finalData = selectedFn ? (encodedData ?? '0x') : '0x'
   const valueWei = useMemo(() => {
@@ -519,7 +536,7 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
       {/* Quick select guild tokens */}
       {knownTokens.length > 0 && !target && (
         <div>
-          <p className="text-[10px] font-medium text-dao-text-hint uppercase tracking-wider mb-1.5">Quick Select — Guild Tokens</p>
+          <p className="text-2xs font-medium text-dao-text-hint uppercase tracking-wider mb-1.5">Quick Select — Guild Tokens</p>
           <div className="flex flex-wrap gap-1.5">
             {knownTokens.map((t) => (
               <button key={t.address} type="button" onClick={() => setTarget(t.address)} disabled={disabled}
@@ -549,7 +566,7 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
       {/* Vault ERC-20 balance */}
       {vaultBalance && (
         <div className="flex items-center gap-2 bg-dao-dark-3/50 rounded px-3 py-1.5">
-          <span className="text-[10px] text-dao-text-hint">Vault balance:</span>
+          <span className="text-2xs text-dao-text-hint">Vault balance:</span>
           <span className="text-xs font-mono text-primary-400">
             {formatTokenAmount(BigInt(vaultBalance.balance), Number(vaultBalance.decimals))} {vaultBalance.symbol}
           </span>
@@ -559,11 +576,11 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
       {/* ABI source */}
       {isContract && abi && abiSource && (
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">
+          <span className="text-2xs font-medium px-2 py-0.5 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">
             ABI from {abiSource === 'manual' ? 'manual paste' : abiSource.toUpperCase()}
           </span>
           {hasManualAbi && (
-            <button type="button" onClick={clearManualAbi} className="text-[10px] text-dao-text-hint hover:text-red-400">Clear</button>
+            <button type="button" onClick={clearManualAbi} className="text-2xs text-dao-text-hint hover:text-red-400">Clear</button>
           )}
         </div>
       )}
@@ -637,7 +654,7 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-dao-text-hint">{tokenMetadata.symbol}</span>
                       </div>
                       {argValues[i] && (
-                        <p className="text-[10px] text-dao-text-hint mt-0.5 font-mono">
+                        <p className="text-2xs text-dao-text-hint mt-0.5 font-mono">
                           {(() => { try { return quais.parseUnits(argValues[i], tokenMetadata.decimals).toString() } catch { return '—' } })()} raw units
                         </p>
                       )}
@@ -651,17 +668,17 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
             </div>
           )}
 
-          {selectedFn && <p className="text-[10px] font-mono text-dao-text-hint">Selector: {selectedFn.selector}</p>}
+          {selectedFn && <p className="text-2xs font-mono text-dao-text-hint">Selector: {selectedFn.selector}</p>}
           {encodingError && <p className="text-xs text-red-400">{encodingError}</p>}
 
           {encodedData && (
             <div>
               <button type="button" onClick={() => setShowRawData(!showRawData)}
-                className="text-[10px] text-dao-text-hint hover:text-primary-400 transition-colors">
+                className="text-2xs text-dao-text-hint hover:text-primary-400 transition-colors">
                 {showRawData ? 'Hide' : 'Show'} encoded calldata
               </button>
               {showRawData && (
-                <pre className="mt-1 text-[10px] font-mono text-dao-text-hint bg-dao-dark-3 rounded p-2 break-all whitespace-pre-wrap max-h-32 overflow-y-auto">
+                <pre className="mt-1 text-2xs font-mono text-dao-text-hint bg-dao-dark-3 rounded p-2 break-all whitespace-pre-wrap max-h-32 overflow-y-auto">
                   {encodedData}
                 </pre>
               )}
@@ -678,14 +695,14 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
             onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setValue(e.target.value) }}
             placeholder="0" className="input w-full font-mono text-sm" disabled={disabled} />
           {vaultQuaiBalance != null && (
-            <p className="text-[10px] text-dao-text-hint mt-1">
+            <p className="text-2xs text-dao-text-hint mt-1">
               Vault balance: <span className="font-mono text-primary-400">{formatTokenAmount(vaultQuaiBalance)} QUAI</span>
             </p>
           )}
         </div>
       )}
       {selectedFn && !selectedFn.payable && (
-        <p className="text-[10px] text-dao-text-hint">This function is non-payable — no QUAI will be sent.</p>
+        <p className="text-2xs text-dao-text-hint">This function is non-payable — no QUAI will be sent.</p>
       )}
     </div>
   )
@@ -695,29 +712,69 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
 // RawTransactionFields — Manual target + value + calldata
 // ═══════════════════════════════════════════════════════════════════════════
 
-function RawTransactionFields({ index, onChange, disabled }: {
+function RawTransactionFields({ index, onChange, disabled, initial }: {
   index: number; onChange: TransactionBuilderProps['onChange']; disabled: boolean
+  initial?: TransactionAction
 }) {
-  const [target, setTarget] = useState('')
-  const [value, setValue] = useState('')
-  const [calldata, setCalldata] = useState('0x')
+  const [target, setTarget] = useState(initial?.to ?? '')
+  const [value, setValue] = useState(() => {
+    try { return initial && initial.value && initial.value !== '0' ? quais.formatQuai(BigInt(initial.value)) : '' } catch { return '' }
+  })
+  const [calldata, setCalldata] = useState(initial?.data ?? '0x')
 
   const valueWei = useMemo(() => {
     if (!value) return '0'
     try { return quais.parseQuai(value).toString() } catch { return '0' }
   }, [value])
 
+  // Decode the calldata against the app's known deep-link signatures, so a prefilled action shows
+  // what it actually does (e.g. enableModule(0xNavigator…)) rather than just a hex blob.
+  const decoded = useMemo(() => decodeKnownCalldata(calldata), [calldata])
+  // Vesting schedules get a plain-language preview so the proposer can verify exactly
+  // who vests how much, the cliff, and the duration before submitting.
+  const vesting = useMemo(() => decodeVestingAction(calldata), [calldata])
+
   const lastEmitted = useRef('')
   useEffect(() => {
-    if (!ADDRESS_REGEX.test(target)) return
+    if (!isAddress(target)) return
     const key = `${target}|${valueWei}|${calldata}`
     if (key === lastEmitted.current) return
     lastEmitted.current = key
-    onChange(index, { to: target, value: valueWei, data: calldata, summary: 'Raw transaction' })
-  }, [target, valueWei, calldata, index, onChange])
+    const summary = decoded ? `${decoded.name}()` : (initial?.summary ?? 'Raw transaction')
+    onChange(index, { to: target, value: valueWei, data: calldata, summary })
+  }, [target, valueWei, calldata, decoded, initial, index, onChange])
 
   return (
     <div className="space-y-3">
+      {/* Vesting schedule — plain-language preview */}
+      {vesting && (
+        <div className="bg-dao-dark-3/50 rounded-lg px-3 py-2">
+          <p className="text-2xs font-medium text-dao-text-hint uppercase tracking-wider">
+            {vesting.kind === 'revoke' ? 'This transaction revokes' : 'This transaction creates'}
+          </p>
+          <VestingActionDetail action={vesting} />
+        </div>
+      )}
+
+      {/* Decoded preview — what this transaction actually calls */}
+      {!vesting && decoded && (
+        <div className="bg-dao-dark-3/50 rounded-lg px-3 py-2 space-y-1">
+          <p className="text-2xs font-medium text-dao-text-hint uppercase tracking-wider">This transaction calls</p>
+          <p className="text-sm font-medium text-dao-text-secondary font-mono break-all">{decoded.name}()</p>
+          {initial?.summary && <p className="text-xs text-dao-text-muted">{initial.summary}</p>}
+          {decoded.args.length > 0 && (
+            <div className="space-y-0.5 pl-2 border-l-2 border-dao-border/50">
+              {decoded.args.map((arg, i) => (
+                <div key={i} className="flex items-baseline gap-1.5 text-xs">
+                  <span className="text-dao-text-hint">{arg.name}</span>
+                  <span className="text-2xs text-dao-text-hint/60">({arg.type})</span>
+                  <span className="font-mono text-dao-text-secondary break-all">{arg.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div>
         <label className="block text-xs font-medium text-dao-text-hint mb-1">Target Address</label>
         <input type="text" value={target} onChange={(e) => setTarget(e.target.value)}
@@ -749,7 +806,7 @@ function isTokenAmountParam(name: string, type: string, fnName: string): boolean
   return false
 }
 
-function coerceValue(raw: string, type: string): any {
+function coerceValue(raw: string, type: string): unknown {
   if (type === 'bool') return raw === 'true'
   if (type.startsWith('tuple') || type.endsWith('[]')) {
     try { return JSON.parse(raw) } catch { return raw }

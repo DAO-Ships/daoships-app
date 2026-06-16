@@ -1,7 +1,9 @@
 import type { Member } from '@/types'
 import type { MemberProfile } from '@/hooks/useMemberProfile'
 import { MemberAvatar } from './MemberAvatar'
+import { SafeMarkdown } from '@/components/common/SafeMarkdown'
 import { formatTokenAmount } from '@/utils/format'
+import { formatIndexerDate } from '@/utils/time'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MemberCard - Member address/profile, shares, loot, voting power
@@ -45,7 +47,9 @@ export function MemberCard({ member, daoId: _daoId, profile }: MemberCardProps) 
 
             {/* Bio snippet */}
             {profile?.bio && (
-              <p className="text-xs text-dao-text-muted mt-0.5 line-clamp-1">{profile.bio}</p>
+              <p className="text-xs text-dao-text-muted mt-0.5 line-clamp-1">
+                <SafeMarkdown>{profile.bio}</SafeMarkdown>
+              </p>
             )}
 
             {/* Delegation info */}
@@ -86,7 +90,7 @@ export function MemberCard({ member, daoId: _daoId, profile }: MemberCardProps) 
       {/* Activity info */}
       {member.last_activity_at && (
         <p className="text-xs text-dao-text-hint mt-2">
-          Last active: {new Date(member.last_activity_at).toLocaleDateString()}
+          Last active: {formatIndexerDate(member.last_activity_at)}
         </p>
       )}
     </div>

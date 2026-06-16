@@ -3,13 +3,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { z } from 'zod'
+import { isAddress } from '@/services/utils/AddressUtils'
 
 // ── Shared field patterns ─────────────────────────────────────────────────
 
-/** Ethereum / Quai 0x-prefixed address */
+/** Ethereum / Quai 0x-prefixed address (format + EIP-55 checksum, via quais) */
 const addressField = z
   .string()
-  .regex(/^0x[0-9a-fA-F]{40}$/, 'Must be a valid 42-character hex address')
+  .refine(isAddress, 'Must be a valid address')
 
 /** Positive BigInt-compatible string with optional upper bound */
 const bigintString = z

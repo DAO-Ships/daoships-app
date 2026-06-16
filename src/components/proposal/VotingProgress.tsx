@@ -40,9 +40,9 @@ export function VotingProgress({
       {/* Vote count labels */}
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-sm bg-green-500" />
+          <span className="w-3 h-3 rounded-sm bg-emerald-500" />
           <span className="text-dao-text-secondary">
-            Yes: <span className="font-mono text-green-400">{formatTokenAmount(yesBalance)}</span>
+            Yes: <span className="font-mono text-emerald-400">{formatTokenAmount(yesBalance)}</span>
             <span className="text-dao-text-hint ml-1">({yesPercent.toFixed(1)}%)</span>
           </span>
         </div>
@@ -60,7 +60,7 @@ export function VotingProgress({
         {totalVoted > 0n ? (
           <>
             <div
-              className="absolute inset-y-0 left-0 bg-green-500 transition-all duration-500"
+              className="absolute inset-y-0 left-0 bg-emerald-500 transition-all duration-500"
               style={{ width: `${yesPercent}%` }}
             />
             <div
@@ -77,11 +77,11 @@ export function VotingProgress({
         {/* Quorum indicator line */}
         {quorumThreshold > 0 && (
           <div
-            className="absolute inset-y-0 w-0.5 bg-yellow-400 z-10"
+            className="absolute inset-y-0 w-0.5 bg-amber-400 z-10"
             style={{ left: `${Math.min(quorumThreshold, 100)}%` }}
             title={`Quorum: ${quorumThreshold}%`}
           >
-            <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] text-yellow-400 whitespace-nowrap">
+            <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-2xs text-amber-400 whitespace-nowrap">
               Q
             </div>
           </div>
@@ -90,7 +90,7 @@ export function VotingProgress({
 
       {/* Quorum status */}
       <div className="flex items-center justify-between text-xs">
-        <span className={quorumMet ? 'text-green-400' : 'text-yellow-400'}>
+        <span className={quorumMet ? 'text-emerald-400' : 'text-amber-400'}>
           Quorum: {currentQuorum.toFixed(1)}% / {quorumThreshold}%
           {quorumMet ? ' (met)' : ' (not met)'}
         </span>

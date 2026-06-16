@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { NAVIGATOR_CATALOG, getGroupedCatalog } from '@/config/navigatorCatalog'
-import type { NavigatorCatalogEntry } from '@/config/navigatorCatalog'
 
 describe('NAVIGATOR_CATALOG', () => {
   it('all entries have required fields', () => {
@@ -35,9 +34,26 @@ describe('NAVIGATOR_CATALOG', () => {
     }
   })
 
+  it('single-permission labels match the bitmask (ADMIN=1, MANAGER=2, GOVERNOR=4)', () => {
+    // Guards against the Timelock/Oracle bug where GOVERNOR was set to 3 (ADMIN|MANAGER).
+    const LABEL_BIT: Record<string, number> = { ADMIN: 1, MANAGER: 2, GOVERNOR: 4 }
+    for (const entry of NAVIGATOR_CATALOG) {
+      const bit = LABEL_BIT[entry.permissionLabel]
+      if (bit === undefined) continue // 'None' / 'Vault Module' are not single-permission labels
+      expect(entry.permission).toBe(bit)
+    }
+  })
+
   it('has at least 2 shipped navigators', () => {
     const shipped = NAVIGATOR_CATALOG.filter((e) => e.status === 'shipped')
     expect(shipped.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('SignalNavigator is shipped and read-only (no permission)', () => {
+    const signal = NAVIGATOR_CATALOG.find((e) => e.type === 'SignalNavigator')
+    expect(signal).toBeDefined()
+    expect(signal?.status).toBe('shipped')
+    expect(signal?.permission).toBe(0)
   })
 
   it('every entry has a non-empty icon path', () => {

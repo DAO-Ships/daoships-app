@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isValidUrl, resolveUrl, safeHref } from '@/utils/url'
+import { isValidUrl, resolveUrl, safeHref, resolveIpfsMedia } from '@/utils/url'
 
 describe('isValidUrl', () => {
   it('accepts https URLs', () => {
@@ -61,12 +61,13 @@ describe('isValidUrl', () => {
 describe('resolveUrl', () => {
   it('converts ipfs:// to gateway URL', () => {
     const result = resolveUrl('ipfs://QmTest123abc')
-    expect(result).toBe('https://gateway.pinata.cloud/ipfs/QmTest123abc')
+    // Gateway comes from VITE_IPFS_GATEWAY env — shape matters, exact host may vary
+    expect(result).toMatch(/^https?:\/\/.+\/ipfs\/QmTest123abc$/)
   })
 
   it('handles case-insensitive ipfs scheme', () => {
     const result = resolveUrl('IPFS://QmTest123abc')
-    expect(result).toBe('https://gateway.pinata.cloud/ipfs/QmTest123abc')
+    expect(result).toMatch(/^https?:\/\/.+\/ipfs\/QmTest123abc$/)
   })
 
   it('returns https URLs as-is', () => {
@@ -163,5 +164,37 @@ describe('resolveUrl IPFS sanitization', () => {
     expect(result).not.toBeNull()
     expect(result).toContain('QmValidCid123')
     expect(result).toMatch(/^https?:\/\//)
+  })
+})
+
+describe('resolveIpfsMedia', () => {
+  it('resolves ipfs:// to the ipfs.io gateway', () => {
+    expect(resolveIpfsMedia('ipfs://QmValidCid123')).toBe('https://ipfs.io/ipfs/QmValidCid123')
+  })
+
+  it('handles the redundant ipfs://ipfs/<cid> form', () => {
+    expect(resolveIpfsMedia('ipfs://ipfs/QmValidCid123')).toBe('https://ipfs.io/ipfs/QmValidCid123')
+  })
+
+  it('preserves a subpath after the CID', () => {
+    expect(resolveIpfsMedia('ipfs://QmCid/images/1.png')).toBe('https://ipfs.io/ipfs/QmCid/images/1.png')
+  })
+
+  it('passes through http(s) URLs unchanged', () => {
+    expect(resolveIpfsMedia('https://example.com/a.png')).toBe('https://example.com/a.png')
+    expect(resolveIpfsMedia('http://example.com/a.png')).toBe('http://example.com/a.png')
+  })
+
+  it('blocks path traversal and empty/invalid CIDs', () => {
+    expect(resolveIpfsMedia('ipfs://../../etc/passwd')).toBeNull()
+    expect(resolveIpfsMedia('ipfs://%2e%2e/etc')).toBeNull()
+    expect(resolveIpfsMedia('ipfs://')).toBeNull()
+  })
+
+  it('rejects unsupported schemes (data:, javascript:, empty)', () => {
+    expect(resolveIpfsMedia('data:image/png;base64,AAAA')).toBeNull()
+    expect(resolveIpfsMedia('javascript:alert(1)')).toBeNull()
+    expect(resolveIpfsMedia('')).toBeNull()
+    expect(resolveIpfsMedia(null)).toBeNull()
   })
 })

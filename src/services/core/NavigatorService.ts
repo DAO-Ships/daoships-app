@@ -1,8 +1,15 @@
 import { quais } from 'quais'
 import { baseService } from './BaseService.ts'
+import { NETWORK_CONFIG } from '@/config/contracts'
 import OnboarderNavigatorABI from '@/config/abi/OnboarderNavigator.json'
 import ERC20TributeNavigatorABI from '@/config/abi/ERC20TributeNavigator.json'
-import SharesERC20ABI from '@/config/abi/SharesERC20.json'
+import NFTGatedNavigatorABI from '@/config/abi/NFTGatedNavigator.json'
+import SignalNavigatorABI from '@/config/abi/SignalNavigator.json'
+import BudgetNavigatorABI from '@/config/abi/BudgetNavigator.json'
+import VestingNavigatorABI from '@/config/abi/VestingNavigator.json'
+import TimelockNavigatorABI from '@/config/abi/TimelockNavigator.json'
+import SubscriptionNavigatorABI from '@/config/abi/SubscriptionNavigator.json'
+import QuaiVaultJson from '@/config/abi/QuaiVault.json'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NavigatorService - Navigator contract interactions
@@ -10,11 +17,26 @@ import SharesERC20ABI from '@/config/abi/SharesERC20.json'
 
 // ─── Type discriminator ──────────────────────────────────────────────────
 
-export type NavigatorType = 'OnboarderNavigator' | 'ERC20TributeNavigator' | 'unknown'
+export type NavigatorType =
+  | 'OnboarderNavigator'
+  | 'ERC20TributeNavigator'
+  | 'NFTGatedNavigator'
+  | 'SignalNavigator'
+  | 'BudgetNavigator'
+  | 'VestingNavigator'
+  | 'TimelockNavigator'
+  | 'SubscriptionNavigator'
+  | 'unknown'
 
 export type NavigatorConfigResult =
   | { type: 'OnboarderNavigator'; config: OnboarderNavigatorConfig }
   | { type: 'ERC20TributeNavigator'; config: ERC20TributeNavigatorConfig }
+  | { type: 'NFTGatedNavigator'; config: NFTGatedNavigatorConfig }
+  | { type: 'SignalNavigator'; config: SignalNavigatorConfig }
+  | { type: 'BudgetNavigator'; config: BudgetNavigatorConfig }
+  | { type: 'VestingNavigator'; config: VestingNavigatorConfig }
+  | { type: 'TimelockNavigator'; config: TimelockNavigatorConfig }
+  | { type: 'SubscriptionNavigator'; config: SubscriptionNavigatorConfig }
   | { type: 'unknown'; config: null }
 
 // ─── OnboarderNavigator config ───────────────────────────────────────────
@@ -56,6 +78,120 @@ export interface ERC20TributeNavigatorConfig {
   navigatorType: string
 }
 
+// ─── NFTGatedNavigator config ────────────────────────────────────────────
+
+export interface NFTGatedNavigatorConfig {
+  /** The gated ERC-721 collection address (untrusted external contract). */
+  gateToken: string
+  /** Shares minted per claim (raw wei; 1e18 = 1 whole share). */
+  sharesPerHolder: bigint
+  /** Loot minted per claim (raw wei). */
+  lootPerHolder: bigint
+  /** When true, the exact `tributeAmount` (wei) must be sent with onboard. */
+  requireTribute: boolean
+  /** Exact native tribute required per claim, in wei (0 in free-mint mode). */
+  tributeAmount: bigint
+  expiry: bigint
+  mintCap: bigint
+  perAddressCap: bigint
+  allowlistRoot: string
+  totalMinted: bigint
+  paused: boolean
+  navigatorType: string
+}
+
+// ─── SignalNavigator config ──────────────────────────────────────────────
+
+export interface SignalNavigatorConfig {
+  /** Minimum voting power (wei) required to open a poll; 0 = anyone with any power. */
+  minSharesToCreatePoll: bigint
+  /** Poll duration bounds, in seconds. */
+  minDuration: bigint
+  maxDuration: bigint
+  /** Max scheduling lead time, in seconds; 0 = immediate-only (no scheduling). */
+  maxStartDelay: bigint
+  /** Number of polls created so far (next pollId === pollCount). */
+  pollCount: bigint
+  navigatorType: string
+}
+
+// ─── BudgetNavigator config ──────────────────────────────────────────────
+
+export interface BudgetNavigatorConfig {
+  /** Number of budgets created so far (next budgetId === budgetCount). */
+  budgetCount: bigint
+  /** When true, ALL disbursement is frozen (treasury brake), not just creation. */
+  paused: boolean
+  /** Min/max period length bounds, in seconds. */
+  minPeriod: bigint
+  maxPeriod: bigint
+  /** The DAO this navigator self-asserts a binding to. */
+  daoShip: string
+  navigatorType: string
+}
+
+/** Live, on-chain "remaining" figures for one budget (the per-period allowance resets lazily). */
+export interface BudgetRemaining {
+  /** Remaining allowance in the current period (resets each period_length). */
+  thisPeriod: bigint
+  /** Remaining lifetime ceiling headroom. */
+  total: bigint
+}
+
+// ─── VestingNavigator config ─────────────────────────────────────────────
+
+export interface VestingNavigatorConfig {
+  /** Number of schedules created so far (next scheduleId === scheduleCount). */
+  scheduleCount: bigint
+  /** When true, NEW schedules are blocked; existing claims/revokes still work. */
+  paused: boolean
+  /** The DAO this navigator self-asserts a binding to. */
+  daoShip: string
+  navigatorType: string
+}
+
+// ─── TimelockNavigator config ────────────────────────────────────────────
+
+export interface TimelockNavigatorConfig {
+  /** Number of changes queued so far (next changeId === changeCount). */
+  changeCount: bigint
+  /** When true, NEW queues are blocked; execution of already-queued changes still works. */
+  paused: boolean
+  /** Mandatory delay before a queued change becomes executable, in seconds. */
+  delay: bigint
+  /** How long a matured change stays executable, in seconds. */
+  expiryWindow: bigint
+  /** The DAO this navigator self-asserts a binding to. */
+  daoShip: string
+  navigatorType: string
+}
+
+// ─── SubscriptionNavigator config ────────────────────────────────────────
+
+/** One entry in the accepted-token fee menu. */
+export interface SubscriptionTokenOption {
+  /** Token address; ZeroAddress = native QUAI. */
+  address: string
+  isNative: boolean
+  /** Fee per period in this token's smallest unit. */
+  feePerPeriod: bigint
+  /** Resolved ERC-20 metadata (native uses QUAI/18). */
+  symbol: string
+  decimals: number
+}
+
+export interface SubscriptionNavigatorConfig {
+  periodDuration: bigint // seconds
+  graceDuration: bigint // seconds
+  startTime: bigint // unix seconds
+  collectorRewardBps: bigint // keeper reward, basis points
+  burnOnCollect: boolean // true = burn shares, false = convert to loot
+  paused: boolean
+  tokens: SubscriptionTokenOption[]
+  daoShip: string
+  navigatorType: string
+}
+
 // ─── ERC20 minimal interface for approve/allowance/permit ───────────────
 
 const ERC20_MINIMAL_ABI = [
@@ -69,6 +205,10 @@ const ERC20_MINIMAL_ABI = [
 const ERC20_PERMIT_PROBE_ABI = [
   'function nonces(address owner) view returns (uint256)',
   'function DOMAIN_SEPARATOR() view returns (bytes32)',
+  // EIP-5267 — canonical source of domain fields when available
+  'function eip712Domain() view returns (bytes1 fields, string name, string version, uint256 chainId, address verifyingContract, bytes32 salt, uint256[] extensions)',
+  // Fallback if eip712Domain() isn't implemented
+  'function version() view returns (string)',
 ]
 
 
@@ -78,6 +218,7 @@ const ERC20_PERMIT_PROBE_ABI = [
  * Shipped navigators:
  * - OnboarderNavigator (MANAGER=2): Native QUAI tribute → shares/loot
  * - ERC20TributeNavigator (MANAGER=2): ERC20 token tribute → shares/loot
+ * - NFTGatedNavigator (MANAGER=2): ERC-721 ownership → shares/loot (one claim per tokenId)
  */
 class NavigatorService {
 
@@ -107,6 +248,30 @@ class NavigatorService {
         case 'ERC20TributeNavigator': {
           const config = await this.getERC20TributeConfig(navigatorAddress)
           return { type: 'ERC20TributeNavigator', config }
+        }
+        case 'NFTGatedNavigator': {
+          const config = await this.getNFTGatedConfig(navigatorAddress)
+          return { type: 'NFTGatedNavigator', config }
+        }
+        case 'SignalNavigator': {
+          const config = await this.getSignalConfig(navigatorAddress)
+          return { type: 'SignalNavigator', config }
+        }
+        case 'BudgetNavigator': {
+          const config = await this.getBudgetConfig(navigatorAddress)
+          return { type: 'BudgetNavigator', config }
+        }
+        case 'VestingNavigator': {
+          const config = await this.getVestingConfig(navigatorAddress)
+          return { type: 'VestingNavigator', config }
+        }
+        case 'TimelockNavigator': {
+          const config = await this.getTimelockConfig(navigatorAddress)
+          return { type: 'TimelockNavigator', config }
+        }
+        case 'SubscriptionNavigator': {
+          const config = await this.getSubscriptionConfig(navigatorAddress)
+          return { type: 'SubscriptionNavigator', config }
         }
         default:
           return { type: 'unknown', config: null }
@@ -373,20 +538,67 @@ class NavigatorService {
       return false // Token doesn't support ERC-2612
     }
 
-    const [tokenName, domainSeparator] = await Promise.all([
-      new quais.Contract(tokenAddress, ERC20_MINIMAL_ABI, provider).name() as Promise<string>,
-      tokenRead.DOMAIN_SEPARATOR() as Promise<string>,
-    ])
+    // Fetch on-chain domain separator — we'll verify our constructed domain against it
+    let onChainDomainSeparator: string
+    try {
+      onChainDomainSeparator = await tokenRead.DOMAIN_SEPARATOR() as string
+    } catch {
+      return false // No DOMAIN_SEPARATOR — can't safely permit
+    }
 
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 600) // 10 min
-    const network = await provider.getNetwork()
+    // Resolve domain fields. Prefer EIP-5267 eip712Domain() if available, else probe individually.
+    let domainName: string
+    let domainVersion: string
+    let domainChainId: bigint
+    try {
+      const d = await tokenRead.eip712Domain() as {
+        name: string
+        version: string
+        chainId: bigint
+        verifyingContract: string
+      }
+      domainName = d.name
+      domainVersion = d.version
+      domainChainId = BigInt(d.chainId)
+    } catch {
+      // Fallback: name() and version() with default '1'
+      const tokenBasic = new quais.Contract(tokenAddress, ERC20_MINIMAL_ABI, provider)
+      domainName = await tokenBasic.name() as string
+      try {
+        domainVersion = await tokenRead.version() as string
+      } catch {
+        domainVersion = '1'
+      }
+      // Use configured chainId (provider.getNetwork() on Pelagus/Quai returns
+      // shard-specific IDs that don't match the token's EIP-712 binding).
+      // The DOMAIN_SEPARATOR match check below catches any mismatch.
+      domainChainId = BigInt(NETWORK_CONFIG.chainId)
+    }
 
     const domain = {
-      name: tokenName,
-      version: '1',
-      chainId: network.chainId,
+      name: domainName,
+      version: domainVersion,
+      chainId: domainChainId,
       verifyingContract: tokenAddress,
     }
+
+    // Verify the locally-constructed domain matches the on-chain DOMAIN_SEPARATOR.
+    // If they disagree, the signature would be silently rejected on-chain — fall back
+    // to the approve() path instead of signing a bad permit.
+    const localDomainSeparator = quais.TypedDataEncoder.hashDomain(domain)
+    if (localDomainSeparator.toLowerCase() !== onChainDomainSeparator.toLowerCase()) {
+      console.warn(
+        `[tryPermitOnboard] Domain separator mismatch for ${tokenAddress}. ` +
+        `local=${localDomainSeparator} chain=${onChainDomainSeparator}. Falling back to approve().`,
+      )
+      return false
+    }
+
+    // Deadline: 10 minutes from local time. We do NOT call provider.getBlock('latest')
+    // for clock-skew validation — Quai's sharded RPC requires explicit shard context
+    // and the wallet provider (Pelagus) rejects shardless block queries with "Invalid shard".
+    // 10 minutes is a generous enough window that typical clock skew (< 30s) is harmless.
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 600)
 
     const types = {
       Permit: [
@@ -443,6 +655,631 @@ class NavigatorService {
     }
 
     return shareTribute + lootTribute
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // NFTGatedNavigator
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Read the full NFTGatedNavigator configuration from immutable on-chain views.
+   * Does NOT read the gate collection itself (untrusted external contract) — the
+   * plugin probes the gate (name/symbol/ownership) defensively with try/catch.
+   */
+  async getNFTGatedConfig(navigatorAddress: string): Promise<NFTGatedNavigatorConfig> {
+    const contract = new quais.Contract(
+      navigatorAddress,
+      NFTGatedNavigatorABI,
+      baseService.getProvider(),
+    )
+
+    const [
+      gateToken, sharesPerHolder, lootPerHolder, requireTribute, tributeAmount,
+      expiry, mintCap, perAddressCap, allowlistRoot,
+      totalMinted, paused, navigatorType,
+    ] = await Promise.all([
+      contract.gateToken(),
+      contract.sharesPerHolder(),
+      contract.lootPerHolder(),
+      contract.requireTribute(),
+      contract.tributeAmount(),
+      contract.expiry(),
+      contract.mintCap(),
+      contract.perAddressCap(),
+      contract.allowlistRoot(),
+      contract.totalMinted(),
+      contract.paused(),
+      contract.navigatorType(),
+    ])
+
+    return {
+      gateToken: String(gateToken),
+      sharesPerHolder: BigInt(sharesPerHolder),
+      lootPerHolder: BigInt(lootPerHolder),
+      requireTribute: Boolean(requireTribute),
+      tributeAmount: BigInt(tributeAmount),
+      expiry: BigInt(expiry),
+      mintCap: BigInt(mintCap),
+      perAddressCap: BigInt(perAddressCap),
+      allowlistRoot: String(allowlistRoot),
+      totalMinted: BigInt(totalMinted),
+      paused: Boolean(paused),
+      navigatorType: String(navigatorType),
+    }
+  }
+
+  /**
+   * Read `tokenURI(tokenId)` from a gate ERC-721 collection (untrusted external contract — every
+   * call is wrapped in try/catch). Used to render claimed-token images in the gallery. Returns
+   * null when there's no provider, the call reverts, or the URI is empty.
+   */
+  async getErc721TokenURI(collection: string, tokenId: string): Promise<string | null> {
+    if (!baseService.hasProvider()) return null
+    try {
+      const contract = new quais.Contract(
+        quais.getAddress(collection),
+        ['function tokenURI(uint256 tokenId) view returns (string)'],
+        baseService.getProvider(),
+      )
+      const uri = await contract.tokenURI(BigInt(tokenId))
+      return typeof uri === 'string' && uri.trim() !== '' ? uri.trim() : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Amount (shares+loot) minted to an address — for perAddressCap display.
+   */
+  async getNFTGatedMintedTo(navigatorAddress: string, userAddress: string): Promise<bigint> {
+    const contract = new quais.Contract(
+      navigatorAddress,
+      NFTGatedNavigatorABI,
+      baseService.getProvider(),
+    )
+    return BigInt(await contract.mintedTo(userAddress))
+  }
+
+  /**
+   * Has this specific tokenId already been claimed? (Per-token, permanent.)
+   * Authoritative — read this at submit time, never trust the indexer for the
+   * member's own pending claim.
+   */
+  async nftGatedClaimed(navigatorAddress: string, tokenId: bigint): Promise<boolean> {
+    const contract = new quais.Contract(
+      navigatorAddress,
+      NFTGatedNavigatorABI,
+      baseService.getProvider(),
+    )
+    return Boolean(await contract.claimed(tokenId))
+  }
+
+  /**
+   * Preflight: does NOT cover tribute or caps (by contract design). Returns false
+   * if paused, expired, already claimed, or the candidate doesn't currently own the
+   * token. Never reverts.
+   */
+  async nftGatedCanOnboard(
+    navigatorAddress: string,
+    candidate: string,
+    tokenId: bigint,
+  ): Promise<boolean> {
+    const contract = new quais.Contract(
+      navigatorAddress,
+      NFTGatedNavigatorABI,
+      baseService.getProvider(),
+    )
+    return Boolean(await contract.canOnboard(candidate, tokenId))
+  }
+
+  /**
+   * Onboard by claiming an owned gate NFT. Payable — sends the exact native
+   * tribute (0n in free-mint mode).
+   *
+   * Overload selection follows the on-chain allowlist (audit M-04):
+   * - `proof === null`  → no allowlist → `onboard(uint256)`
+   * - `proof` provided  → allowlist active → `onboard(uint256,bytes32[])`
+   *
+   * @param tributeValue Exact native tribute in wei (pass the on-chain `tributeAmount`
+   *                     verbatim; 0n when `requireTribute` is false).
+   */
+  async nftGatedOnboard(
+    navigatorAddress: string,
+    tokenId: bigint,
+    tributeValue: bigint,
+    proof: string[] | null = null,
+  ): Promise<void> {
+    const contract = new quais.Contract(
+      navigatorAddress,
+      NFTGatedNavigatorABI,
+      baseService.requireSigner(),
+    )
+    const tx = proof === null
+      ? await contract['onboard(uint256)'](tokenId, { value: tributeValue })
+      : await contract['onboard(uint256,bytes32[])'](tokenId, proof, { value: tributeValue })
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('NFTGatedNavigator.onboard transaction reverted')
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SignalNavigator (read-only, non-binding polls)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Read the SignalNavigator's immutable config + current poll count. */
+  async getSignalConfig(navigatorAddress: string): Promise<SignalNavigatorConfig> {
+    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.getProvider())
+
+    const [minSharesToCreatePoll, minDuration, maxDuration, maxStartDelay, pollCount, navigatorType] =
+      await Promise.all([
+        contract.minSharesToCreatePoll(),
+        contract.minDuration(),
+        contract.maxDuration(),
+        contract.maxStartDelay(),
+        contract.pollCount(),
+        contract.navigatorType(),
+      ])
+
+    return {
+      minSharesToCreatePoll: BigInt(minSharesToCreatePoll),
+      minDuration: BigInt(minDuration),
+      maxDuration: BigInt(maxDuration),
+      maxStartDelay: BigInt(maxStartDelay),
+      pollCount: BigInt(pollCount),
+      navigatorType: String(navigatorType),
+    }
+  }
+
+  /** Has `voter` already voted on a poll? (Authoritative on-chain read.) */
+  async signalHasVoted(navigatorAddress: string, pollId: bigint, voter: string): Promise<boolean> {
+    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.getProvider())
+    return Boolean(await contract.hasVoted(pollId, voter))
+  }
+
+  /** Poll status enum: 0=Pending, 1=Active, 2=Ended, 3=Cancelled. */
+  async signalPollStatus(navigatorAddress: string, pollId: bigint): Promise<number> {
+    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.getProvider())
+    return Number(await contract.pollStatus(pollId))
+  }
+
+  /**
+   * Create a poll. `startTime` is an absolute unix timestamp (0 = open now; else
+   * now..now+maxStartDelay). `duration` is in seconds, within [minDuration, maxDuration].
+   * `optionCount` must be 2..10.
+   */
+  async signalCreatePoll(
+    navigatorAddress: string,
+    question: string,
+    optionCount: number,
+    startTime: bigint,
+    duration: bigint,
+  ): Promise<bigint> {
+    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.requireSigner())
+    const tx = await contract.createPoll(question, optionCount, startTime, duration)
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('SignalNavigator.createPoll transaction reverted')
+    }
+
+    // Recover the assigned pollId (per-navigator, starts at 0) from PollCreated so the caller
+    // can post the daoships.signal.poll option labels in the required second transaction.
+    const iface = new quais.Interface(SignalNavigatorABI)
+    for (const log of receipt.logs) {
+      try {
+        const parsed = iface.parseLog({ topics: log.topics, data: log.data })
+        if (parsed?.name === 'PollCreated') {
+          return parsed.args.pollId as bigint
+        }
+      } catch {
+        // Not a PollCreated log — keep scanning.
+      }
+    }
+    throw new Error('SignalNavigator.createPoll succeeded but no PollCreated event was found')
+  }
+
+  /** Cast a vote. Weight is the snapshot share power (loot excluded), resolved on-chain. */
+  async signalVote(navigatorAddress: string, pollId: bigint, option: number): Promise<void> {
+    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.requireSigner())
+    const tx = await contract.vote(pollId, option)
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('SignalNavigator.vote transaction reverted')
+    }
+  }
+
+  /** Cancel a poll (creator before start; avatar before end). */
+  async signalCancelPoll(navigatorAddress: string, pollId: bigint): Promise<void> {
+    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.requireSigner())
+    const tx = await contract.cancelPoll(pollId)
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('SignalNavigator.cancelPoll transaction reverted')
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BudgetNavigator (MODULE class — treasury disbursement, no DAOShip permission)
+  // ───────────────────────────────────────────────────────────────────────
+  // Authority is being an enabled Zodiac module on the DAO's vault. Budgets and
+  // their static config come from the indexer (ds_budgets); on-chain we only read
+  // the LIVE figures (remaining* reset lazily) + paused, and submit manager/admin txs.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Read the BudgetNavigator's immutable config + current budget count + pause flag. */
+  async getBudgetConfig(navigatorAddress: string): Promise<BudgetNavigatorConfig> {
+    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.getProvider())
+
+    const [budgetCount, paused, minPeriod, maxPeriod, daoShip, navigatorType] = await Promise.all([
+      contract.budgetCount(),
+      contract.paused(),
+      contract.MIN_PERIOD(),
+      contract.MAX_PERIOD(),
+      contract.daoShip(),
+      contract.navigatorType(),
+    ])
+
+    return {
+      budgetCount: BigInt(budgetCount),
+      paused: Boolean(paused),
+      minPeriod: BigInt(minPeriod),
+      maxPeriod: BigInt(maxPeriod),
+      daoShip: String(daoShip),
+      navigatorType: String(navigatorType),
+    }
+  }
+
+  /**
+   * Live remaining figures for one budget — both reset/accrue lazily on-chain, so
+   * read them fresh before a disburse to disable a too-large amount before it reverts.
+   */
+  async getBudgetRemaining(navigatorAddress: string, budgetId: bigint): Promise<BudgetRemaining> {
+    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.getProvider())
+    const [thisPeriod, total] = await Promise.all([
+      contract.remainingThisPeriod(budgetId),
+      contract.remainingTotal(budgetId),
+    ])
+    return { thisPeriod: BigInt(thisPeriod), total: BigInt(total) }
+  }
+
+  /** Authoritative pause flag (freezes ALL disbursement). */
+  async getBudgetPaused(navigatorAddress: string): Promise<boolean> {
+    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.getProvider())
+    return Boolean(await contract.paused())
+  }
+
+  /**
+   * Is this navigator currently an enabled module on the given vault? The
+   * unforgeable source of truth behind trust_status — confirm before disbursing.
+   */
+  async isModuleEnabled(vaultAddress: string, navigatorAddress: string): Promise<boolean> {
+    const vault = new quais.Contract(vaultAddress, QuaiVaultJson.abi, baseService.getProvider())
+    return Boolean(await vault.isModuleEnabled(quais.getAddress(navigatorAddress)))
+  }
+
+  /** Disburse a single payout from a budget. Manager-only (reverts otherwise). */
+  async budgetDisburse(
+    navigatorAddress: string,
+    budgetId: bigint,
+    to: string,
+    amount: bigint,
+  ): Promise<void> {
+    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
+    const tx = await contract.disburse(budgetId, quais.getAddress(to), amount)
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('BudgetNavigator.disburse transaction reverted')
+    }
+  }
+
+  /** Batch payroll disbursement (atomic). Manager-only; `to` and `amounts` must align. */
+  async budgetDisburseBatch(
+    navigatorAddress: string,
+    budgetId: bigint,
+    to: string[],
+    amounts: bigint[],
+  ): Promise<void> {
+    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
+    const tx = await contract.disburseBatch(budgetId, to.map((a) => quais.getAddress(a)), amounts)
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('BudgetNavigator.disburseBatch transaction reverted')
+    }
+  }
+
+  /** Freeze ALL disbursement (the fast brake). GOVERNOR navigator or avatar only. */
+  async budgetPause(navigatorAddress: string): Promise<void> {
+    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
+    const tx = await contract.pause()
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('BudgetNavigator.pause transaction reverted')
+    }
+  }
+
+  /** Resume disbursement. GOVERNOR navigator or avatar only. */
+  async budgetUnpause(navigatorAddress: string): Promise<void> {
+    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
+    const tx = await contract.unpause()
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('BudgetNavigator.unpause transaction reverted')
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // VestingNavigator (MANAGER — mints shares/loot on a cliff + linear schedule)
+  // ───────────────────────────────────────────────────────────────────────
+  // Schedules + their static config come from the indexer (ds_vesting_schedules);
+  // schedules are created/revoked by governance (avatar-only → proposals). On-chain
+  // we read the LIVE claimable (authoritative preflight) and submit the beneficiary
+  // claim directly. No escrow — claim() mints vested-but-unclaimed TO THE BENEFICIARY.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Read the VestingNavigator's config: schedule count, pause flag, DAO binding. */
+  async getVestingConfig(navigatorAddress: string): Promise<VestingNavigatorConfig> {
+    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.getProvider())
+
+    const [scheduleCount, paused, daoShip, navigatorType] = await Promise.all([
+      contract.scheduleCount(),
+      contract.paused(),
+      contract.daoShip(),
+      contract.navigatorType(),
+    ])
+
+    return {
+      scheduleCount: BigInt(scheduleCount),
+      paused: Boolean(paused),
+      daoShip: String(daoShip),
+      navigatorType: String(navigatorType),
+    }
+  }
+
+  /**
+   * Live claimable for one schedule — the authoritative preflight (read fresh before
+   * claiming to disable the button when nothing has vested). Mirrors the indexer's
+   * derived `claimable`, but on-chain and lag-free.
+   */
+  async getVestingClaimable(navigatorAddress: string, scheduleId: bigint): Promise<bigint> {
+    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.getProvider())
+    return BigInt(await contract.claimable(scheduleId))
+  }
+
+  /** Live total-vested for one schedule (minted + still-claimable). */
+  async getVestingVested(navigatorAddress: string, scheduleId: bigint): Promise<bigint> {
+    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.getProvider())
+    return BigInt(await contract.vested(scheduleId))
+  }
+
+  /** The schedule IDs for a beneficiary (on-chain view). */
+  async getVestingSchedules(navigatorAddress: string, beneficiary: string): Promise<bigint[]> {
+    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.getProvider())
+    const ids = await contract.getSchedules(quais.getAddress(beneficiary))
+    return (ids as unknown[]).map((id) => BigInt(id as bigint))
+  }
+
+  /**
+   * Claim vested-but-unclaimed tokens for a schedule. Callable by the beneficiary OR
+   * the avatar; ALWAYS mints to the schedule's beneficiary (never the caller).
+   */
+  async vestingClaim(navigatorAddress: string, scheduleId: bigint): Promise<void> {
+    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.requireSigner())
+    const tx = await contract.claim(scheduleId)
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('VestingNavigator.claim transaction reverted')
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // TimelockNavigator (GOVERNOR — delays governance-config changes)
+  // ───────────────────────────────────────────────────────────────────────
+  // Queued changes + their full config bytes come from the indexer (ds_timelock_changes).
+  // queue/cancel/emergencyCancelAll/pause are avatar-only → governance proposals (deep-links).
+  // executeChange is PERMISSIONLESS once matured — anyone can crank it directly.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Read the TimelockNavigator's config: change count, pause flag, delay, expiry window. */
+  async getTimelockConfig(navigatorAddress: string): Promise<TimelockNavigatorConfig> {
+    const contract = new quais.Contract(navigatorAddress, TimelockNavigatorABI, baseService.getProvider())
+
+    const [changeCount, paused, delay, expiryWindow, daoShip, navigatorType] = await Promise.all([
+      contract.changeCount(),
+      contract.paused(),
+      contract.delay(),
+      contract.expiryWindow(),
+      contract.daoShip(),
+      contract.navigatorType(),
+    ])
+
+    return {
+      changeCount: BigInt(changeCount),
+      paused: Boolean(paused),
+      delay: BigInt(delay),
+      expiryWindow: BigInt(expiryWindow),
+      daoShip: String(daoShip),
+      navigatorType: String(navigatorType),
+    }
+  }
+
+  /** Is this change executable right now? (Authoritative on-chain preflight.) */
+  async timelockIsExecutable(navigatorAddress: string, changeId: bigint): Promise<boolean> {
+    const contract = new quais.Contract(navigatorAddress, TimelockNavigatorABI, baseService.getProvider())
+    return Boolean(await contract.isExecutable(changeId))
+  }
+
+  /**
+   * Execute a matured queued change — PERMISSIONLESS (anyone can crank). You MUST pass
+   * the exact `governanceConfig` bytes from the indexed row; the hash won't reconstruct
+   * them (wrong bytes → ConfigHashMismatch).
+   */
+  async timelockExecuteChange(
+    navigatorAddress: string,
+    changeId: bigint,
+    governanceConfig: string,
+  ): Promise<void> {
+    const contract = new quais.Contract(navigatorAddress, TimelockNavigatorABI, baseService.requireSigner())
+    const tx = await contract.executeChange(changeId, governanceConfig)
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('TimelockNavigator.executeChange transaction reverted')
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SubscriptionNavigator (MANAGER — recurring membership dues)
+  // ───────────────────────────────────────────────────────────────────────
+  // Immutable config (token menu, fees, period, grace, reward, enforcement) is read once.
+  // Members pull-pay via payFee/payFeeFor (exact native value, or ERC-20 approve); anyone
+  // may collectFee a delinquent member. enroll/pause/withdraw are avatar-only → proposals.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Read the full (immutable) SubscriptionNavigator config + the accepted-token fee menu. */
+  async getSubscriptionConfig(navigatorAddress: string): Promise<SubscriptionNavigatorConfig> {
+    const contract = new quais.Contract(navigatorAddress, SubscriptionNavigatorABI, baseService.getProvider())
+
+    const [
+      periodDuration, graceDuration, startTime, collectorRewardBps,
+      burnOnCollect, paused, acceptedTokens, daoShip, navigatorType,
+    ] = await Promise.all([
+      contract.periodDuration(),
+      contract.graceDuration(),
+      contract.startTime(),
+      contract.collectorRewardBps(),
+      contract.burnOnCollect(),
+      contract.paused(),
+      contract.getAcceptedTokens(),
+      contract.daoShip(),
+      contract.navigatorType(),
+    ])
+
+    // Resolve the fee + metadata for each accepted token (native = QUAI/18; ERC-20 probed).
+    const tokenAddrs = (acceptedTokens as string[]).map((t) => String(t))
+    const tokens: SubscriptionTokenOption[] = await Promise.all(
+      tokenAddrs.map(async (addr): Promise<SubscriptionTokenOption> => {
+        const feePerPeriod = BigInt(await contract.feePerPeriod(addr))
+        const isNative = addr === quais.ZeroAddress
+        if (isNative) {
+          return { address: addr, isNative: true, feePerPeriod, symbol: 'QUAI', decimals: 18 }
+        }
+        let symbol = 'TOKEN'
+        let decimals = 18
+        try {
+          const token = new quais.Contract(addr, ERC20_MINIMAL_ABI, baseService.getProvider())
+          const [sym, dec] = await Promise.all([token.symbol(), token.decimals()])
+          symbol = sym
+          decimals = Number(dec)
+        } catch {
+          // metadata read failed — defaults
+        }
+        return { address: addr, isNative: false, feePerPeriod, symbol, decimals }
+      }),
+    )
+
+    return {
+      periodDuration: BigInt(periodDuration),
+      graceDuration: BigInt(graceDuration),
+      startTime: BigInt(startTime),
+      collectorRewardBps: BigInt(collectorRewardBps),
+      burnOnCollect: Boolean(burnOnCollect),
+      paused: Boolean(paused),
+      tokens,
+      daoShip: String(daoShip),
+      navigatorType: String(navigatorType),
+    }
+  }
+
+  /** Total cost for `periods` periods in `token` (reverts TokenNotAccepted on a bad token). */
+  async subscriptionQuote(navigatorAddress: string, periods: bigint, token: string): Promise<bigint> {
+    const contract = new quais.Contract(navigatorAddress, SubscriptionNavigatorABI, baseService.getProvider())
+    return BigInt(await contract.quote(periods, token))
+  }
+
+  /** A member's absolute paid-through timestamp (unix seconds; 0 = not enrolled). */
+  async subscriptionPaidThrough(navigatorAddress: string, member: string): Promise<bigint> {
+    const contract = new quais.Contract(navigatorAddress, SubscriptionNavigatorABI, baseService.getProvider())
+    return BigInt(await contract.paidThrough(member))
+  }
+
+  /** Authoritative collectible check (matches the keeper-collection precondition). */
+  async subscriptionIsDelinquent(navigatorAddress: string, member: string): Promise<boolean> {
+    const contract = new quais.Contract(navigatorAddress, SubscriptionNavigatorABI, baseService.getProvider())
+    return Boolean(await contract.isDelinquent(member))
+  }
+
+  /**
+   * Pay your own dues. Native (token == ZeroAddress) sends `value = quote(periods, token)`
+   * exactly; ERC-20 approves the navigator for the quote then pays with no value.
+   */
+  async subscriptionPayFee(
+    navigatorAddress: string,
+    periods: bigint,
+    token: string,
+  ): Promise<void> {
+    return this._subscriptionPay(navigatorAddress, null, periods, token)
+  }
+
+  /** Sponsor another member's dues (same value rules; tokens/native funded by the caller). */
+  async subscriptionPayFeeFor(
+    navigatorAddress: string,
+    member: string,
+    periods: bigint,
+    token: string,
+  ): Promise<void> {
+    return this._subscriptionPay(navigatorAddress, member, periods, token)
+  }
+
+  /** Shared pay path: handles native exact-value and the ERC-20 approve → pay flow. */
+  private async _subscriptionPay(
+    navigatorAddress: string,
+    member: string | null,
+    periods: bigint,
+    token: string,
+  ): Promise<void> {
+    const signer = baseService.requireSigner()
+    const checksummedNav = quais.getAddress(navigatorAddress)
+    const navigator = new quais.Contract(checksummedNav, SubscriptionNavigatorABI, signer)
+
+    const cost = BigInt(await navigator.quote(periods, token))
+    const isNative = token === quais.ZeroAddress
+
+    if (!isNative) {
+      // ERC-20: approve exactly the cost (USDT-safe reset if a partial allowance exists).
+      const erc20 = new quais.Contract(quais.getAddress(token), ERC20_MINIMAL_ABI, signer)
+      const owner = await signer.getAddress()
+      const current = BigInt(await erc20.allowance(owner, checksummedNav))
+      if (current > 0n && current < cost) {
+        const reset = await erc20.approve(checksummedNav, 0n)
+        await reset.wait()
+      }
+      if (current < cost) {
+        const approve = await erc20.approve(checksummedNav, cost)
+        await approve.wait()
+      }
+    }
+
+    const value = isNative ? cost : 0n
+    const tx = member === null
+      ? await navigator.payFee(periods, token, { value })
+      : await navigator.payFeeFor(quais.getAddress(member), periods, token, { value })
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('SubscriptionNavigator.payFee transaction reverted')
+    }
+  }
+
+  /**
+   * Collect a delinquent member — PERMISSIONLESS. Strips their shares (burned or converted
+   * to loot per config) and mints the keeper a loot reward. Reverts NotDelinquent /
+   * NoSharesToBurn, or if removing a large member would breach the sponsor threshold.
+   */
+  async subscriptionCollectFee(navigatorAddress: string, member: string): Promise<void> {
+    const contract = new quais.Contract(navigatorAddress, SubscriptionNavigatorABI, baseService.requireSigner())
+    const tx = await contract.collectFee(quais.getAddress(member))
+    const receipt = await tx.wait()
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('SubscriptionNavigator.collectFee transaction reverted')
+    }
   }
 
 }

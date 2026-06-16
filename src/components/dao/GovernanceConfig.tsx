@@ -1,6 +1,6 @@
 import type { DaoConfig } from '@/types'
 import { formatDuration } from '@/utils/time'
-import { formatTokenAmount } from '@/utils/format'
+import { formatTokenAmount, bpsToPercent } from '@/utils/format'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GovernanceConfig - Display governance parameters with human-readable values
@@ -30,7 +30,7 @@ export function GovernanceConfig({ config }: GovernanceConfigProps) {
     },
     {
       label: 'Quorum %',
-      value: `${(Number(config.quorum_percent) / 100).toFixed(1)}%`,
+      value: `${bpsToPercent(config.quorum_percent).toFixed(1)}%`,
       description: 'Minimum percentage of shares that must vote yes',
     },
     {
@@ -45,7 +45,7 @@ export function GovernanceConfig({ config }: GovernanceConfigProps) {
     },
     {
       label: 'Min Retention %',
-      value: `${(Number(config.min_retention_percent) / 100).toFixed(1)}%`,
+      value: `${bpsToPercent(config.min_retention_percent).toFixed(1)}%`,
       description: 'Minimum member retention required for a proposal to pass',
     },
     {

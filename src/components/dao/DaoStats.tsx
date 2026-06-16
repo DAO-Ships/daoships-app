@@ -7,6 +7,7 @@ import { safeBigInt } from '@/utils/bigint'
 function useCountUp(target: string, duration = 600): string {
   const [display, setDisplay] = useState('0')
   const mounted = useRef(false)
+  const rafRef = useRef<number>(0)
 
   useEffect(() => {
     if (mounted.current) { setDisplay(target); return }
@@ -23,17 +24,17 @@ function useCountUp(target: string, duration = 600): string {
     function tick(now: number) {
       const elapsed = now - startTime
       const progress = Math.min(elapsed / duration, 1)
-      // Ease-out curve
       const eased = 1 - (1 - progress) ** 3
       const current = targetNum * eased
-      // Format to match target's precision
       const formatted = numStr.includes('.')
         ? current.toFixed(numStr.split('.')[1]?.length ?? 0)
         : Math.round(current).toLocaleString()
       setDisplay(target.replace(match[1], formatted))
-      if (progress < 1) requestAnimationFrame(tick)
+      if (progress < 1) rafRef.current = requestAnimationFrame(tick)
     }
-    requestAnimationFrame(tick)
+    rafRef.current = requestAnimationFrame(tick)
+
+    return () => cancelAnimationFrame(rafRef.current)
   }, [target, duration])
 
   return display

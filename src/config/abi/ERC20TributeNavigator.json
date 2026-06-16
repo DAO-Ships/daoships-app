@@ -166,7 +166,7 @@
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "tributeAmount",
+        "name": "amount",
         "type": "uint256"
       },
       {
@@ -196,6 +196,31 @@
       }
     ],
     "name": "Paused",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "StuckTokensRecovered",
     "type": "event"
   },
   {

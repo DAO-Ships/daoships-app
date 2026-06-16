@@ -620,13 +620,13 @@
       {
         "indexed": false,
         "internalType": "uint32",
-        "name": "gracePeriod",
+        "name": "votingPeriod",
         "type": "uint32"
       },
       {
         "indexed": false,
         "internalType": "uint32",
-        "name": "votingPeriod",
+        "name": "gracePeriod",
         "type": "uint32"
       },
       {
@@ -652,6 +652,12 @@
         "internalType": "uint256",
         "name": "minRetentionPercent",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "defaultExpiryWindow",
+        "type": "uint32"
       },
       {
         "indexed": false,
@@ -1064,6 +1070,19 @@
         "internalType": "uint32",
         "name": "",
         "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_GUILD_TOKENS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",

@@ -69,6 +69,9 @@ type NotificationListener = (notifications: Notification[]) => void
  *   // Dismiss
  *   notificationManager.dismiss(notification.id)
  */
+const MAX_NOTIFICATIONS = 20
+const DEDUP_WINDOW_MS = 2000
+
 class NotificationManager {
   private notifications: Notification[] = []
   private listeners: Set<NotificationListener> = new Set()
@@ -89,6 +92,13 @@ class NotificationManager {
     message: string,
     duration?: number,
   ): string {
+    // Dedup: skip if same title+message was added recently
+    const now = Date.now()
+    const isDuplicate = this.notifications.some(
+      (n) => n.title === title && n.message === message && now - parseInt(n.id.split('-')[2] || '0', 10) < DEDUP_WINDOW_MS,
+    )
+    if (isDuplicate) return this.notifications[this.notifications.length - 1]?.id ?? ''
+
     const id = generateId()
     const actualDuration = duration ?? DEFAULT_DURATIONS[type]
 
@@ -101,6 +111,15 @@ class NotificationManager {
     }
 
     this.notifications = [...this.notifications, notification]
+
+    // Evict oldest if over cap
+    while (this.notifications.length > MAX_NOTIFICATIONS) {
+      const oldest = this.notifications[0]
+      this.notifications = this.notifications.slice(1)
+      const oldTimer = this.timers.get(oldest.id)
+      if (oldTimer) { clearTimeout(oldTimer); this.timers.delete(oldest.id) }
+    }
+
     this.emit()
 
     // Auto-dismiss if duration > 0

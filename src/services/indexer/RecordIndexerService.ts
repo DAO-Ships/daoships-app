@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { supabase } from '@/config/supabase'
+import { indexerError } from './indexerError'
 import type { DaoRecord } from '@/types'
 import { POSTER_TAGS } from '@/types/poster'
 
@@ -24,15 +25,10 @@ class RecordIndexerService {
       .in('trust_level', ['VERIFIED', 'VERIFIED_INITIAL'])
       .order('created_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
-    if (error) {
-      // PGRST116 = "no rows returned" which is expected when no profile exists
-      if (error.code !== 'PGRST116') {
-        console.error('[RecordIndexerService] getDaoProfile error:', error.message)
-      }
-      return null
-    }
+    // maybeSingle returns null (not an error) when no profile exists; only real failures throw.
+    if (error) indexerError('[RecordIndexerService] getDaoProfile', error)
 
     return (data as DaoRecord) ?? null
   }
@@ -57,10 +53,7 @@ class RecordIndexerService {
 
     const { data, error } = await query
 
-    if (error) {
-      console.error('[RecordIndexerService] getRecords error:', error.message)
-      return []
-    }
+    if (error) indexerError('[RecordIndexerService] getRecords', error)
 
     return (data as DaoRecord[]) ?? []
   }
@@ -80,10 +73,7 @@ class RecordIndexerService {
       .eq('trust_level', 'VERIFIED')
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('[RecordIndexerService] getDaoAnnouncements error:', error.message)
-      return []
-    }
+    if (error) indexerError('[RecordIndexerService] getDaoAnnouncements', error)
 
     return (data as DaoRecord[]) ?? []
   }
@@ -105,14 +95,9 @@ class RecordIndexerService {
       .eq('user_address', normalizedAddress)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
-    if (error) {
-      if (error.code !== 'PGRST116') {
-        console.error('[RecordIndexerService] getMemberProfile error:', error.message)
-      }
-      return null
-    }
+    if (error) indexerError('[RecordIndexerService] getMemberProfile', error)
 
     return (data as DaoRecord) ?? null
   }
@@ -132,10 +117,7 @@ class RecordIndexerService {
       .order('created_at', { ascending: false })
       .limit(200)
 
-    if (error) {
-      console.error('[RecordIndexerService] getMemberProfiles error:', error.message)
-      return new Map()
-    }
+    if (error) indexerError('[RecordIndexerService] getMemberProfiles', error)
 
     // Keep only the most recent profile per member
     const profiles = new Map<string, Record<string, unknown>>()
@@ -151,26 +133,55 @@ class RecordIndexerService {
 
   /**
    * Get vote reasons for a specific proposal.
+   *
+   * Filters:
+   * - Matches `tag === daoships.proposal.vote.reason`
+   * - Matches `content_json.proposalId === proposalId`
+   * - Accepts only `trust_level IN ('MEMBER', 'VERIFIED', 'VERIFIED_INITIAL')`
+   *   Other trust levels (ON_CHAIN_PROVISIONAL, SEMI_TRUSTED, UNTRUSTED) are rejected
+   *   because vote reasons should only come from wallet-identified shareholders.
+   * - Cross-references `ds_votes` to verify the poster actually voted on this proposal.
+   *   A MEMBER can post a vote reason for a proposal they never voted on — we drop
+   *   those server-side so the UI never displays impersonated opinions.
+   *
    * Returns records ordered by creation date descending (newest first).
    */
   async getVoteReasons(daoId: string, proposalId: number): Promise<DaoRecord[]> {
     if (!supabase) return []
 
-    const { data, error } = await supabase
-      .from('ds_records')
-      .select('*')
-      .eq('dao_id', daoId)
-      .eq('tag', POSTER_TAGS.PROPOSAL_VOTE_REASON)
-      .eq('content_json->>proposalId', String(proposalId))
-      .order('created_at', { ascending: false })
-      .limit(100)
+    const compositeProposalId = `${daoId.toLowerCase()}-${proposalId}`
 
-    if (error) {
-      console.error('[RecordIndexerService] getVoteReasons error:', error.message)
-      return []
+    const [recordsResult, votesResult] = await Promise.all([
+      supabase
+        .from('ds_records')
+        .select('*')
+        .eq('dao_id', daoId.toLowerCase())
+        .eq('tag', POSTER_TAGS.PROPOSAL_VOTE_REASON)
+        .eq('content_json->>proposalId', String(proposalId))
+        .in('trust_level', ['MEMBER', 'VERIFIED', 'VERIFIED_INITIAL'])
+        .order('created_at', { ascending: false })
+        .limit(100),
+      supabase
+        .from('ds_votes')
+        .select('voter')
+        .eq('proposal_id', compositeProposalId),
+    ])
+
+    if (recordsResult.error) indexerError('[RecordIndexerService] getVoteReasons', recordsResult.error)
+    if (votesResult.error) {
+      // Deliberate graceful degrade: the votes query is a secondary cross-reference, so a
+      // failure there falls back to records-only rather than failing the whole query.
+      console.warn('[RecordIndexerService] getVoteReasons votes error:', votesResult.error.message)
+      return (recordsResult.data as DaoRecord[]) ?? []
     }
 
-    return (data as DaoRecord[]) ?? []
+    const voterSet = new Set(
+      ((votesResult.data ?? []) as Array<{ voter: string }>).map((v) => v.voter.toLowerCase()),
+    )
+
+    return ((recordsResult.data as DaoRecord[]) ?? []).filter(
+      (r) => voterSet.has(r.user_address.toLowerCase()),
+    )
   }
 
   /**
@@ -180,20 +191,27 @@ class RecordIndexerService {
   async getNavigatorAllowlist(daoId: string, navigatorAddress: string): Promise<DaoRecord | null> {
     if (!supabase) return null
 
+    // daoId is interpolated into a raw PostgREST `.or()` filter below, so it must be a
+    // strict hex address — reject anything that could break out of the filter string.
+    if (!/^0x[0-9a-fA-F]{40}$/.test(daoId)) {
+      console.error('[RecordIndexerService] getNavigatorAllowlist: invalid daoId', daoId)
+      return null
+    }
+
     const normalizedNav = navigatorAddress.toLowerCase()
 
+    // Include pre-DAO orphaned records (dao_id IS NULL) — these get reparented
+    // by the indexer once the navigator is registered, but during the window
+    // before reparenting the frontend still needs to resolve them.
     const { data, error } = await supabase
       .from('ds_records')
       .select('*')
-      .eq('dao_id', daoId.toLowerCase())
+      .or(`dao_id.eq.${daoId.toLowerCase()},dao_id.is.null`)
       .eq('tag', POSTER_TAGS.NAVIGATOR_ALLOWLIST)
       .order('created_at', { ascending: false })
-      .limit(10)
+      .limit(20)
 
-    if (error) {
-      console.error('[RecordIndexerService] getNavigatorAllowlist error:', error.message)
-      return null
-    }
+    if (error) indexerError('[RecordIndexerService] getNavigatorAllowlist', error)
 
     // Filter by navigatorAddress in content_json (Supabase JSONB filtering)
     const match = (data ?? []).find((r) => {

@@ -9,31 +9,13 @@ import { Card } from '@/components/common/Card'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { Button } from '@/components/common/Button'
 import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
-import { formatDuration } from '@/utils/time'
 import { useNavigatorAllowlist } from '@/hooks/useNavigatorAllowlist'
 import { isOpenAllowlist } from '@/utils/allowlist'
+import { PERMISSION_COLORS, formatPermissionLabel } from '@/utils/navigatorPermissions'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NavigatorDetailCard - Navigator info + type-specific interaction UI
 // ═══════════════════════════════════════════════════════════════════════════
-
-const PERMISSION_COLORS: Record<string, string> = {
-  none: 'bg-dao-surface text-dao-text-hint',
-  admin: 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400',
-  manager: 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-400',
-  admin_manager: 'bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-400',
-  governor: 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-400',
-  admin_governor: 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-400',
-  manager_governor: 'bg-cyan-100 dark:bg-cyan-900/50 text-cyan-700 dark:text-cyan-400',
-  all: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400',
-}
-
-function formatPermissionLabel(label: string): string {
-  return label
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' + ')
-}
 
 const NAVIGATOR_TYPE_LABELS: Record<string, string> = {
   OnboarderNavigator: 'Onboarder Navigator',
@@ -202,8 +184,8 @@ function OnboarderSection({
     <div className="mt-4 pt-4 border-t border-dao-border space-y-4">
       <h4 className="text-sm font-semibold text-dao-text">Join DAO</h4>
 
-      {/* Paused banner */}
-      {config.paused && (
+      {/* Paused banner — pessimistic OR between indexer and on-chain state */}
+      {(navigator.paused || config.paused) && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
           <p className="text-sm text-amber-400">This navigator is currently paused.</p>
         </div>
@@ -305,7 +287,7 @@ function OnboarderSection({
         </p>
       )}
 
-      {!isExpired && !config.paused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
+      {!isExpired && !navigator.paused && !config.paused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
         <>
           <div>
             <label
@@ -364,7 +346,7 @@ function OnboarderSection({
           )}
 
           {error && <p className="text-sm text-red-400">{error}</p>}
-          {success && <p className="text-sm text-green-400">Successfully onboarded!</p>}
+          {success && <p className="text-sm text-emerald-400">Successfully onboarded!</p>}
 
           {!connected ? (
             <p className="text-sm text-dao-text-hint text-center py-2">Connect wallet to join</p>
@@ -450,8 +432,8 @@ function ERC20TributeSection({
     <div className="mt-4 pt-4 border-t border-dao-border space-y-4">
       <h4 className="text-sm font-semibold text-dao-text">Join DAO (ERC20 Tribute)</h4>
 
-      {/* Paused banner */}
-      {config.paused && (
+      {/* Paused banner — pessimistic OR between indexer and on-chain state */}
+      {(navigator.paused || config.paused) && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
           <p className="text-sm text-amber-400">This navigator is currently paused.</p>
         </div>
@@ -538,7 +520,7 @@ function ERC20TributeSection({
         </p>
       )}
 
-      {!isExpired && !config.paused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
+      {!isExpired && !navigator.paused && !config.paused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -609,7 +591,7 @@ function ERC20TributeSection({
           )}
 
           {error && <p className="text-sm text-red-400">{error}</p>}
-          {success && <p className="text-sm text-green-400">Successfully onboarded!</p>}
+          {success && <p className="text-sm text-emerald-400">Successfully onboarded!</p>}
 
           {!connected ? (
             <p className="text-sm text-dao-text-hint text-center py-2">Connect wallet to join</p>

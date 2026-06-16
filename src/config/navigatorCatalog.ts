@@ -10,45 +10,46 @@ export interface NavigatorCatalogEntry {
   description: string
   permission: number
   permissionLabel: string
-  pattern: 'membership' | 'vesting' | 'treasury' | 'safety' | 'information' | 'adaptive' | 'recurring'
+  pattern: 'membership' | 'vesting' | 'treasury' | 'safety' | 'information' | 'recurring'
   status: 'shipped' | 'planned'
   features: string[]
   warningText?: string
 }
 
-// ─── SVG icon path data (24x24 viewBox) ──────────────────────────────────
+// ─── SVG icon path data (24x24 viewBox, OUTLINE/stroke style) ─────────────
+// Heroicons-v2 outline paths — rendered with fill="none" stroke="currentColor"
+// strokeWidth={2} to match the app's nav icon language. Render via <NavigatorGlyph>.
 
 export const NAVIGATOR_ICONS: Record<string, string> = {
-  // Coin - for native token tribute
-  coin: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H11.5v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.65c.1 1.7 1.36 2.66 2.85 2.97V19h1.72v-1.67c1.52-.29 2.72-1.16 2.72-2.74 0-2.22-1.86-2.97-3.63-3.45z',
-  // Token - for ERC20 tribute
-  token: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
+  // Coin - for native token tribute (currency-dollar)
+  coin: 'M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  // Token - for ERC20 tribute (banknotes)
+  token: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z',
   // Clock/Timelock
-  clock: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z',
+  clock: 'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z',
   // Wallet - for budget/treasury
-  wallet: 'M21 18v1c0 1.1-.9 2-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h14c1.1 0 2 .9 2 2v1h-9a2 2 0 00-2 2v8a2 2 0 002 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z',
+  wallet: 'M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3',
   // Chart bar - for signal/polls
-  chartBar: 'M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z',
-  // Users - for delegate registry
-  users: 'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z',
-  // Shield - for circuit breaker / safety
-  shield: 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z',
+  chartBar: 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z',
+  // Users - generic group/registry icon (user-group)
+  users: 'M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z',
+  // Shield - for safety (shield-check)
+  shield: 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z',
   // Key - for NFT gated
-  key: 'M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z',
-  // Zap - for oracle/adaptive
-  zap: 'M7 2v11h3v9l7-12h-4l4-8z',
-  // Signal - for information/polls
-  signal: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z',
-  // Calendar - for subscription/recurring
-  calendar: 'M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 002 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z',
-  // Lock - for vesting
-  lock: 'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z',
+  key: 'M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z',
+  // Zap - generic fallback icon (bolt)
+  zap: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z',
+  // Signal - for information/polls (speaker-wave / broadcast)
+  signal: 'M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z',
+  // Calendar - for subscription/recurring (calendar-days)
+  calendar: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5',
+  // Lock - for vesting (lock-closed)
+  lock: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
 }
 
 // ─── Catalog entries ──────────────────────────────────────────────────────
 
 export const NAVIGATOR_CATALOG: NavigatorCatalogEntry[] = [
-  // ── Shipped ─────────────────────────────────────────────────────────────
   {
     type: 'OnboarderNavigator',
     name: 'Onboarder Navigator',
@@ -86,160 +87,121 @@ export const NAVIGATOR_CATALOG: NavigatorCatalogEntry[] = [
       'Allowlists',
     ],
   },
-
-  // ── Planned ─────────────────────────────────────────────────────────────
+  {
+    type: 'NFTGatedNavigator',
+    name: 'NFT-Gated Navigator',
+    icon: NAVIGATOR_ICONS.key,
+    shortDescription: 'Gate membership behind ERC-721 ownership',
+    description: 'ERC-721 holders claim shares/loot — one claim per token, forever',
+    permission: 2,
+    permissionLabel: 'MANAGER',
+    pattern: 'membership',
+    status: 'shipped',
+    features: [
+      'ERC-721 collection gating',
+      'One claim per tokenId (anti-recycle)',
+      'Free-mint or native tribute',
+      'Mandatory mint cap',
+      'Per-wallet cap, expiry, allowlist, pause',
+    ],
+    warningText: 'ERC-721 only. Shares are a claim ticket — they persist after the NFT is sold. Not revocable membership.',
+  },
   {
     type: 'TimelockNavigator',
     name: 'Timelock Navigator',
     icon: NAVIGATOR_ICONS.clock,
-    shortDescription: 'Mandatory delay on governance changes',
-    description: 'Mandatory delay on governance parameter changes',
-    permission: 3,
+    shortDescription: 'Delay governance-config changes',
+    description: 'Queues setGovernanceConfig behind a mandatory delay — a second ragequit window for config changes.',
+    permission: 4,
     permissionLabel: 'GOVERNOR',
     pattern: 'safety',
-    status: 'planned',
+    status: 'shipped',
     features: [
-      'Configurable delay period',
-      'Queued proposal execution',
-      'Emergency cancel capability',
+      'Mandatory delay on governance-config changes',
+      'Second ragequit window (members exit before it lands)',
+      'Queued changes are visible and cancellable',
+      'Permissionless execution once matured',
+      'Emergency cancel-all + pause',
     ],
+    warningText: 'Advisory, not enforced: a proposal can still bypass it via a direct config change. The app routes config changes through the timelock and warns on bypasses. Must hold GOVERNOR (4) — and be the only GOVERNOR navigator — for the guarantee to hold.',
   },
   {
     type: 'BudgetNavigator',
     name: 'Budget Navigator',
     icon: NAVIGATOR_ICONS.wallet,
-    shortDescription: 'Pre-approved spending budgets',
-    description: 'Pre-approved spending budgets with payroll automation',
-    permission: 2,
-    permissionLabel: 'MANAGER',
+    shortDescription: 'Recurring treasury budgets',
+    description: 'Governance approves a recurring budget; a per-budget manager disburses treasury funds within a per-period allowance and a lifetime ceiling — no proposal per payment. Treasury-disbursement only (it never mints).',
+    permission: 0,
+    permissionLabel: 'Vault Module',
     pattern: 'treasury',
-    status: 'planned',
+    status: 'shipped',
     features: [
-      'Spending budgets',
-      'Payroll automation',
-      'Multi-token support',
-      'Period-based limits',
+      'Per-budget manager',
+      'Per-period allowance (auto-resets, no keeper)',
+      'Lifetime ceiling cap',
+      'Native QUAI + any ERC-20',
+      'Batch payroll disbursement',
+      'Pause / cancel kill switches',
     ],
+    warningText: 'Treasury access via vault module — NOT a DAOShip permission. Enabled by a governance proposal calling vault.enableModule (not setNavigators). All spending is bounded by the per-budget allowance + ceiling; a compromised manager is capped per period.',
   },
   {
     type: 'SignalNavigator',
     name: 'Signal Navigator',
     icon: NAVIGATOR_ICONS.signal,
     shortDescription: 'Non-binding governance polls',
-    description: 'Non-binding governance polls and temperature checks',
+    description: 'Share-weighted temperature-check polls — non-binding, no on-chain execution',
     permission: 0,
     permissionLabel: 'None',
     pattern: 'information',
-    status: 'planned',
+    status: 'shipped',
     features: [
-      'Temperature checks',
-      'Non-binding polls',
-      'Weighted by shares',
-      'Custom voting periods',
+      'Share-weighted polls (loot excluded)',
+      'Snapshot at poll start (anti vote-buying)',
+      'Scheduled or immediate polls',
+      '2–10 options, custom durations',
+      'No permission — needs DAO sanction to surface',
     ],
-  },
-  {
-    type: 'DelegateRegistryNavigator',
-    name: 'Delegate Registry Navigator',
-    icon: NAVIGATOR_ICONS.users,
-    shortDescription: 'On-chain delegate profiles',
-    description: 'On-chain delegate profiles and discovery',
-    permission: 0,
-    permissionLabel: 'None',
-    pattern: 'information',
-    status: 'planned',
-    features: [
-      'Delegate profiles',
-      'On-chain discovery',
-      'Delegation history',
-      'Performance metrics',
-    ],
-  },
-  {
-    type: 'NFTGatedNavigator',
-    name: 'NFT-Gated Navigator',
-    icon: NAVIGATOR_ICONS.key,
-    shortDescription: 'Gate membership behind NFT ownership',
-    description: 'Gate membership behind NFT ownership',
-    permission: 2,
-    permissionLabel: 'MANAGER',
-    pattern: 'membership',
-    status: 'planned',
-    features: [
-      'ERC-721 support',
-      'ERC-1155 support',
-      'Collection-based gating',
-      'Trait-based gating',
-    ],
+    warningText: 'Non-binding & read-only. Polls surface only after the DAO sanctions this navigator via governance.',
   },
   {
     type: 'VestingNavigator',
     name: 'Vesting Navigator',
     icon: NAVIGATOR_ICONS.lock,
-    shortDescription: 'Time-locked share issuance',
-    description: 'Time-locked share issuance with cliff and linear vesting',
+    shortDescription: 'Vest shares or loot on a cliff + linear schedule',
+    description: 'Mints shares or loot to a beneficiary as they vest — cliff + linear, claimed incrementally (no escrow).',
     permission: 2,
     permissionLabel: 'MANAGER',
     pattern: 'vesting',
-    status: 'planned',
+    status: 'shipped',
     features: [
-      'Cliff periods',
-      'Linear vesting',
-      'Revocable grants',
-      'Multiple beneficiaries',
+      'Cliff + linear vesting',
+      'Shares OR loot per schedule',
+      'Incremental minting on claim (no escrow)',
+      'Beneficiary or governance can claim',
+      'Non-destructive revoke (freezes accrual)',
     ],
-  },
-  {
-    type: 'CircuitBreakerNavigator',
-    name: 'Circuit Breaker Navigator',
-    icon: NAVIGATOR_ICONS.shield,
-    shortDescription: 'Auto-pause on anomalous activity',
-    description: 'Auto-pause on anomalous activity',
-    permission: 1,
-    permissionLabel: 'ADMIN',
-    pattern: 'safety',
-    status: 'planned',
-    features: [
-      'Anomaly detection',
-      'Auto-pause triggers',
-      'Configurable thresholds',
-      'Admin override',
-    ],
-    warningText: 'Requires ADMIN permission. Use with caution.',
-  },
-  {
-    type: 'OracleNavigator',
-    name: 'Oracle Navigator',
-    icon: NAVIGATOR_ICONS.zap,
-    shortDescription: 'Adaptive governance parameters',
-    description: 'Adaptive governance parameter adjustment',
-    permission: 3,
-    permissionLabel: 'GOVERNOR',
-    pattern: 'adaptive',
-    status: 'planned',
-    features: [
-      'External data feeds',
-      'Parameter adjustment',
-      'Quorum adaptation',
-      'Activity-based tuning',
-    ],
+    warningText: 'No escrow — unvested tokens carry no power until claimed. No global dilution cap: size totalAmount vs supply. Revoke freezes future accrual but does NOT claw back already-minted tokens. The navigator must keep MANAGER (2) or claims fail.',
   },
   {
     type: 'SubscriptionNavigator',
     name: 'Subscription Navigator',
     icon: NAVIGATOR_ICONS.calendar,
-    shortDescription: 'Recurring membership fees',
-    description: 'Recurring membership fees with auto-enforcement',
+    shortDescription: 'Recurring membership dues',
+    description: 'Members pull-pay periodic dues (native QUAI or ERC-20) to the treasury to keep their membership current. Past a grace window, anyone can collect a lapsed member — converting their shares to loot (default) or burning them — for a small keeper reward.',
     permission: 2,
     permissionLabel: 'MANAGER',
     pattern: 'recurring',
-    status: 'planned',
+    status: 'shipped',
     features: [
-      'Recurring fees',
-      'Auto-enforcement',
-      'Grace periods',
-      'Multi-tier membership',
+      'Pull payment (no infinite approvals)',
+      'Multi-token menu: native QUAI + ERC-20s',
+      'Grace period + permissionless keeper collection',
+      'Convert-to-loot (default) or burn enforcement',
+      'Governance enrollment (one complimentary period)',
+      'Pre-payment & pay-for-another supported',
     ],
+    warningText: 'MANAGER permission: can convert/burn the shares of members past their grace window and mint a small loot keeper reward. The token menu, fees, period, grace, and enforcement mode are immutable — redeploy to change them. Collection can be blocked if removing a large member would breach the sponsor threshold.',
   },
 ]
 
@@ -272,7 +234,7 @@ export function getGroupedCatalog(): CatalogGroup[] {
     { label: 'Safety & Governance', patterns: ['safety'] },
     { label: 'Treasury', patterns: ['treasury'] },
     { label: 'Community', patterns: ['information'] },
-    { label: 'Advanced', patterns: ['vesting', 'adaptive', 'recurring'] },
+    { label: 'Advanced', patterns: ['vesting', 'recurring'] },
   ]
 
   return groups

@@ -4,7 +4,7 @@ import { OfferingField } from './OfferingField'
 import { ProposalSettingsFields } from './ProposalSettingsFields'
 import { ProposalActionSection } from './ProposalActionSection'
 import { formatTokenAmount } from '@/utils/format'
-import { ZERO_ADDRESS } from '@/config/contracts'
+import { isAddress } from '@/services/utils/AddressUtils'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FundingForm - Transfer tokens from treasury proposal form
@@ -39,7 +39,6 @@ interface FundingFormProps {
   isSubmitting?: boolean
 }
 
-const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/
 
 export function FundingForm({ daoId: _daoId, vaultTokens, minOfferingDisplay, canSelfSponsor = false, onSubmit, isSubmitting = false }: FundingFormProps) {
   const [title, setTitle] = useState('')
@@ -60,7 +59,7 @@ export function FundingForm({ daoId: _daoId, vaultTokens, minOfferingDisplay, ca
     if (!title.trim()) {
       newErrors.title = 'Title is required'
     }
-    if (!ADDRESS_REGEX.test(recipient)) {
+    if (!isAddress(recipient)) {
       newErrors.recipient = 'Must be a valid 42-character hex address'
     }
     if (!tokenAddress) {
@@ -188,7 +187,7 @@ export function FundingForm({ daoId: _daoId, vaultTokens, minOfferingDisplay, ca
           </select>
           {errors.tokenAddress && <p className="text-xs text-red-400 mt-1">{errors.tokenAddress}</p>}
           {selectedToken && selectedToken.balance === 0n && (
-            <p className="text-xs text-yellow-400 mt-1">
+            <p className="text-xs text-amber-400 mt-1">
               The vault has no balance of this token.
             </p>
           )}

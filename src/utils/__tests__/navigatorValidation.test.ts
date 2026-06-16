@@ -3,6 +3,8 @@ import {
   onboarderMultiplierSchema,
   onboarderFixedPriceSchema,
   erc20TributeSchema,
+  signalNavigatorSchema,
+  SIGNAL_MAX_WINDOW_SECONDS,
   getNavigatorWarnings,
 } from '@/utils/navigatorValidation'
 
@@ -79,7 +81,7 @@ describe('onboarderFixedPriceSchema', () => {
 describe('erc20TributeSchema', () => {
   it('accepts valid config', () => {
     const result = erc20TributeSchema.safeParse({
-      tributeToken: '0x1234567890abcdef1234567890abcdef12345678',
+      tributeToken: '0x001234567890abcdef1234567890abcdef123456',
       pricePerShare: '1.5',
     })
     expect(result.success).toBe(true)
@@ -95,10 +97,48 @@ describe('erc20TributeSchema', () => {
 
   it('rejects pricePerShare=0', () => {
     const result = erc20TributeSchema.safeParse({
-      tributeToken: '0x1234567890abcdef1234567890abcdef12345678',
+      tributeToken: '0x001234567890abcdef1234567890abcdef123456',
       pricePerShare: '0',
     })
     expect(result.success).toBe(false)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SignalNavigator
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('signalNavigatorSchema', () => {
+  const DAY = 86400
+  const valid = {
+    minSharesToCreatePoll: '0',
+    minDuration: DAY,
+    maxDuration: 30 * DAY,
+    maxStartDelay: 7 * DAY,
+  }
+
+  it('accepts a valid config', () => {
+    expect(signalNavigatorSchema.safeParse(valid).success).toBe(true)
+  })
+
+  it('accepts maxStartDelay = 0 (immediate-only)', () => {
+    expect(signalNavigatorSchema.safeParse({ ...valid, maxStartDelay: 0 }).success).toBe(true)
+  })
+
+  it('rejects minDuration = 0', () => {
+    expect(signalNavigatorSchema.safeParse({ ...valid, minDuration: 0 }).success).toBe(false)
+  })
+
+  it('rejects maxDuration < minDuration', () => {
+    expect(signalNavigatorSchema.safeParse({ ...valid, minDuration: 10 * DAY, maxDuration: 5 * DAY }).success).toBe(false)
+  })
+
+  it('rejects maxDuration beyond MAX_WINDOW', () => {
+    expect(signalNavigatorSchema.safeParse({ ...valid, maxDuration: SIGNAL_MAX_WINDOW_SECONDS + 1 }).success).toBe(false)
+  })
+
+  it('rejects maxStartDelay beyond MAX_WINDOW', () => {
+    expect(signalNavigatorSchema.safeParse({ ...valid, maxStartDelay: SIGNAL_MAX_WINDOW_SECONDS + 1 }).success).toBe(false)
   })
 })
 

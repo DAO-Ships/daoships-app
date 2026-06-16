@@ -27,10 +27,15 @@ const FETCH_TIMEOUT_MS = 10_000
 const MAX_PROXY_DEPTH = 3
 const MAX_RESPONSE_BYTES = 1_048_576 // 1MB
 
+// IPFS CID validation: CIDv0 (Qm... base58) or CIDv1 (baf... base32).
+// A malicious contract can embed any string in its CBOR metadata section —
+// this guard prevents that string from being interpolated into a fetch URL.
+const CID_RE = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z2-7]{51,63})$/
+
 // ── Cache ────────────────────────────────────────────────────────────────
 
 interface AbiCacheEntry {
-  abi: any[] | null
+  abi: quais.JsonFragment[] | null
   source: AbiSource | null
 }
 
@@ -51,7 +56,7 @@ function cacheSet(address: string, entry: AbiCacheEntry) {
 export type AbiSource = 'ipfs' | 'explorer'
 
 export interface AbiResult {
-  abi: any[] | null
+  abi: quais.JsonFragment[] | null
   source: AbiSource | null
 }
 
@@ -100,7 +105,7 @@ export async function fetchAbi(address: string): Promise<AbiResult> {
 
 // ── IPFS Metadata Resolution ─────────────────────────────────────────────
 
-async function fetchAbiFromIpfs(address: string, depth: number): Promise<any[] | null> {
+async function fetchAbiFromIpfs(address: string, depth: number): Promise<quais.JsonFragment[] | null> {
   if (depth >= MAX_PROXY_DEPTH) return null
 
   try {
@@ -118,16 +123,24 @@ async function fetchAbiFromIpfs(address: string, depth: number): Promise<any[] |
     const metadata = decode(bytecode, AuxdataStyle.SOLIDITY)
     if (!metadata?.ipfs) return null
 
-    // Fetch metadata JSON from IPFS
-    const url = `${IPFS_GATEWAY}/ipfs/${metadata.ipfs}`
+    // Validate CID shape before using it in a URL — the CBOR blob is attacker-controlled.
+    if (!CID_RE.test(metadata.ipfs)) {
+      console.warn('[ContractMetadataService] Invalid IPFS CID in bytecode:', metadata.ipfs)
+      return null
+    }
+
+    // Fetch metadata JSON from IPFS (encodeURIComponent as defense-in-depth)
+    const url = `${IPFS_GATEWAY}/ipfs/${encodeURIComponent(metadata.ipfs)}`
     const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
     if (!response.ok) return null
 
-    // Check response size
+    // Enforce byte limit on response body (don't trust Content-Length header alone)
     const contentLength = response.headers.get('content-length')
     if (contentLength && parseInt(contentLength) > MAX_RESPONSE_BYTES) return null
 
-    const metadataJson = await response.json()
+    const body = await response.text()
+    if (body.length > MAX_RESPONSE_BYTES) return null
+    const metadataJson = JSON.parse(body)
     const abi = metadataJson?.output?.abi
     if (!Array.isArray(abi) || abi.length === 0) return null
 
@@ -148,10 +161,14 @@ async function fetchAbiFromIpfs(address: string, depth: number): Promise<any[] |
 
 // ── Explorer API Fallback ────────────────────────────────────────────────
 
-async function fetchAbiFromExplorer(address: string): Promise<any[] | null> {
+async function fetchAbiFromExplorer(address: string): Promise<quais.JsonFragment[] | null> {
   try {
     const checksummed = quais.getAddress(address)
-    const url = `${NETWORK_CONFIG.blockExplorerUrl}/api?module=contract&action=getabi&address=${checksummed}`
+    const explorerBase = new URL('/api', NETWORK_CONFIG.blockExplorerUrl)
+    explorerBase.searchParams.set('module', 'contract')
+    explorerBase.searchParams.set('action', 'getabi')
+    explorerBase.searchParams.set('address', checksummed)
+    const url = explorerBase.toString()
     const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
     if (!response.ok) return null
 
@@ -195,7 +212,7 @@ function detectMinimalProxy(bytecode: string): string | null {
 /**
  * Check if an ABI looks like a proxy contract.
  */
-function looksLikeProxy(abi: any[]): boolean {
+function looksLikeProxy(abi: quais.JsonFragment[]): boolean {
   const names = new Set(abi.filter((e) => e.type === 'function').map((e) => e.name))
   return names.has('upgradeTo') || names.has('upgradeToAndCall') || names.has('implementation')
 }

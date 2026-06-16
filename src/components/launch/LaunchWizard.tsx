@@ -4,8 +4,10 @@ import { z } from 'zod'
 import { useLaunch } from '@/hooks/useLaunch'
 import { useWallet } from '@/hooks/useWallet'
 import { parseTokenAmount } from '@/utils/format'
-import { NATIVE_TOKEN_SENTINEL } from '@/config/contracts'
+import { NATIVE_TOKEN_SENTINEL, MAX_GUILD_TOKENS } from '@/config/contracts'
 import { parseDurationToSeconds } from '@/utils/time'
+import type { DaoTheme } from '@/utils/daoTheme'
+import { isAddress } from '@/services/utils/AddressUtils'
 import { parseAllowlistInput } from '@/utils/allowlist'
 import { MAX_ALLOWLIST_ADDRESSES } from '@/components/common/AllowlistInput'
 import { Button } from '@/components/common/Button'
@@ -36,6 +38,8 @@ const DEFAULT_VALUES: LaunchFormValues = {
   name: '',
   description: '',
   avatarUrl: '',
+  bannerUrl: '',
+  theme: undefined,
   links: {},
   shareTokenName: '',
   shareTokenSymbol: '',
@@ -103,6 +107,8 @@ const launchFormShape = z.object({
   name: z.string().default(''),
   description: z.string().default(''),
   avatarUrl: z.string().default(''),
+  bannerUrl: z.string().default(''),
+  theme: z.custom<DaoTheme>().optional(),
   links: z.record(z.string()).default({}),
   shareTokenName: z.string().default(''),
   shareTokenSymbol: z.string().default(''),
@@ -175,6 +181,7 @@ function loadFormState(): { values: LaunchFormValues; step: number } | null {
   } catch { return null }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- launch-state helper intentionally co-located with the wizard; dev-only Fast Refresh nicety
 export function clearLaunchState() {
   try {
     localStorage.removeItem(FORM_STORAGE_KEY)
@@ -189,6 +196,7 @@ export function LaunchWizard() {
   const [showResumed, setShowResumed] = useState(!!savedState)
 
   const [currentStep, setCurrentStep] = useState(() => savedState?.step ?? 0)
+  const [stepError, setStepError] = useState<string | null>(null)
   const [launchComplete, setLaunchComplete] = useState(false)
   const { launch, isLaunching, error: launchError } = useLaunch()
   const { connected, address: _address } = useWallet()
@@ -214,6 +222,8 @@ export function LaunchWizard() {
   // Auto-save on step change
   useEffect(() => {
     saveCurrentState()
+    // Clear any step-level validation error when the active step changes
+    setStepError(null)
   }, [currentStep, saveCurrentState])
 
   // Clear all state on successful launch
@@ -256,7 +266,7 @@ export function LaunchWizard() {
         }
         if (data.enableERC20Tribute) {
           const erc = data.erc20TributeConfig
-          if (!erc.tributeToken || !/^0x[0-9a-fA-F]{40}$/.test(erc.tributeToken)) {
+          if (!erc.tributeToken || !isAddress(erc.tributeToken)) {
             return false
           }
           const priceShare = parseFloat(erc.pricePerShare || '0')
@@ -271,9 +281,10 @@ export function LaunchWizard() {
       case 4: {
         // Guild tokens — validate addresses for ERC-20 entries, skip native tokens
         const tokens = getValues().guildTokens
+        if (tokens.length > MAX_GUILD_TOKENS) return false
         for (const t of tokens) {
           if (t.type === 'native') continue
-          if (!t.address || !/^0x[0-9a-fA-F]{40}$/.test(t.address)) return false
+          if (!t.address || !isAddress(t.address)) return false
         }
         return true
       }
@@ -284,9 +295,34 @@ export function LaunchWizard() {
     }
   }
 
+  // Helpful, step-specific message shown when validateCurrentStep() fails.
+  const getStepErrorMessage = (step: number): string => {
+    switch (step) {
+      case 0:
+        return 'Fix the highlighted fields to continue.'
+      case 1:
+        return 'Check your member entries to continue.'
+      case 2:
+        return 'Fix the highlighted governance settings to continue.'
+      case 3:
+        return 'Fix the highlighted navigator settings to continue.'
+      case 4:
+        return 'Check your guild token configuration to continue.'
+      case 5:
+        return 'Fix the highlighted vault settings to continue.'
+      default:
+        return 'Please correct the errors above to continue.'
+    }
+  }
+
   const goNext = async () => {
     const isValid = await validateCurrentStep()
-    if (isValid && currentStep < STEPS.length - 1) {
+    if (!isValid) {
+      setStepError(getStepErrorMessage(currentStep))
+      return
+    }
+    setStepError(null)
+    if (currentStep < STEPS.length - 1) {
       // Auto-populate vault owners from members when entering the vault step
       if (currentStep === 4) {
         const members = getValues().members.filter(m => m.address.trim())
@@ -378,16 +414,16 @@ export function LaunchWizard() {
                 if (index < currentStep && !launchComplete) setCurrentStep(index)
               }}
               disabled={index > currentStep || launchComplete}
-              className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-all ${
+              className={`flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-all ${
                 index < currentStep
-                  ? 'bg-green-500 border-green-500 text-white cursor-pointer'
+                  ? 'bg-emerald-500 border-emerald-500 text-white cursor-pointer'
                   : index === currentStep
                     ? 'bg-accent-500 border-accent-500 text-white'
                     : 'bg-dao-dark-3 border-dao-border text-dao-text-hint'
               }`}
             >
               {index < currentStep ? (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               ) : (
@@ -407,8 +443,8 @@ export function LaunchWizard() {
             {/* Connecting line */}
             {index < STEPS.length - 1 && (
               <div
-                className={`flex-1 h-0.5 mx-3 ${
-                  index < currentStep ? 'bg-green-500' : 'bg-dao-border'
+                className={`flex-1 h-0.5 mx-1 sm:mx-3 ${
+                  index < currentStep ? 'bg-emerald-500' : 'bg-dao-border'
                 }`}
               />
             )}
@@ -416,10 +452,15 @@ export function LaunchWizard() {
         ))}
       </div>
 
+      {/* Mobile-only active step label */}
+      <p className="sm:hidden -mt-3 text-xs font-medium text-dao-text-secondary">
+        Step {currentStep + 1} of {STEPS.length} &middot; {STEPS[currentStep].label}
+      </p>
+
       {/* Resumed session notice */}
       {showResumed && savedState && !launchComplete && currentStep < STEPS.length - 1 && (
-        <div className="bg-accent-500/10 border border-accent-500/30 rounded-lg px-4 py-3 flex items-center justify-between">
-          <p className="text-sm text-accent-300">
+        <div className="bg-accent-100 dark:bg-accent-500/10 border border-accent-500/40 dark:border-accent-500/30 rounded-lg px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-accent-900 dark:text-accent-300">
             Resumed from your previous session (step {savedState.step + 1}/{STEPS.length}).
           </p>
           <button
@@ -454,6 +495,13 @@ export function LaunchWizard() {
           <p className="text-sm text-red-400">
             {launchError.message || 'Failed to launch DAO'}
           </p>
+        </div>
+      )}
+
+      {/* Step-level validation error */}
+      {stepError && currentStep < STEPS.length - 1 && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
+          <p className="text-sm text-red-400">{stepError}</p>
         </div>
       )}
 

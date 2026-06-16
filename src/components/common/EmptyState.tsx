@@ -19,6 +19,7 @@ export function EmptyState({ title, description, icon, action }: EmptyStateProps
       ) : (
         <div className="mb-4">
           <svg
+            aria-hidden="true"
             className="w-16 h-16 text-dao-text-hint"
             fill="none"
             viewBox="0 0 24 24"

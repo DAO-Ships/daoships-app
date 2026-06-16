@@ -2,23 +2,25 @@ import { useState } from 'react'
 import { Button } from '@/components/common/Button'
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SignalForm - Signal proposal form (title + description only)
+// SignalProposalForm - Non-executing "signal" DAOShip proposal (title + description).
+// NOTE: unrelated to the SignalNavigator (a read-only contract with its own on-chain
+// polls). This is a normal proposal that carries no executable actions.
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface SignalFormData {
+interface SignalProposalFormData {
   title: string
   description: string
 }
 
-interface SignalFormProps {
-  onSubmit: (data: SignalFormData) => void
+interface SignalProposalFormProps {
+  onSubmit: (data: SignalProposalFormData) => void
   isSubmitting?: boolean
 }
 
-export function SignalForm({ onSubmit, isSubmitting = false }: SignalFormProps) {
+export function SignalProposalForm({ onSubmit, isSubmitting = false }: SignalProposalFormProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [errors, setErrors] = useState<Partial<Record<keyof SignalFormData, string>>>({})
+  const [errors, setErrors] = useState<Partial<Record<keyof SignalProposalFormData, string>>>({})
 
   const validate = (): boolean => {
     const newErrors: typeof errors = {}

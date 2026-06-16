@@ -171,7 +171,7 @@ export function AnnouncementForm({
                     ? s === 'info'
                       ? 'bg-primary-600 text-white border-primary-600'
                       : s === 'warning'
-                        ? 'bg-yellow-500 text-white border-yellow-500'
+                        ? 'bg-amber-500 text-white border-amber-500'
                         : 'bg-red-500 text-white border-red-500'
                     : 'bg-dao-dark-3 text-dao-text-muted border-dao-border hover:border-dao-text-hint'
                 }`}

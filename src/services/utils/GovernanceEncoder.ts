@@ -71,3 +71,33 @@ export function encodeGovernanceConfig(config: GovernanceConfig): string {
     ],
   )
 }
+
+/**
+ * Decode a governance-config bytes blob (from setGovernanceConfig / timelock queueChange) back
+ * into its parameters. Inverse of encodeGovernanceConfig. Returns null if the bytes don't match
+ * the expected 7-field tuple (e.g. a future/legacy layout) so callers can fall back gracefully.
+ */
+export function decodeGovernanceConfig(configBytes: string): GovernanceConfig | null {
+  if (!configBytes || configBytes === '0x') return null
+  try {
+    const abiCoder = quais.AbiCoder.defaultAbiCoder()
+    const [
+      votingPeriod, gracePeriod, proposalOffering, quorumPercent,
+      sponsorThreshold, minRetentionPercent, defaultExpiryWindow,
+    ] = abiCoder.decode(
+      ['uint32', 'uint32', 'uint256', 'uint256', 'uint256', 'uint256', 'uint32'],
+      configBytes,
+    )
+    return {
+      votingPeriod: Number(votingPeriod),
+      gracePeriod: Number(gracePeriod),
+      proposalOffering: BigInt(proposalOffering),
+      quorumPercent: BigInt(quorumPercent),
+      sponsorThreshold: BigInt(sponsorThreshold),
+      minRetentionPercent: BigInt(minRetentionPercent),
+      defaultExpiryWindow: Number(defaultExpiryWindow),
+    }
+  } catch {
+    return null
+  }
+}

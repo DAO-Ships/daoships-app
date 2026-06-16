@@ -16,25 +16,29 @@ export function useRealtimeProposal(daoId: string | undefined, proposalId: strin
     if (!supabase || !daoId || !proposalId) return
 
     const compositeId = `${daoId}-${proposalId}`
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
+      queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
+    }
+
     const channel = supabase
       .channel(`proposal:${compositeId}`)
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*', // UPDATE | DELETE — DELETE fires on reorg tombstones
           schema: INDEXER_CONFIG.NETWORK_SCHEMA,
           table: 'ds_proposals',
           filter: `id=eq.${compositeId}`,
         },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
-          queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
-        },
+        invalidate,
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') invalidate()
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [supabase, daoId, proposalId, queryClient])
+  }, [daoId, proposalId, queryClient])
 }

@@ -147,8 +147,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
           contractIndex: i,
           totalContracts: msg.contracts.length,
         })
-      } catch (e: any) {
-        self.postMessage({ type: 'error', message: e.message })
+      } catch (e) {
+        self.postMessage({ type: 'error', message: e instanceof Error ? e.message : String(e) })
         return
       }
     }

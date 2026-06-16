@@ -150,12 +150,12 @@ export function DateTimePicker({
               className="text-dao-text-hint hover:text-dao-text-muted transition-colors"
               aria-label="Clear date"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </span>
           )}
-          <svg className="w-4 h-4 text-dao-text-hint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg aria-hidden="true" className="w-4 h-4 text-dao-text-hint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
         </div>
@@ -166,16 +166,16 @@ export function DateTimePicker({
         <div className="absolute z-50 mt-1 bg-dao-dark-2 border border-dao-border rounded-xl shadow-lg p-4 w-[300px]">
           {/* Month/Year nav */}
           <div className="flex items-center justify-between mb-3">
-            <button type="button" onClick={prevMonth} className="p-1 hover:bg-dao-surface rounded transition-colors">
-              <svg className="w-4 h-4 text-dao-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <button type="button" onClick={prevMonth} aria-label="Previous month" className="p-1 hover:bg-dao-surface rounded transition-colors">
+              <svg aria-hidden="true" className="w-4 h-4 text-dao-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
             <span className="text-sm font-semibold text-dao-text">
               {MONTHS[viewMonth]} {viewYear}
             </span>
-            <button type="button" onClick={nextMonth} className="p-1 hover:bg-dao-surface rounded transition-colors">
-              <svg className="w-4 h-4 text-dao-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <button type="button" onClick={nextMonth} aria-label="Next month" className="p-1 hover:bg-dao-surface rounded transition-colors">
+              <svg aria-hidden="true" className="w-4 h-4 text-dao-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>
             </button>
@@ -184,7 +184,7 @@ export function DateTimePicker({
           {/* Day headers */}
           <div className="grid grid-cols-7 gap-0.5 mb-1">
             {DAYS.map((d) => (
-              <div key={d} className="text-center text-[11px] font-medium text-dao-text-hint py-1">
+              <div key={d} className="text-center text-2xs font-medium text-dao-text-hint py-1">
                 {d}
               </div>
             ))}
@@ -217,7 +217,7 @@ export function DateTimePicker({
 
           {/* Time selector */}
           <div className="flex items-center gap-2 mt-3 pt-3 border-t border-dao-border">
-            <svg className="w-4 h-4 text-dao-text-hint flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg aria-hidden="true" className="w-4 h-4 text-dao-text-hint flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <select

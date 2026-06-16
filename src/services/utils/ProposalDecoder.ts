@@ -7,6 +7,7 @@
 
 import { quais } from 'quais'
 import { CONTRACT_ADDRESSES } from '@/config/contracts'
+import { decodeGovernanceConfig, type GovernanceConfig } from './GovernanceEncoder'
 
 const DAOSHIP_INTERFACE = new quais.Interface([
   'function mintShares(address[] to, uint256[] amount)',
@@ -27,12 +28,33 @@ const POSTER_INTERFACE = new quais.Interface([
   'function post(string content, string tag)',
 ])
 
+// TimelockNavigator avatar-only actions. queueChange carries the SAME governance-config blob as
+// DAOShip.setGovernanceConfig, so we decode it into the actual parameters too.
+const TIMELOCK_INTERFACE = new quais.Interface([
+  'function queueChange(bytes _governanceConfig)',
+  'function cancelChange(uint256 changeId)',
+  'function emergencyCancelAll()',
+])
+
+/** Serialize a decoded governance config for an action's `details` (bigints → strings). */
+function govConfigToDetails(c: GovernanceConfig): Record<string, unknown> {
+  return {
+    votingPeriod: c.votingPeriod,
+    gracePeriod: c.gracePeriod,
+    proposalOffering: c.proposalOffering.toString(),
+    quorumPercent: c.quorumPercent.toString(),
+    sponsorThreshold: c.sponsorThreshold.toString(),
+    minRetentionPercent: c.minRetentionPercent.toString(),
+    defaultExpiryWindow: c.defaultExpiryWindow,
+  }
+}
+
 /**
  * A decoded human-readable action from a proposal.
  */
 export interface DecodedAction {
   type: 'transfer' | 'mintShares' | 'burnShares' | 'mintLoot' | 'burnLoot'
-    | 'setGovernanceConfig' | 'setNavigators' | 'setGuildTokens'
+    | 'setGovernanceConfig' | 'queueGovernanceConfig' | 'setNavigators' | 'setGuildTokens'
     | 'posterPost' | 'custom'
   label: string
   details: Record<string, unknown>
@@ -63,6 +85,9 @@ function parseMultiSendTxs(packedHex: string): Array<{ operation: number; to: st
     const lenBytes = bytes.slice(offset, offset + 32)
     const dataLength = Number(BigInt(quais.hexlify(lenBytes)))
     offset += 32
+
+    // Bounds check: prevent OOM from malicious data
+    if (dataLength > 1_000_000 || offset + dataLength > bytes.length) break
 
     const data = dataLength > 0 ? quais.hexlify(bytes.slice(offset, offset + dataLength)) : '0x'
     offset += dataLength
@@ -128,17 +153,21 @@ function decodeGovernanceInner(innerData: string): DecodedAction | null {
         details: { targets: addresses.map((addr, i) => ({ address: addr, amount: amounts[i] })) },
       }
     }
-    case 'setGovernanceConfig':
+    case 'setGovernanceConfig': {
+      const configBytes = decoded.args[0] as string
+      const config = decodeGovernanceConfig(configBytes)
       return {
         type: 'setGovernanceConfig',
         label: 'Update governance configuration',
-        details: { configBytes: decoded.args[0] },
+        details: config ? { config: govConfigToDetails(config) } : { configBytes },
       }
+    }
     case 'setNavigators': {
       const navs = decoded.args[0] as string[]
       const perms = (decoded.args[1] as bigint[]).map((p) => Number(p))
       const disabling = perms.every((p) => p === 0)
-      const enabling = navs.every((addr, i) => perms[i] > 0 && !navs.includes(addr))
+      // All non-zero permissions → a grant (register). Mixed zero/non-zero → an update.
+      const enabling = perms.length > 0 && perms.every((p) => p > 0)
       const label = disabling
         ? `Disable ${navs.length} navigator${navs.length === 1 ? '' : 's'}`
         : enabling
@@ -216,6 +245,34 @@ function decodeSingleTx(tx: { to: string; value: bigint; data: string }): Decode
       type: 'transfer',
       label: 'Transfer QUAI',
       details: { recipient: tx.to, amount: quais.formatQuai(tx.value), token: 'QUAI' },
+    }
+  }
+
+  // TimelockNavigator avatar-only actions (queueChange carries a governance-config blob).
+  const tlCall = tryDecodeFunctionData(TIMELOCK_INTERFACE, tx.data)
+  if (tlCall?.name === 'queueChange') {
+    const config = decodeGovernanceConfig(tlCall.args[0] as string)
+    return {
+      type: 'queueGovernanceConfig',
+      label: 'Queue governance-config change (via timelock)',
+      details: {
+        timelock: tx.to,
+        ...(config ? { config: govConfigToDetails(config) } : { configBytes: tlCall.args[0] }),
+      },
+    }
+  }
+  if (tlCall?.name === 'cancelChange') {
+    return {
+      type: 'custom',
+      label: 'Cancel a queued timelock change',
+      details: { target: tx.to, value: tx.value.toString(), calldata: tx.data },
+    }
+  }
+  if (tlCall?.name === 'emergencyCancelAll') {
+    return {
+      type: 'custom',
+      label: 'Emergency-cancel all queued timelock changes',
+      details: { target: tx.to, value: tx.value.toString(), calldata: tx.data },
     }
   }
 

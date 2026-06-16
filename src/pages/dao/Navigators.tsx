@@ -4,6 +4,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao } from '@/types'
 import { useNavigators } from '@/hooks/useNavigators'
 import { useWallet } from '@/hooks/useWallet'
+import { isNavigatorVisible } from '@/types/trust'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
 import { Loading } from '@/components/common/Loading'
@@ -25,6 +26,17 @@ export function Navigators() {
   const { data: navigators, isLoading, error } = useNavigators(dao.id)
   const { connected } = useWallet()
   const [showCatalog, setShowCatalog] = useState(false)
+  const [showUnverified, setShowUnverified] = useState(false)
+
+  // Trust gating: read-only navigators are self-asserted on-chain — anyone can deploy a
+  // contract claiming this DAO. Only show DAO-sanctioned (and all permissioned) navigators
+  // by default; self_asserted ones surface behind an explicit opt-in. unsanctioned/fabricated
+  // stay hidden entirely.
+  const allNavigators = navigators ?? []
+  const visibleNavigators = allNavigators.filter((n) => isNavigatorVisible(n, showUnverified))
+  const hiddenUnverifiedCount = allNavigators.filter(
+    (n) => !isNavigatorVisible(n, false) && isNavigatorVisible(n, true),
+  ).length
 
   return (
     <div className="space-y-6">
@@ -95,12 +107,33 @@ export function Navigators() {
           title="Failed to load navigators"
           description={error instanceof Error ? error.message : 'An unexpected error occurred.'}
         />
-      ) : navigators && navigators.length > 0 ? (
+      ) : visibleNavigators.length > 0 ? (
         <div className="space-y-3">
-          {navigators.map((navigator) => (
+          {visibleNavigators.map((navigator) => (
             <NavigatorCard key={navigator.id} navigator={navigator} />
           ))}
+          {hiddenUnverifiedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowUnverified((v) => !v)}
+              className="w-full text-center text-xs text-dao-text-hint hover:text-dao-text-secondary py-2 transition-colors"
+            >
+              {showUnverified
+                ? 'Hide unverified navigators'
+                : `Show ${hiddenUnverifiedCount} unverified navigator${hiddenUnverifiedCount === 1 ? '' : 's'}`}
+            </button>
+          )}
         </div>
+      ) : hiddenUnverifiedCount > 0 ? (
+        <EmptyState
+          title="No verified navigators"
+          description={`This DAO has ${hiddenUnverifiedCount} unverified (self-asserted) navigator${hiddenUnverifiedCount === 1 ? '' : 's'} that the DAO has not sanctioned via governance.`}
+          action={
+            <Button variant="secondary" size="sm" onClick={() => setShowUnverified(true)}>
+              Show unverified
+            </Button>
+          }
+        />
       ) : (
         <EmptyState
           title="No navigators"

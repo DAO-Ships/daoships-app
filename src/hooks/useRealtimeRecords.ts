@@ -13,27 +13,32 @@ export function useRealtimeRecords(daoId: string | undefined) {
   useEffect(() => {
     if (!supabase || !daoId) return
 
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ['voteReasons', daoId] })
+      queryClient.invalidateQueries({ queryKey: ['memberProfile', daoId] })
+      queryClient.invalidateQueries({ queryKey: ['memberProfiles', daoId] })
+      queryClient.invalidateQueries({ queryKey: ['announcements', daoId] })
+      queryClient.invalidateQueries({ queryKey: ['daoProfile', daoId] })
+    }
+
     const channel = supabase
       .channel(`records:${daoId}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // INSERT | UPDATE | DELETE — DELETE fires on reorg tombstones
           schema: INDEXER_CONFIG.NETWORK_SCHEMA,
           table: 'ds_records',
           filter: `dao_id=eq.${daoId}`,
         },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['voteReasons', daoId] })
-          queryClient.invalidateQueries({ queryKey: ['memberProfile', daoId] })
-          queryClient.invalidateQueries({ queryKey: ['memberProfiles', daoId] })
-          queryClient.invalidateQueries({ queryKey: ['announcements', daoId] })
-        },
+        invalidate,
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') invalidate()
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [supabase, daoId, queryClient])
+  }, [daoId, queryClient])
 }

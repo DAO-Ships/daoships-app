@@ -27,12 +27,12 @@ export function isNewerRecord(incoming: OrderableRecord, existing: OrderableReco
     incoming.block_number != null &&
     existing.block_number != null
   ) {
-    return incoming.block_number >= existing.block_number
+    return incoming.block_number > existing.block_number
   }
 
   // Fall back to created_at timestamp
   if (incoming.created_at && existing.created_at) {
-    return new Date(incoming.created_at).getTime() >= new Date(existing.created_at).getTime()
+    return new Date(incoming.created_at).getTime() > new Date(existing.created_at).getTime()
   }
 
   // Can't determine ordering — accept the update

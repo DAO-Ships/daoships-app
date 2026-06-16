@@ -44,6 +44,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             {/* Error icon */}
             <div className="mx-auto mb-6 flex items-center justify-center w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/40 border-2 border-red-400 dark:border-red-600">
               <svg
+                aria-hidden="true"
                 className="w-8 h-8 text-red-400"
                 fill="none"
                 viewBox="0 0 24 24"

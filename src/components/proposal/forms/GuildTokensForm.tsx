@@ -4,7 +4,8 @@ import { OfferingField } from './OfferingField'
 import { ProposalSettingsFields } from './ProposalSettingsFields'
 import { ProposalActionSection } from './ProposalActionSection'
 import { tokenService } from '@/services/core/TokenService'
-import { NATIVE_TOKEN_SENTINEL, NETWORK_CONFIG } from '@/config/contracts'
+import { NATIVE_TOKEN_SENTINEL, NETWORK_CONFIG, MAX_GUILD_TOKENS } from '@/config/contracts'
+import { isAddress } from '@/services/utils/AddressUtils'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GuildTokensForm - Add or remove guild tokens (native QUAI or ERC-20s)
@@ -47,7 +48,6 @@ interface GuildTokensFormProps {
   isSubmitting?: boolean
 }
 
-const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/
 
 let rowIdCounter = 0
 function generateRowId(): string {
@@ -94,16 +94,42 @@ export function GuildTokensForm({
     )
   }
 
+  // Compute resulting guild token set after proposal passes.
+  // Existing tokens minus rows that disable existing + new enabled rows.
+  const resultingEnabledCount = (() => {
+    const existingAddrs = new Set(
+      currentGuildTokens
+        .filter((t) => t.enabled)
+        .map((t) => t.address.toLowerCase()),
+    )
+    for (const r of rows) {
+      // Native QUAI always counts (its sentinel is the zero address, which the
+      // strict address check rejects); only skip malformed ERC-20 rows.
+      if (r.type === 'erc20' && !isAddress(r.address)) continue
+      const addr = (r.type === 'native' ? NATIVE_TOKEN_SENTINEL : r.address).toLowerCase()
+      if (r.enabled) {
+        existingAddrs.add(addr)
+      } else {
+        existingAddrs.delete(addr)
+      }
+    }
+    return existingAddrs.size
+  })()
+
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
     if (!title.trim()) newErrors.title = 'Title is required'
     if (rows.length === 0) newErrors.rows = 'Add at least one token change'
 
     rows.forEach((row, index) => {
-      if (row.type === 'erc20' && !ADDRESS_REGEX.test(row.address)) {
+      if (row.type === 'erc20' && !isAddress(row.address)) {
         newErrors[`address-${index}`] = 'Invalid token address'
       }
     })
+
+    if (resultingEnabledCount > MAX_GUILD_TOKENS) {
+      newErrors.rows = `Proposal would result in ${resultingEnabledCount} enabled guild tokens, exceeding the maximum of ${MAX_GUILD_TOKENS}. Ragequit would revert.`
+    }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -204,7 +230,7 @@ export function GuildTokensForm({
                         token.address
                       )}
                     </span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                    <span className={`text-2xs px-1.5 py-0.5 rounded-full ${
                       token.enabled
                         ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
                         : 'bg-dao-surface text-dao-text-hint'
@@ -333,7 +359,7 @@ export function GuildTokensForm({
                     disabled={isSubmitting}
                     title="Remove row"
                   >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg aria-hidden="true" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
@@ -392,7 +418,7 @@ function ERC20AddressInput({
   const [verification, setVerification] = useState<VerificationResult>({ status: 'idle' })
 
   const verifyToken = useCallback(async (address: string) => {
-    if (!ADDRESS_REGEX.test(address)) {
+    if (!isAddress(address)) {
       setVerification({ status: 'idle' })
       return
     }
@@ -421,7 +447,7 @@ function ERC20AddressInput({
   }
 
   const handleBlur = () => {
-    if (value && ADDRESS_REGEX.test(value)) {
+    if (value && isAddress(value)) {
       verifyToken(value)
     }
   }
@@ -445,8 +471,8 @@ function ERC20AddressInput({
 
       {verification.status === 'valid' && (
         <div className="mt-1 flex items-center gap-2 text-xs">
-          <span className="inline-flex items-center gap-1 text-green-400">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <span className="inline-flex items-center gap-1 text-emerald-400">
+            <svg aria-hidden="true" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
             Verified

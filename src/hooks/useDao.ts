@@ -15,6 +15,7 @@ export function useDao(daoId: string | undefined) {
     queryKey: ['dao', daoId],
     queryFn: () => daoService.getDao(daoId!),
     enabled: !!daoId,
+    staleTime: 12000,
     refetchInterval: isVisible ? 15000 : false,
   })
 }

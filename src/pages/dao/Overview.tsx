@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao } from '@/types'
+import { extractDaoExpiryConfig } from '@/types'
 import { ProposalStatus, deriveProposalStatus } from '@/types/proposal'
 import { useProposals } from '@/hooks/useProposals'
 import { useMember } from '@/hooks/useMember'
@@ -11,9 +12,12 @@ import { useTreasury } from '@/hooks/useTreasury'
 import { useTreasuryBalances } from '@/hooks/useTreasuryBalances'
 import { useDaoProfile } from '@/hooks/useDaoProfile'
 import { useDaoAnnouncements } from '@/hooks/useDaoAnnouncements'
+import { useNavigators } from '@/hooks/useNavigators'
 import { DaoProfile } from '@/components/dao/DaoProfile'
+import { DaoBanner } from '@/components/dao/DaoBanner'
 import { DaoStats } from '@/components/dao/DaoStats'
 import { AnnouncementBanner } from '@/components/dao/AnnouncementBanner'
+import { OngoingPolls } from '@/components/dao/OngoingPolls'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
 import { SkeletonCard } from '@/components/common/Skeleton'
@@ -23,6 +27,7 @@ import { formatTokenAmount } from '@/utils/format'
 import { formatTimeAgo } from '@/utils/time'
 import { parseProposalDetails } from '@/utils/format'
 import { getProposalType } from '@/utils/proposalTypes'
+import { safeString } from '@/utils/contentJson'
 import { NETWORK_CONFIG } from '@/config/contracts'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -37,10 +42,12 @@ export function Overview() {
   const { dao } = useOutletContext<DaoContext>()
   usePageTitle('Overview', dao.name)
   const { data: profileRecord } = useDaoProfile(dao.id)
+  const bannerUrl = safeString(profileRecord?.content_json as Record<string, unknown> | null, 'banner')
   const { data: proposals, isLoading: proposalsLoading } = useProposals(dao.id)
-  const daoConfig = { voting_period: dao.voting_period, grace_period: dao.grace_period, default_expiry_window: dao.default_expiry_window }
+  const daoConfig = extractDaoExpiryConfig(dao)
   const { address } = useWallet()
   const { data: announcements } = useDaoAnnouncements(dao.id)
+  const { data: navigators } = useNavigators(dao.id)
 
   const { data: currentMember } = useMember(dao.id, address ?? undefined)
   const isMember = currentMember ? (safeBigInt(currentMember.shares) > 0n || safeBigInt(currentMember.loot) > 0n) : false
@@ -70,6 +77,7 @@ export function Overview() {
     <div className="space-y-8">
       {/* Hero Banner */}
       <section className="rounded-xl border border-dao-border bg-gradient-dao-radial shadow-dao-card overflow-hidden">
+        <DaoBanner src={bannerUrl} alt={dao.name ? `${dao.name} banner` : 'DAO banner'} />
         <DaoProfile dao={dao} profile={profileRecord} isMember={isMember} />
         <DaoStats dao={dao} memberCount={memberCount} treasuryValue={treasuryValue} />
       </section>
@@ -78,6 +86,9 @@ export function Overview() {
       {latestAnnouncement && (
         <section><AnnouncementBanner announcement={latestAnnouncement} /></section>
       )}
+
+      {/* Ongoing signal polls (renders nothing when there are none) */}
+      <OngoingPolls daoId={dao.id} navigators={navigators} />
 
       {/* Quick Actions — only for connected members */}
       {isMember && (actionableProposals.voting > 0 || actionableProposals.ready > 0) && (
@@ -180,7 +191,7 @@ export function Overview() {
                       className="flex items-center gap-3 px-4 py-3 hover:bg-dao-surface/50 transition-colors">
                       <span className="text-xs font-mono text-dao-text-hint w-7 flex-shrink-0">#{proposal.proposal_id}</span>
                       {proposalType && (
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${proposalType.color}`}>
+                        <span className={`text-2xs font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${proposalType.color}`}>
                           {proposalType.label}
                         </span>
                       )}

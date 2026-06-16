@@ -6,6 +6,8 @@ import { ProposalActionSection } from './ProposalActionSection'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import type { Navigator } from '@/types/navigator'
 import { NavigatorPermission } from '@/types/navigator'
+import { isAddress } from '@/services/utils/AddressUtils'
+import { isPermissionManagedNavigator } from '@/utils/navigatorSanction'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NavigatorForm - Add, update, or remove navigators via governance proposal
@@ -29,8 +31,10 @@ interface NavigatorFormData {
 interface NavigatorFormProps {
   currentNavigators: Navigator[]
   daoLocks: { admin: boolean; manager: boolean; governor: boolean }
-  /** Pre-fill a new navigator addition (e.g. from NavigatorCatalog after deploy) */
+  /** Pre-fill a navigator change (e.g. from NavigatorCatalog after deploy, or a "remove" link with permission=0) */
   prefill?: { address: string; permission: number } | null
+  /** Optional human-readable name for the prefilled navigator — used in the default title */
+  prefillName?: string
   minOfferingDisplay: string
   canSelfSponsor?: boolean
   onSubmit: (data: NavigatorFormData) => void
@@ -48,18 +52,24 @@ const PERMISSION_OPTIONS: Array<{ value: number; label: string; description: str
   { value: NavigatorPermission.All, label: 'All', description: 'Full Admin, Manager, and Governor permissions' },
 ]
 
-const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/
 
 export function NavigatorForm({
   currentNavigators,
   daoLocks,
   prefill,
+  prefillName,
   minOfferingDisplay,
   canSelfSponsor = false,
   onSubmit,
   isSubmitting = false,
 }: NavigatorFormProps) {
-  const [title, setTitle] = useState(prefill ? `Register navigator ${prefill.address.slice(0, 10)}...` : '')
+  const [title, setTitle] = useState(() => {
+    if (!prefill) return ''
+    const label = prefillName ? `"${prefillName}"` : `${prefill.address.slice(0, 10)}...`
+    return prefill.permission === 0
+      ? `Remove navigator ${label}`
+      : `Register navigator ${label}`
+  })
   const [description, setDescription] = useState('')
   const [expiration, setExpiration] = useState('')
   const [discussionUrl, setDiscussionUrl] = useState('')
@@ -96,7 +106,7 @@ export function NavigatorForm({
 
   const addNew = () => {
     const addr = newAddress.trim().toLowerCase()
-    if (!ADDRESS_REGEX.test(addr)) {
+    if (!isAddress(addr)) {
       setErrors((prev) => ({ ...prev, newAddress: 'Invalid address' }))
       return
     }
@@ -167,6 +177,13 @@ export function NavigatorForm({
   const existingAddresses = new Set(currentNavigators.map((n) => n.navigator_address))
   const newAdditions = [...changes.entries()].filter(([addr]) => !existingAddresses.has(addr))
 
+  // Only navigators actually managed by setNavigators permissions belong in this form. Read-only
+  // (Signal) and vault-module (Budget) navigators are sanctioned/enabled elsewhere, so showing a
+  // "Disable" permission control for them is meaningless and alarming (they sit at permission 0 by
+  // design). Keep the full list for the add-new duplicate check, but only render managed ones.
+  const managedNavigators = currentNavigators.filter(isPermissionManagedNavigator)
+  const unmanagedCount = currentNavigators.length - managedNavigators.length
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Proposal metadata */}
@@ -227,11 +244,11 @@ export function NavigatorForm({
 
       <ProposalActionSection title="Navigator Changes">
 
-      {/* Existing navigators */}
-      {currentNavigators.length > 0 && (
+      {/* Existing navigators (permission-managed only) */}
+      {managedNavigators.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-dao-text-secondary">Existing Navigators</h3>
-          {currentNavigators.map((nav) => {
+          {managedNavigators.map((nav) => {
             const changedPerm = changes.get(nav.navigator_address)
             const isChanged = changedPerm !== undefined
             const effectivePerm = isChanged ? changedPerm : nav.permission
@@ -257,11 +274,11 @@ export function NavigatorForm({
                         <AddressDisplay address={nav.navigator_address} />
                       )}
                       {nav.navigator_type && (
-                        <span className="text-[11px] bg-dao-dark-3 text-dao-text-hint rounded px-1.5 py-0.5">{nav.navigator_type}</span>
+                        <span className="text-2xs bg-dao-dark-3 text-dao-text-hint rounded px-1.5 py-0.5">{nav.navigator_type}</span>
                       )}
                     </div>
                     {nav.name && (
-                      <p className="text-[11px] text-dao-text-hint font-mono mb-0.5">{nav.navigator_address.slice(0, 10)}...{nav.navigator_address.slice(-4)}</p>
+                      <p className="text-2xs text-dao-text-hint font-mono mb-0.5">{nav.navigator_address.slice(0, 10)}...{nav.navigator_address.slice(-4)}</p>
                     )}
                     {nav.description && (
                       <p className="text-xs text-dao-text-muted mb-0.5 line-clamp-1">{nav.description}</p>
@@ -307,6 +324,16 @@ export function NavigatorForm({
             )
           })}
         </div>
+      )}
+
+      {/* Read-only / module navigators are managed elsewhere — explain the omission. */}
+      {unmanagedCount > 0 && (
+        <p className="text-xs text-dao-text-hint">
+          {unmanagedCount} read-only or treasury-module navigator{unmanagedCount === 1 ? '' : 's'} (e.g.
+          Signal, Budget) {unmanagedCount === 1 ? 'is' : 'are'} not shown here — they don't use
+          permissions. Manage those from the navigator's own page (sanction a Signal navigator, or
+          enable a Budget module).
+        </p>
       )}
 
       {/* New additions */}

@@ -69,7 +69,9 @@ describe('sanitizeHtml', () => {
     const input = '<a href="https://example.com">link</a>'
     const result = sanitizeHtml(input)
     expect(result).toContain('target="_blank"')
-    expect(result).toContain('rel="noopener noreferrer"')
+    // Must contain the required security tokens; may also include nofollow
+    expect(result).toMatch(/rel="[^"]*noopener[^"]*"/)
+    expect(result).toMatch(/rel="[^"]*noreferrer[^"]*"/)
   })
 
   it('strips iframe tags', () => {

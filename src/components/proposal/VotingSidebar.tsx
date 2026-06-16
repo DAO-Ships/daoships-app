@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
-import { ProposalStatus } from '@/types/proposal'
+import { useState, useEffect, memo } from 'react'
+import { ProposalStatus, getProposalExpiry } from '@/types/proposal'
 import type { Proposal, DaoExpiryConfig, Vote } from '@/types'
 import type { MemberProfile } from '@/hooks/useMemberProfile'
 import { ProposalActions } from './ProposalActions'
 import { safeBigInt } from '@/utils/bigint'
-import { formatCountdown } from '@/utils/time'
+import { formatCountdown, formatIndexerDate } from '@/utils/time'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VotingSidebar — Combines voting progress, countdown, and actions
@@ -41,7 +41,7 @@ interface VotingSidebarProps {
   actionErrors: (Error | string | null | undefined)[]
 }
 
-export function VotingSidebar({
+export const VotingSidebar = memo(function VotingSidebar({
   proposal, dao, status, daoId, daoConfig,
   connected, userAddress, userShares, hasVoted,
   delegatingTo, delegateVote, delegateVoteReason, delegateProfile,
@@ -59,9 +59,14 @@ export function VotingSidebar({
 
   const isTerminal = [ProposalStatus.Processed, ProposalStatus.Defeated, ProposalStatus.ActionFailed, ProposalStatus.Cancelled, ProposalStatus.Expired].includes(status as ProposalStatus)
 
-  // Countdown tick — isolated here so only sidebar re-renders
+  // Effective expiry (explicit proposal expiration, or the DAO's auto-expiry window).
+  const expiryMs = getProposalExpiry(proposal, daoConfig)
+  const expiryInFuture = expiryMs !== null && expiryMs > Date.now()
+
+  // Countdown tick — isolated here so only sidebar re-renders. Runs during voting/grace
+  // and also while an expiry is still counting down (e.g. a Ready proposal nearing auto-expiry).
   const [, setTick] = useState(0)
-  const isCountdownActive = status === ProposalStatus.Voting || status === ProposalStatus.Grace
+  const isCountdownActive = status === ProposalStatus.Voting || status === ProposalStatus.Grace || expiryInFuture
   useEffect(() => {
     if (!isCountdownActive) return
     const interval = setInterval(() => setTick((t) => t + 1), 1000)
@@ -100,15 +105,15 @@ export function VotingSidebar({
 
           {/* Quorum */}
           {(() => {
-            const quorumBps = Number(dao.quorum_percent)
-            const quorumPct = quorumBps / 100
+            const quorumBps = safeBigInt(dao.quorum_percent)
+            const quorumPct = Number(quorumBps) / 100
             const maxShares = safeBigInt(proposal.max_total_shares_and_loot_at_vote)
-            const quorumThreshold = maxShares > 0n ? (maxShares * BigInt(quorumBps)) / 10000n : 0n
+            const quorumThreshold = maxShares > 0n ? (maxShares * quorumBps) / 10000n : 0n
             const participation = yesBalance + noBalance
             const quorumMet = quorumThreshold > 0n && participation >= quorumThreshold
             const participationPct = quorumThreshold > 0n ? Math.min(100, Number((participation * 100n) / quorumThreshold)) : 0
 
-            if (quorumBps === 0) return <p className="text-xs text-dao-text-hint">No quorum requirement</p>
+            if (quorumBps === 0n) return <p className="text-xs text-dao-text-hint">No quorum requirement</p>
 
             return (
               <div>
@@ -141,7 +146,7 @@ export function VotingSidebar({
                 <span className="text-dao-text-secondary font-mono">
                   {status === ProposalStatus.Voting
                     ? formatCountdown(new Date(proposal.voting_ends).getTime())
-                    : new Date(proposal.voting_ends).toLocaleDateString()}
+                    : formatIndexerDate(proposal.voting_ends)}
                 </span>
               </div>
             )}
@@ -153,7 +158,26 @@ export function VotingSidebar({
                 <span className="text-dao-text-secondary font-mono">
                   {status === ProposalStatus.Grace
                     ? formatCountdown(new Date(proposal.grace_ends).getTime())
-                    : new Date(proposal.grace_ends).toLocaleDateString()}
+                    : formatIndexerDate(proposal.grace_ends)}
+                </span>
+              </div>
+            )}
+            {expiryMs !== null && (
+              <div className="flex items-center justify-between">
+                <span
+                  className="text-dao-text-muted"
+                  title={
+                    proposal.expiration
+                      ? 'This proposal can no longer be sponsored or processed after this time.'
+                      : 'Auto-expiry: a passed proposal not processed by this time can no longer be executed.'
+                  }
+                >
+                  {expiryInFuture ? 'Expires' : 'Expired'}
+                </span>
+                <span className={`font-mono ${expiryInFuture ? 'text-dao-text-secondary' : 'text-red-400'}`}>
+                  {expiryInFuture
+                    ? formatCountdown(expiryMs)
+                    : new Date(expiryMs).toLocaleDateString()}
                 </span>
               </div>
             )}
@@ -210,4 +234,4 @@ export function VotingSidebar({
       )}
     </div>
   )
-}
+})

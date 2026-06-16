@@ -50,6 +50,7 @@ export function MemberAvatar({ avatar, size = 8, className = '' }: MemberAvatarP
   return (
     <div className={`${SIZE_CLASSES[size]} rounded-full bg-dao-surface flex items-center justify-center flex-shrink-0 ${className}`}>
       <svg
+        aria-hidden="true"
         className={`${ICON_SIZE_CLASSES[size]} text-dao-text-hint`}
         fill="none"
         viewBox="0 0 24 24"

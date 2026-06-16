@@ -1,14 +1,15 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useParams, useOutletContext, Link } from 'react-router-dom'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import type { Dao } from '@/types'
-import { ProposalStatus } from '@/types/proposal'
+import { extractDaoExpiryConfig } from '@/types'
+import { ProposalStatus, willProposalPass } from '@/types/proposal'
 import { useProposal } from '@/hooks/useProposal'
 import { useProposalStatus } from '@/hooks/useProposalStatus'
 import { useVoting } from '@/hooks/useVoting'
 import { useProposalActions } from '@/hooks/useProposalActions'
 import { useMember } from '@/hooks/useMember'
-import { useMemberProfile } from '@/hooks/useMemberProfile'
+import { useMemberProfile, useMemberProfiles } from '@/hooks/useMemberProfile'
 import { useWallet } from '@/hooks/useWallet'
 import { useHasVoted } from '@/hooks/useHasVoted'
 import { useVoteReasons } from '@/hooks/useVoteReasons'
@@ -21,13 +22,16 @@ import { Loading } from '@/components/common/Loading'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { TokenAmount } from '@/components/common/TokenAmount'
 import { ProposalActionSummary } from '@/components/proposal/ProposalActionSummary'
+import { decodeProposalActions } from '@/services/utils/ProposalDecoder'
 import { VotingSidebar } from '@/components/proposal/VotingSidebar'
-import { VoteReasons, VoteReasonModal } from '@/components/proposal/VoteReasons'
+import { ProposalVotes, VoteReasonModal } from '@/components/proposal/VoteReasons'
+import { MemberIdentity } from '@/components/member/MemberIdentity'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Breadcrumb } from '@/components/common/Breadcrumb'
 import { formatTimeAgo } from '@/utils/time'
 import { parseProposalDetails } from '@/utils/format'
 import { safeBigInt } from '@/utils/bigint'
+import { safeHref } from '@/utils/url'
 import { NETWORK_CONFIG } from '@/config/contracts'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -49,13 +53,19 @@ const TERMINAL_STATUSES = new Set([
 export function ProposalDetail() {
   const { daoId, proposalId } = useParams()
   const { dao } = useOutletContext<DaoContext>()
-  const { data: proposal, isLoading, error } = useProposal(daoId, proposalId)
-  const daoConfig = useMemo(() => ({
-    voting_period: dao.voting_period,
-    grace_period: dao.grace_period,
-    default_expiry_window: dao.default_expiry_window,
-  }), [dao.voting_period, dao.grace_period, dao.default_expiry_window])
+  const { data: proposal, isLoading, error, refetch } = useProposal(daoId, proposalId)
+  const { data: profiles } = useMemberProfiles(daoId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- extractDaoExpiryConfig reads only these three fields; depending on the whole `dao` over-recomputes on every poll
+  const daoConfig = useMemo(() => extractDaoExpiryConfig(dao), [dao.voting_period, dao.grace_period, dao.default_expiry_window])
   const status = useProposalStatus(proposal, daoConfig)
+
+  // A timelock-routed governance change only ENQUEUES when the proposal is processed — the
+  // config isn't live until a second `executeChange` after the delay. Detect it so we can guide
+  // the user to that step (decoded from the actions, not the details tag, so it's authoritative).
+  const timelockQueue = useMemo(() => {
+    const action = decodeProposalActions(proposal?.proposal_data).find((a) => a.type === 'queueGovernanceConfig')
+    return action ? { timelockAddress: action.details.timelock as string | undefined } : null
+  }, [proposal?.proposal_data])
   const { connected, address, connect } = useWallet()
   const { vote, isVoting, error: voteError } = useVoting(daoId!, proposalId!)
   const actions = useProposalActions(daoId!, proposalId!)
@@ -100,6 +110,25 @@ export function ProposalDetail() {
   useRealtimeProposal(daoId, proposalId)
   useRealtimeVotes(daoId, proposalId)
 
+  // Grace window for the indexer. A just-created proposal (post-submit redirect,
+  // shared link, or refresh) may not be indexed yet — show a "syncing" state and
+  // retry quickly rather than flashing a false "not found". Falls back to the
+  // not-found state once the window elapses with still no proposal.
+  const [syncTimedOut, setSyncTimedOut] = useState(false)
+  useEffect(() => {
+    if (proposal) {
+      setSyncTimedOut(false)
+      return
+    }
+    setSyncTimedOut(false)
+    const fast = setInterval(() => { void refetch() }, 3000)
+    const giveUp = setTimeout(() => setSyncTimedOut(true), 15000)
+    return () => {
+      clearInterval(fast)
+      clearTimeout(giveUp)
+    }
+  }, [proposal, refetch])
+
   const details = useMemo(
     () => proposal ? parseProposalDetails(proposal.details) : { title: '', description: '' },
     [proposal],
@@ -107,6 +136,21 @@ export function ProposalDetail() {
   usePageTitle(details.title, dao.name)
 
   if (isLoading) return <Loading fullPage />
+
+  // Still waiting on the indexer within the grace window — not an error yet.
+  if (!proposal && !syncTimedOut) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-4">
+        <Loading size="lg" />
+        <div className="text-center">
+          <h2 className="text-lg font-semibold text-dao-text-secondary mb-1">Proposal is syncing…</h2>
+          <p className="text-dao-text-muted text-sm">
+            Waiting for the indexer to catch up. This usually takes a few seconds.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   if (error || !proposal) {
     return (
@@ -128,6 +172,13 @@ export function ProposalDetail() {
   const totalBalance = yesBalance + noBalance
   const yesPercent = totalBalance > 0n ? Number((yesBalance * 100n) / totalBalance) : 0
   const noPercent = totalBalance > 0n ? 100 - yesPercent : 0
+
+  // Contract requires defeated proposals be processed with empty data.
+  // Predict the outcome locally and route process() accordingly.
+  // A Ready (passing) proposal must be processed with its original action bytes; a
+  // defeated one must be closed with '0x'. willProposalPass mirrors the contract's
+  // quorum+majority Ready decision so we send the data the contract expects.
+  const processData = willProposalPass(proposal, dao.quorum_percent) ? (proposal.proposal_data ?? '0x') : '0x'
 
   const actionErrors = [voteError, actions.sponsorError, actions.processError, actions.cancelError].filter(Boolean)
 
@@ -157,9 +208,9 @@ export function ProposalDetail() {
         )}
 
         {details.discussionUrl && (
-          <a href={details.discussionUrl} target="_blank" rel="noopener noreferrer nofollow"
+          <a href={safeHref(details.discussionUrl)} target="_blank" rel="noopener noreferrer nofollow"
             className="inline-flex items-center gap-1.5 text-sm text-primary-400 hover:text-primary-300 transition-colors mt-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
             View Discussion
@@ -176,8 +227,8 @@ export function ProposalDetail() {
             : status === ProposalStatus.Cancelled ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700/50'
             : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700/50'
         }`}>
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="min-w-0">
               <p className={`font-semibold ${
                 status === ProposalStatus.ActionFailed ? 'text-orange-600 dark:text-orange-400'
                   : status === ProposalStatus.Processed ? 'text-emerald-600 dark:text-emerald-400'
@@ -225,6 +276,27 @@ export function ProposalDetail() {
         </div>
       )}
 
+      {/* Timelock-routed change: passed ≠ live. Guide the user to the second execution step. */}
+      {status === ProposalStatus.Processed && timelockQueue && (
+        <div className="rounded-xl px-6 py-4 border border-accent-500/30 bg-accent-500/10">
+          <p className="text-sm font-semibold text-accent-400">Change queued in the timelock — one step left</p>
+          <p className="text-sm text-dao-text-muted mt-1">
+            This proposal passed and <strong>queued</strong> the governance-config change — it is{' '}
+            <strong>not live yet</strong>. After the timelock delay (a second window for members to
+            ragequit), anyone can execute it within the execution window. If it isn't executed in time
+            it expires and must be re-proposed.
+          </p>
+          {timelockQueue.timelockAddress && (
+            <Link
+              to={`/dao/${daoId}/navigators/${timelockQueue.timelockAddress}`}
+              className="btn-primary text-sm mt-3 inline-block"
+            >
+              Track &amp; execute on the timelock →
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* Compact vote summary — shown on terminal proposals below the result banner */}
       {isTerminal && proposal.sponsored && totalBalance > 0n && (
         <div className="flex items-center gap-4 px-4 py-2.5 rounded-lg bg-dao-dark-2 border border-dao-border">
@@ -255,7 +327,7 @@ export function ProposalDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-dao-text-hint mb-1">Created by</p>
-                <AddressDisplay address={proposal.submitter} />
+                <MemberIdentity address={proposal.submitter} profile={profiles?.get(proposal.submitter.toLowerCase())} />
               </div>
               <div>
                 <p className="text-dao-text-hint mb-1">Submitted</p>
@@ -264,7 +336,7 @@ export function ProposalDetail() {
               {proposal.sponsored && proposal.sponsor && (
                 <div>
                   <p className="text-dao-text-hint mb-1">Sponsored by</p>
-                  <AddressDisplay address={proposal.sponsor} />
+                  <MemberIdentity address={proposal.sponsor} profile={profiles?.get(proposal.sponsor.toLowerCase())} />
                 </div>
               )}
               {proposal.proposal_offering && safeBigInt(proposal.proposal_offering) > 0n && (
@@ -276,8 +348,8 @@ export function ProposalDetail() {
             </div>
           </Card>
 
-          {/* Vote Reasons */}
-          <VoteReasons daoId={daoId!} proposalId={proposalIdNum} />
+          {/* Votes */}
+          <ProposalVotes daoId={daoId!} proposalId={proposalIdNum} />
         </div>
 
         {/* Right column: voting sidebar (desktop) */}
@@ -301,7 +373,7 @@ export function ProposalDetail() {
                 sponsorBelowThreshold={sponsorBelowThreshold}
                 onSponsor={() => actions.sponsor()}
                 onVote={handleVote}
-                onProcess={() => actions.process(proposal.proposal_data ?? '0x')}
+                onProcess={() => actions.process(processData)}
                 onCancel={() => actions.cancel()}
                 onConnect={connect}
                 proposalDataMissing={!proposal.proposal_data}
@@ -335,7 +407,7 @@ export function ProposalDetail() {
               sponsorBelowThreshold={sponsorBelowThreshold}
               onSponsor={() => actions.sponsor()}
               onVote={handleVote}
-              onProcess={() => actions.process(proposal.proposal_data ?? '0x')}
+              onProcess={() => actions.process(processData)}
               onCancel={() => actions.cancel()}
               onConnect={connect}
               proposalDataMissing={!proposal.proposal_data}
@@ -352,7 +424,7 @@ export function ProposalDetail() {
 
       {/* Mobile sticky action bar — vote buttons fixed at bottom */}
       {canVote && (
-        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-dao-dark-2 border-t border-dao-border px-4 py-3 flex gap-3">
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-dao-dark-2 border-t border-dao-border px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-3">
           <Button
             variant="primary"
             size="lg"
@@ -374,7 +446,7 @@ export function ProposalDetail() {
         </div>
       )}
       {/* Bottom padding to prevent content being hidden behind sticky bar */}
-      {canVote && <div className="lg:hidden h-16" />}
+      {canVote && <div className="lg:hidden" style={{ height: 'calc(4rem + env(safe-area-inset-bottom))' }} />}
 
       {/* Vote Reason Modal */}
       <VoteReasonModal

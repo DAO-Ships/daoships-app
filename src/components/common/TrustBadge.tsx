@@ -17,6 +17,8 @@ const sizeClasses = {
 
 export function TrustBadge({ level, size = 'sm' }: TrustBadgeProps) {
   const config = TRUST_LEVEL_CONFIG[level]
+  // Guard against unknown trust levels (schema drift) — render nothing instead of crashing
+  if (!config) return null
 
   return (
     <span

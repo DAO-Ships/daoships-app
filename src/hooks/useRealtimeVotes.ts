@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase, INDEXER_CONFIG } from '@/config/supabase'
+import { useDebouncedCallback } from './useDebouncedCallback'
 
 /**
  * Subscribes to realtime INSERT events on ds_votes for a specific proposal.
@@ -12,29 +13,35 @@ import { supabase, INDEXER_CONFIG } from '@/config/supabase'
 export function useRealtimeVotes(daoId: string | undefined, proposalId: string | undefined) {
   const queryClient = useQueryClient()
 
+  // Debounced so a vote sweep collapses into one refetch of the (full) votes table.
+  const invalidate = useDebouncedCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['votes', daoId, proposalId] })
+    queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
+  })
+
   useEffect(() => {
     if (!supabase || !daoId || !proposalId) return
 
     const compositeProposalId = `${daoId}-${proposalId}`
+
     const channel = supabase
       .channel(`votes:${compositeProposalId}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // INSERT | DELETE — DELETE fires on reorg tombstones
           schema: INDEXER_CONFIG.NETWORK_SCHEMA,
           table: 'ds_votes',
           filter: `proposal_id=eq.${compositeProposalId}`,
         },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['votes', daoId, proposalId] })
-          queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
-        },
+        invalidate,
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') invalidate()
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [supabase, daoId, proposalId, queryClient])
+  }, [daoId, proposalId, invalidate])
 }

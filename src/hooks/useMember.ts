@@ -14,6 +14,7 @@ export function useMember(daoId: string | undefined, address: string | undefined
     queryKey: ['member', daoId, address],
     queryFn: () => daoService.getMember(daoId!, address!),
     enabled: !!daoId && !!address,
+    staleTime: 12000,
     refetchInterval: isVisible ? 15000 : false,
   })
 }

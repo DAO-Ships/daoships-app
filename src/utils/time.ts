@@ -3,6 +3,26 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Format an indexer timestamp (ISO string, or unix seconds as a number) for display,
+ * guarding against the indexer's null/sentinel/overflow values that otherwise render
+ * "Invalid Date" or a nonsense far-future date. Returns `fallback` for unusable values.
+ *
+ * @param value    - ISO date string, unix-seconds number, or null/undefined
+ * @param opts     - `withTime` includes the time of day; `fallback` for bad values
+ */
+export function formatIndexerDate(
+  value: string | number | null | undefined,
+  opts: { withTime?: boolean; fallback?: string } = {},
+): string {
+  const { withTime = false, fallback = '' } = opts
+  if (value === null || value === undefined || value === '') return fallback
+  const d = typeof value === 'number' ? new Date(value * 1000) : new Date(value)
+  // isNaN → unparseable; year bounds → sentinel/overflow indexer values.
+  if (isNaN(d.getTime()) || d.getFullYear() > 2100 || d.getFullYear() < 2000) return fallback
+  return withTime ? d.toLocaleString() : d.toLocaleDateString()
+}
+
+/**
  * Duration broken down into discrete units.
  */
 export interface Duration {
@@ -49,6 +69,25 @@ export function formatDuration(totalSeconds: number): string {
 
   // Show up to two parts for readability
   return parts.slice(0, 2).join(', ')
+}
+
+/**
+ * Format seconds as a single-unit shorthand that round-trips through
+ * `parseDurationToSeconds`. Picks the largest unit that divides evenly.
+ *
+ * Examples:
+ *   259200 → "3d"
+ *   3600 → "1h"
+ *   90 → "90s" (doesn't divide into minutes evenly)
+ *   0 → "0"
+ */
+export function formatDurationInput(totalSeconds: number): string {
+  if (!totalSeconds || totalSeconds <= 0) return '0'
+  const abs = Math.floor(totalSeconds)
+  if (abs % 86400 === 0) return `${abs / 86400}d`
+  if (abs % 3600 === 0) return `${abs / 3600}h`
+  if (abs % 60 === 0) return `${abs / 60}m`
+  return `${abs}s`
 }
 
 /**

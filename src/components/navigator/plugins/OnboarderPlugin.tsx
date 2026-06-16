@@ -1,18 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
 import { quais } from 'quais'
 import type { NavigatorPluginProps } from './index'
+import { mapContractError } from './pluginErrors'
 import { useNavigatorConfig } from '@/hooks/useNavigatorConfig'
 import { navigatorService } from '@/services/core/NavigatorService'
 import { baseService } from '@/services/core/BaseService'
 import type { OnboarderNavigatorConfig } from '@/services/core/NavigatorService'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
+import { NavigatorAdminActions } from '@/components/navigator/NavigatorAdminActions'
 import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
 import { useNavigatorAllowlist } from '@/hooks/useNavigatorAllowlist'
 import { useMember } from '@/hooks/useMember'
 import { isOpenAllowlist } from '@/utils/allowlist'
 import { safeBigInt } from '@/utils/bigint'
-import { AllowlistDownloadButton, AllowlistRestore } from '@/components/navigator/AllowlistActions'
+import { MintCapProgress } from '@/components/navigator/MintCapProgress'
+import { NavigatorAllowlistStatus } from '@/components/navigator/NavigatorAllowlistStatus'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OnboarderPlugin - Multiplier or fixed-price native QUAI onboarding
@@ -29,17 +32,15 @@ const ERROR_MAP: Record<string, string> = {
 }
 
 function mapError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err)
-  for (const [key, friendly] of Object.entries(ERROR_MAP)) {
-    if (msg.includes(key)) return friendly
-  }
-  return msg
+  return mapContractError(err, ERROR_MAP)
 }
 
 export function OnboarderPlugin({ navigator, daoId, userAddress, connected }: NavigatorPluginProps) {
   const { data: configResult, isLoading: configLoading } = useNavigatorConfig(
     navigator.is_active ? navigator.navigator_address : undefined,
   )
+  const { data: memberData } = useMember(daoId, userAddress ?? undefined)
+  const isMember = memberData ? (safeBigInt(memberData.shares) > 0n || safeBigInt(memberData.loot) > 0n) : false
 
   if (configLoading) {
     return (
@@ -58,13 +59,24 @@ export function OnboarderPlugin({ navigator, daoId, userAddress, connected }: Na
   }
 
   return (
-    <OnboarderInteraction
-      navigatorAddress={navigator.navigator_address}
-      config={configResult.config}
-      daoId={daoId}
-      userAddress={userAddress}
-      connected={connected}
-    />
+    <div className="space-y-5">
+      <OnboarderInteraction
+        navigatorAddress={navigator.navigator_address}
+        indexerPaused={navigator.paused}
+        config={configResult.config}
+        daoId={daoId}
+        userAddress={userAddress}
+        connected={connected}
+      />
+      <NavigatorAdminActions
+        daoId={daoId}
+        navigatorAddress={navigator.navigator_address}
+        isPaused={navigator.paused}
+        connected={connected}
+        isMember={isMember}
+        withdraw="eth"
+      />
+    </div>
   )
 }
 
@@ -74,17 +86,20 @@ export function OnboarderPlugin({ navigator, daoId, userAddress, connected }: Na
 
 function OnboarderInteraction({
   navigatorAddress,
+  indexerPaused,
   config,
   daoId,
   userAddress,
   connected,
 }: {
   navigatorAddress: string
+  indexerPaused: boolean
   config: OnboarderNavigatorConfig
   daoId: string
   userAddress: string | null
   connected: boolean
 }) {
+  const isPaused = indexerPaused || config.paused
   const [amount, setAmount] = useState('')
   const [isOnboarding, setIsOnboarding] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -178,17 +193,12 @@ function OnboarderInteraction({
     } finally {
       setIsOnboarding(false)
     }
-  }, [isValid, navigatorAddress, amountBigInt])
-
-  const mintCapPercent =
-    config.mintCap > 0n
-      ? Number((config.totalMinted * 10000n) / config.mintCap) / 100
-      : 0
+  }, [isValid, navigatorAddress, amountBigInt, hasAllowlist, userAddress, allowlist])
 
   return (
     <div className="space-y-5">
       {/* Status banners */}
-      {config.paused && (
+      {isPaused && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
           <p className="text-sm text-amber-400 font-medium">This navigator is currently paused.</p>
         </div>
@@ -238,7 +248,7 @@ function OnboarderInteraction({
                 <p className="font-mono text-dao-text-secondary">
                   {(Number(config.shareMultiplier) / 10000).toFixed(2)}x
                 </p>
-                <p className="text-[10px] text-dao-text-hint">{Number(config.shareMultiplier).toLocaleString()} bps</p>
+                <p className="text-2xs text-dao-text-hint">{Number(config.shareMultiplier).toLocaleString()} bps</p>
               </div>
               {config.lootMultiplier > 0n && (
                 <div>
@@ -278,25 +288,7 @@ function OnboarderInteraction({
         </div>
 
         {/* Mint cap progress bar */}
-        {config.mintCap > 0n && (
-          <div className="mt-4 pt-3 border-t border-dao-border">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="text-dao-text-hint">Mint Cap Progress</span>
-              <span className="font-mono text-dao-text-muted">
-                {formatTokenAmount(config.totalMinted)} / {formatTokenAmount(config.mintCap)}
-              </span>
-            </div>
-            <div className="w-full bg-dao-dark-3 rounded-full h-2 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  mintCapReached ? 'bg-red-500' : 'bg-accent-500'
-                }`}
-                style={{ width: `${Math.min(mintCapPercent, 100)}%` }}
-              />
-            </div>
-            <p className="text-xs text-dao-text-hint mt-1">{mintCapPercent.toFixed(1)}% minted</p>
-          </div>
-        )}
+        <MintCapProgress mintCap={config.mintCap} totalMinted={config.totalMinted} />
 
         {/* Per-address minted display */}
         {config.perAddressCap > 0n && userAddress && mintedTo > 0n && (
@@ -312,40 +304,17 @@ function OnboarderInteraction({
       </Card>
 
       {/* Allowlist status */}
-      {hasAllowlist && (
-        <div className={`rounded-lg px-4 py-3 space-y-2 ${
-          allowlist.dataUnavailable
-            ? 'bg-amber-500/10 border border-amber-500/30'
-            : userAddress && userAllowlisted
-              ? 'bg-emerald-500/10 border border-emerald-500/30'
-              : userAddress
-                ? 'bg-red-500/10 border border-red-500/30'
-                : 'bg-primary-500/10 border border-primary-500/30'
-        }`}>
-          {allowlist.dataUnavailable ? (
-            <>
-              <p className="text-sm text-amber-400">Allowlist data unavailable. Proofs cannot be generated.</p>
-              {isMember && <AllowlistRestore daoId={daoId} navigatorAddress={navigatorAddress} allowlistRoot={config.allowlistRoot} />}
-            </>
-          ) : (
-            <>
-              {userAddress && userAllowlisted ? (
-                <p className="text-sm text-emerald-400">Your address is on the allowlist ({allowlist.addressCount} addresses).</p>
-              ) : userAddress ? (
-                <p className="text-sm text-red-400">Your address is not on the allowlist for this navigator.</p>
-              ) : (
-                <p className="text-sm text-primary-400">This navigator has an allowlist ({allowlist.addressCount} addresses). Connect your wallet to check eligibility.</p>
-              )}
-              {isMember && allowlist.treeDump && (
-                <AllowlistDownloadButton navigatorAddress={navigatorAddress} root={config.allowlistRoot} addresses={allowlist.addresses} treeDump={allowlist.treeDump} />
-              )}
-            </>
-          )}
-        </div>
-      )}
+      <NavigatorAllowlistStatus
+        allowlist={allowlist}
+        allowlistRoot={config.allowlistRoot}
+        userAddress={userAddress}
+        isMember={isMember}
+        daoId={daoId}
+        navigatorAddress={navigatorAddress}
+      />
 
       {/* Onboard form */}
-      {!isExpired && !config.paused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
+      {!isExpired && !isPaused && !mintCapReached && (!hasAllowlist || userAllowlisted) && (
         <Card header={<h3 className="text-sm font-semibold text-dao-text">Join DAO</h3>}>
           <div className="space-y-4">
             <div>
@@ -420,7 +389,7 @@ function OnboarderInteraction({
               <p className="text-sm text-red-400" role="alert">{error}</p>
             )}
             {success && (
-              <p className="text-sm text-green-400" role="status">Successfully onboarded!</p>
+              <p className="text-sm text-emerald-400" role="status">Successfully onboarded!</p>
             )}
 
             {!connected ? (

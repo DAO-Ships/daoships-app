@@ -121,7 +121,7 @@ export function ProposalActions({
               size="md"
               loading={isVotePending}
               onClick={() => onVote(true)}
-              className="bg-green-600 hover:bg-green-700 border-green-500"
+              className="bg-emerald-600 hover:bg-emerald-700 border-emerald-500"
             >
               Vote Yes
             </Button>
@@ -193,8 +193,8 @@ export function ProposalActions({
               Process Proposal
             </Button>
             {proposalDataMissing && (
-              <div className="w-full bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-lg px-4 py-2">
-                <p className="text-xs text-yellow-400">
+              <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-lg px-4 py-2">
+                <p className="text-xs text-amber-400">
                   Proposal action data is unavailable. Processing may fail for non-signal proposals.
                   This can happen when the indexer hasn't synced the full proposal data yet.
                 </p>

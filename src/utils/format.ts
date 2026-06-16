@@ -2,6 +2,8 @@
 // Number & Token Formatting Utilities
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { safeBigInt } from './bigint'
+
 /**
  * Default number of decimals for ERC-20 tokens.
  */
@@ -22,7 +24,9 @@ export function formatTokenAmount(
   maxDecimals: number = 4,
   minDecimals: number = 3,
 ): string {
-  const amt = typeof amount === 'bigint' ? amount : BigInt(amount)
+  // Resilient against malformed indexer strings — a bad value renders as 0 rather
+  // than throwing in a render body and tripping the app-wide ErrorBoundary.
+  const amt = typeof amount === 'bigint' ? amount : safeBigInt(amount)
   const dec = Number(decimals)
   const divisor = 10n ** BigInt(dec)
   const whole = amt / divisor
@@ -62,6 +66,12 @@ export function parseTokenAmount(
   if (trimmed === '' || trimmed === '.') {
     return 0n
   }
+  if (trimmed.startsWith('-')) {
+    throw new Error('Negative amounts not allowed')
+  }
+  if ((trimmed.match(/\./g) || []).length > 1) {
+    throw new Error('Invalid number format')
+  }
 
   const parts = trimmed.split('.')
   const wholePart = parts[0] || '0'
@@ -97,13 +107,19 @@ export function parseProposalDetails(details: string | null): ParsedProposalDeta
 
   try {
     const parsed = JSON.parse(details)
-    if (parsed && typeof parsed === 'object') {
-      return {
-        title: parsed.title || 'Untitled Proposal',
-        description: parsed.description || '',
-        type: typeof parsed.type === 'string' ? parsed.type : undefined,
-        discussionUrl: typeof parsed.discussionUrl === 'string' && /^https?:\/\//i.test(parsed.discussionUrl) ? parsed.discussionUrl : undefined,
-      }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      // All fields MUST be strings — never pass non-string values through to JSX
+      // (renders like `Objects are not valid as a React child` crash the list).
+      const title = typeof parsed.title === 'string' && parsed.title.trim()
+        ? parsed.title
+        : 'Untitled Proposal'
+      const description = typeof parsed.description === 'string' ? parsed.description : ''
+      const type = typeof parsed.type === 'string' ? parsed.type : undefined
+      const discussionUrl =
+        typeof parsed.discussionUrl === 'string' && /^https?:\/\//i.test(parsed.discussionUrl)
+          ? parsed.discussionUrl
+          : undefined
+      return { title, description, type, discussionUrl }
     }
   } catch {
     // Not JSON — treat as plain text
@@ -124,6 +140,29 @@ export function parseProposalDetails(details: string | null): ParsedProposalDeta
  */
 export function formatNumber(n: number): string {
   return n.toLocaleString('en-US')
+}
+
+/**
+ * Convert a basis-points value (0-10000) to a percentage number.
+ *
+ * Governance fields like `quorum_percent` and `min_retention_percent` are
+ * stored as BIGINT basis points on the indexer (10000 bps = 100%). These are
+ * always small enough to fit in a Number, but we still parse via BigInt first
+ * so that unexpected large values don't silently lose precision.
+ *
+ * @param bps - Basis points as a string, number, or BigInt
+ * @returns Percentage as a Number, e.g. 12.34 for 1234 bps
+ */
+export function bpsToPercent(bps: string | number | bigint | null | undefined): number {
+  if (bps === null || bps === undefined) return 0
+  let n: bigint
+  try {
+    n = typeof bps === 'bigint' ? bps : BigInt(String(bps).trim() || '0')
+  } catch {
+    return 0
+  }
+  // bps is always 0-10000, well within Number precision.
+  return Number(n) / 100
 }
 
 /**

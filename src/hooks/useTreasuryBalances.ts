@@ -4,14 +4,10 @@ import { baseService } from '@/services/core/BaseService'
 import { usePageVisibility } from './usePageVisibility'
 import { NETWORK_CONFIG, NATIVE_TOKEN_SENTINEL } from '@/config/contracts'
 import { ZERO_ADDRESS } from '@/config/contracts'
+import { fetchTokenMetadata } from '@/utils/tokenMetadata'
 import type { GuildToken } from '@/types'
 
-const ERC20_READ_ABI = [
-  'function balanceOf(address account) view returns (uint256)',
-  'function symbol() view returns (string)',
-  'function name() view returns (string)',
-  'function decimals() view returns (uint8)',
-]
+const ERC20_BALANCE_ABI = ['function balanceOf(address account) view returns (uint256)']
 
 export interface TokenBalance {
   address: string
@@ -32,36 +28,6 @@ function isNativeToken(address: string): boolean {
   return lower === ZERO_ADDRESS || lower === NATIVE_TOKEN_SENTINEL.toLowerCase()
 }
 
-// Cache token metadata (symbol, name, decimals) — these never change for a given address.
-// Capped at 100 entries; oldest evicted on overflow.
-const MAX_METADATA_CACHE = 100
-const metadataCache = new Map<string, { symbol: string; name: string; decimals: number }>()
-
-async function getTokenMetadata(tokenAddr: string): Promise<{ symbol: string; name: string; decimals: number }> {
-  const cached = metadataCache.get(tokenAddr.toLowerCase())
-  if (cached) return cached
-
-  const token = new quais.Contract(tokenAddr, ERC20_READ_ABI, baseService.getProvider())
-  const [symbol, decimals] = await Promise.all([
-    token.symbol() as Promise<string>,
-    token.decimals().then((d: any) => Number(d)),
-  ])
-  let name = symbol
-  try {
-    name = await token.name() as string
-  } catch { /* use symbol */ }
-
-  const meta = { symbol, name, decimals }
-  const key = tokenAddr.toLowerCase()
-  // Evict oldest entry if cache is full
-  if (metadataCache.size >= MAX_METADATA_CACHE && !metadataCache.has(key)) {
-    const oldest = metadataCache.keys().next().value!
-    metadataCache.delete(oldest)
-  }
-  metadataCache.set(key, meta)
-  return meta
-}
-
 /**
  * Fetches ERC-20 balances (via TokenService) and native QUAI balance
  * for the DAO vault address. Polls every 30 seconds when visible.
@@ -78,8 +44,15 @@ export function useTreasuryBalances(
   const isVisible = usePageVisibility()
   const hasWalletProvider = baseService.hasProvider()
 
+  // Key on the actual token-address set (sorted), not just the count — otherwise swapping one
+  // token for another (same length) would silently serve stale balances from a colliding key.
+  const tokenSetKey = (guildTokens ?? [])
+    .map((t) => t.token_address.toLowerCase())
+    .sort()
+    .join(',')
+
   return useQuery<TreasuryBalances>({
-    queryKey: ['treasuryBalances', vaultAddress, hasWalletProvider, guildTokens?.length ?? 0],
+    queryKey: ['treasuryBalances', vaultAddress, hasWalletProvider, tokenSetKey],
     queryFn: async () => {
       const provider = baseService.getProvider()
       const checksummed = quais.getAddress(vaultAddress!)
@@ -94,11 +67,11 @@ export function useTreasuryBalances(
         ...erc20Tokens.map(async (token): Promise<TokenBalance> => {
           try {
             const tokenAddr = quais.getAddress(token.token_address)
-            const tokenContract = new quais.Contract(tokenAddr, ERC20_READ_ABI, provider)
+            const tokenContract = new quais.Contract(tokenAddr, ERC20_BALANCE_ABI, provider)
 
             const [rawBalance, meta] = await Promise.all([
               tokenContract.balanceOf(checksummed) as Promise<bigint>,
-              getTokenMetadata(tokenAddr),
+              fetchTokenMetadata(tokenAddr),
             ])
             return {
               address: token.token_address,
@@ -131,7 +104,12 @@ export function useTreasuryBalances(
       const erc20Map = new Map(erc20Results.map((r) => [r.address.toLowerCase(), r]))
       const tokenBalances = tokens.map((t) => {
         if (isNativeToken(t.token_address)) {
-          return nativeTokens[0]
+          // Match the specific native entry by address (don't collapse multiple native
+          // sentinels onto the first one).
+          return (
+            nativeTokens.find((n) => n.address.toLowerCase() === t.token_address.toLowerCase()) ??
+            nativeTokens[0]
+          )
         }
         return erc20Map.get(t.token_address.toLowerCase()) ?? {
           address: t.token_address, balance: 0n, symbol: '???', name: 'Unknown Token', decimals: 18, isNative: false,

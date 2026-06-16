@@ -17,7 +17,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
   return (
     <nav className="flex items-center gap-2 text-sm text-dao-text-muted">
       {items.map((item, i) => (
-        <span key={i} className="flex items-center gap-2">
+        <span key={item.href ?? item.label} className="flex items-center gap-2">
           {i > 0 && <span className="text-dao-text-hint">/</span>}
           {item.href ? (
             <Link

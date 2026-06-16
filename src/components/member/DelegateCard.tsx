@@ -3,8 +3,11 @@ import type { MemberProfile } from '@/hooks/useMemberProfile'
 import { MemberAvatar } from './MemberAvatar'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { TokenAmount } from '@/components/common/TokenAmount'
+import { SafeMarkdown } from '@/components/common/SafeMarkdown'
 import { formatTokenAmount } from '@/utils/format'
 import { safeBigInt } from '@/utils/bigint'
+import { safeHref } from '@/utils/url'
+import { formatIndexerDate } from '@/utils/time'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DelegateCard - Expanded profile for members receiving delegations
@@ -55,7 +58,9 @@ export function DelegateCard({ member, profile, delegators, totalShares, sponsor
                 <AddressDisplay address={member.member_address} />
               )}
               {profile?.bio && (
-                <p className="text-sm text-dao-text-muted mt-1 line-clamp-2">{profile.bio}</p>
+                <p className="text-sm text-dao-text-muted mt-1 line-clamp-2">
+                  <SafeMarkdown>{profile.bio}</SafeMarkdown>
+                </p>
               )}
             </div>
 
@@ -76,7 +81,7 @@ export function DelegateCard({ member, profile, delegators, totalShares, sponsor
               {Object.entries(profile.links).map(([label, url]) => (
                 <a
                   key={label}
-                  href={url}
+                  href={safeHref(url)}
                   target="_blank"
                   rel="noopener noreferrer nofollow"
                   className="text-xs text-primary-400 hover:text-primary-300 transition-colors hover:underline"
@@ -90,7 +95,7 @@ export function DelegateCard({ member, profile, delegators, totalShares, sponsor
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-5 gap-4 bg-dao-dark-2 rounded-lg p-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 bg-dao-dark-2 rounded-lg p-3">
         <div className="text-center">
           <p className="text-xs text-dao-text-hint">Own Shares</p>
           <p className="text-sm font-mono text-primary-400 mt-0.5">
@@ -180,7 +185,7 @@ export function DelegateCard({ member, profile, delegators, totalShares, sponsor
       {/* Last active */}
       {member.last_activity_at && (
         <p className="text-xs text-dao-text-hint">
-          Last active: {new Date(member.last_activity_at).toLocaleDateString()}
+          Last active: {formatIndexerDate(member.last_activity_at)}
         </p>
       )}
     </div>

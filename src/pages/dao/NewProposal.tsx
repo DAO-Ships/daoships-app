@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { useOutletContext, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
+import { useOutletContext, useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { quais } from 'quais'
@@ -13,11 +13,14 @@ import { useTreasuryBalances } from '@/hooks/useTreasuryBalances'
 import { useMember } from '@/hooks/useMember'
 import { useDaoProfile } from '@/hooks/useDaoProfile'
 import { safeJsonParse, safeString, safeEntries } from '@/utils/contentJson'
+import { extractTheme, type DaoTheme } from '@/utils/daoTheme'
+import { buildProfileUpdate } from '@/utils/profileUpdate'
 import { safeBigInt } from '@/utils/bigint'
 import { formatTokenAmount } from '@/utils/format'
 import { parseDurationToSeconds } from '@/utils/time'
 import { ConnectWallet } from '@/components/common/ConnectWallet'
 import { Card } from '@/components/common/Card'
+import { Loading } from '@/components/common/Loading'
 import { daoService } from '@/services/DaoService'
 import { ProposalEncoder } from '@/services/utils/ProposalEncoder'
 import { Breadcrumb } from '@/components/common/Breadcrumb'
@@ -30,9 +33,14 @@ import { CustomActionForm } from '@/components/proposal/forms/CustomActionForm'
 import { ProfileForm } from '@/components/proposal/forms/ProfileForm'
 import { AnnouncementForm } from '@/components/proposal/forms/AnnouncementForm'
 import { NavigatorForm } from '@/components/proposal/forms/NavigatorForm'
+import { NavigatorSanctionForm } from '@/components/proposal/forms/NavigatorSanctionForm'
 import { useNavigators } from '@/hooks/useNavigators'
 import { CONTRACT_ADDRESSES } from '@/config/contracts'
 import { POSTER_TAGS } from '@/types/poster'
+import { posterService } from '@/services/core/PosterService'
+import { NavigatorPermission } from '@/types/navigator'
+import { navigatorService } from '@/services/core/NavigatorService'
+import { buildQueueChangeAction } from '@/utils/timelockProposals'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NewProposal - Proposal type picker and form
@@ -86,6 +94,9 @@ const PROPOSAL_TYPES: ProposalTypeOption[] = [
     icon: 'M13 10V3L4 14h7v7l9-11h-7z',
     category: 'Governance',
   },
+  // NavigatorSanction is intentionally NOT in the picker — sanctioning/unsanctioning a read-only
+  // navigator is initiated from the navigator's own page (per-navigator, directional), which
+  // deep-links here with the target pre-configured. See NavigatorActivationPrompt / NavigatorDetail.
   {
     type: ProposalType.Profile,
     label: 'Update Profile',
@@ -126,17 +137,61 @@ export function NewProposal() {
     preselectedType && Object.values(ProposalType).includes(preselectedType) ? preselectedType : null,
   )
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submittedProposalId, setSubmittedProposalId] = useState<number | null>(null)
 
   // Navigator pre-fill from query params
-  const prefillNavigator = searchParams.get('addAddress') && searchParams.get('addPermission')
+  const prefillNavigator = searchParams.get('addAddress') && searchParams.get('addPermission') !== null
     ? { address: searchParams.get('addAddress')!, permission: Number(searchParams.get('addPermission')) }
     : null
+  const prefillNavigatorName = searchParams.get('addName') || undefined
+
+  // Sanction prefill (from the navigator page's sanction/unsanction CTA, or NavigatorCatalog
+  // after deploying a read-only navigator). `sanctionMode=remove` pre-configures unsanctioning.
+  const prefillSanctionAddress = searchParams.get('sanctionAddress') || undefined
+  const prefillSanctionMode = searchParams.get('sanctionMode') === 'remove' ? 'remove' : 'add'
+
+  // Custom-action prefill (e.g. from BudgetPlugin: enable module / create / cancel budget).
+  // A single pre-encoded action targeting a navigator or the vault.
+  const customTo = searchParams.get('customTo')
+  const prefillCustomActions = customTo
+    ? [{
+        to: customTo,
+        value: searchParams.get('customValue') || '0',
+        data: searchParams.get('customData') || '0x',
+        summary: searchParams.get('customSummary') || undefined,
+      }]
+    : undefined
+  const prefillCustomTitle = searchParams.get('customTitle') || undefined
+  const prefillCustomDescription = searchParams.get('customDescription') || undefined
 
   const { data: treasury } = useTreasury(daoId)
   const { data: balances } = useTreasuryBalances(dao.avatar, treasury)
-  const { data: member } = useMember(daoId, address ?? undefined)
+  const { data: member, isLoading: memberLoading } = useMember(daoId, address ?? undefined)
+  const isMember = member ? (safeBigInt(member.shares) > 0n || safeBigInt(member.loot) > 0n) : false
   const { data: profileRecord } = useDaoProfile(daoId)
   const { data: navigators } = useNavigators(daoId)
+
+  // An active, sanctioned TimelockNavigator that holds GOVERNOR — when present, ALL
+  // governance-config changes from the standard form route through its queueChange (no bypass).
+  const activeTimelockNav = (navigators ?? []).find(
+    (n) => n.navigator_type === 'TimelockNavigator'
+      && n.is_active
+      && (n.permission & 4) !== 0
+      && n.trust_status === 'sanctioned',
+  )
+  const { data: timelockCfg } = useQuery({
+    queryKey: ['timelockDelay', activeTimelockNav?.navigator_address],
+    queryFn: () => navigatorService.getTimelockConfig(activeTimelockNav!.navigator_address),
+    enabled: !!activeTimelockNav,
+    staleTime: 60_000,
+  })
+  const activeTimelock = activeTimelockNav
+    ? {
+        address: activeTimelockNav.navigator_address,
+        delaySeconds: timelockCfg ? Number(timelockCfg.delay) : 0,
+        executionWindowSeconds: timelockCfg ? Number(timelockCfg.expiryWindow) : 0,
+      }
+    : null
 
   // Read sponsorship eligibility directly from the contract so the UI matches
   // what the service layer and contract will actually enforce. The indexer's
@@ -164,7 +219,6 @@ export function NewProposal() {
     mutationFn: async (params: {
       proposalData: string
       details: string
-      offering: bigint
       expiration: number
       title: string
     }) => {
@@ -175,14 +229,16 @@ export function NewProposal() {
         params.proposalData,
         params.expiration,
         params.details,
-        params.offering,
       )
 
       return proposalId
     },
     onSuccess: (proposalId) => {
       queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
-      navigate(`/dao/${daoId}/proposals/${proposalId}`)
+      // Don't navigate immediately — the indexer lags the tx by a second or two.
+      // Show the submitted state and let the poll-until-ready effect redirect once
+      // the proposal is actually fetchable, so the detail page never flashes "not found".
+      setSubmittedProposalId(Number(proposalId))
     },
     onError: (err) => {
       setSubmitError(err instanceof Error ? err.message : 'Failed to submit proposal')
@@ -190,6 +246,47 @@ export function NewProposal() {
   })
 
   const isSubmitting = submitMutation.isPending
+
+  // Poll-until-ready redirect: after a successful submit, wait for the proposal to
+  // become fetchable (indexer ingest, or on-chain fallback), priming the same query
+  // cache the detail page reads so it renders instantly. Navigates anyway after a max
+  // wait so the user is never stuck on the confirmation screen.
+  useEffect(() => {
+    if (submittedProposalId === null || !daoId) return
+    const pid = String(submittedProposalId)
+    const compositeId = `${daoId}-${pid}`
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    let attempts = 0
+    const MAX_ATTEMPTS = 10
+    const INTERVAL_MS = 1500
+
+    const go = () => {
+      if (!cancelled) navigate(`/dao/${daoId}/proposals/${pid}`)
+    }
+
+    const tick = async () => {
+      if (cancelled) return
+      attempts++
+      let found = false
+      try {
+        const proposal = await queryClient.fetchQuery({
+          queryKey: ['proposal', daoId, pid],
+          queryFn: () => daoService.getProposal(compositeId),
+          staleTime: 0,
+        })
+        found = !!proposal
+      } catch {
+        // transient — keep waiting
+      }
+      if (cancelled) return
+      if (found || attempts >= MAX_ATTEMPTS) go()
+      else timer = setTimeout(tick, INTERVAL_MS)
+    }
+
+    timer = setTimeout(tick, INTERVAL_MS)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [submittedProposalId, daoId, navigate, queryClient])
 
   // ── Shared helpers ───────────────────────────────────────────────────
 
@@ -212,7 +309,7 @@ export function NewProposal() {
 
   const [showConfirm, setShowConfirm] = useState(false)
   const pendingSubmission = useRef<{
-    proposalData: string; details: string; offering: bigint; expiration: number; title: string
+    proposalData: string; details: string; expiration: number; title: string
   } | null>(null)
 
   function submitEncoded(
@@ -225,12 +322,10 @@ export function NewProposal() {
     if (data.discussionUrl) detailsObj.discussionUrl = data.discussionUrl
     if (data.description?.trim()) detailsObj.description = data.description.trim()
     const details = JSON.stringify(detailsObj)
-    const offering = data.offering ? quais.parseQuai(data.offering) : minOffering
     const expiration = parseExpiration(data.expiration)
     pendingSubmission.current = {
       proposalData: encoded.proposalData,
       details,
-      offering,
       expiration,
       title: data.title,
     }
@@ -288,8 +383,7 @@ export function NewProposal() {
   }) => {
     setSubmitError(null)
     try {
-      const encoder = new ProposalEncoder(dao.id)
-      encoder.addSetGovernanceConfig({
+      const config = {
         votingPeriod: data.votingPeriod,
         gracePeriod: data.gracePeriod,
         quorumPercent: BigInt(data.quorumPercent),
@@ -297,8 +391,21 @@ export function NewProposal() {
         sponsorThreshold: BigInt(data.sponsorThreshold),
         minRetentionPercent: BigInt(data.minRetentionPercent),
         defaultExpiryWindow: data.defaultExpiryWindow,
-      })
-      submitEncoded(data, encoder.encode(), 'governance_config')
+      }
+      const encoder = new ProposalEncoder(dao.id)
+      if (activeTimelock) {
+        // A timelock is active — ALWAYS route through it: queue the same config blob via
+        // queueChange so it takes effect only after the delay (a second ragequit window).
+        // The standard governance form offers no bypass; a direct change would require the
+        // advanced custom-action path, which the indexer still flags as a bypass.
+        const action = buildQueueChangeAction(activeTimelock.address, config)
+        encoder.addCustomAction(action.to, 0n, action.data)
+        submitEncoded(data, encoder.encode(), 'governance_config_timelock')
+      } else {
+        // No timelock — apply the config change directly.
+        encoder.addSetGovernanceConfig(config)
+        submitEncoded(data, encoder.encode(), 'governance_config')
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
@@ -333,32 +440,15 @@ export function NewProposal() {
   }
 
   const handleProfileSubmit = (data: SharedFormFields & {
-    profile: { name: string; description: string; avatar: string; links: Record<string, string>; tags: string[] }
-    currentProfile: { name?: string; description?: string; avatar?: string; links?: Record<string, string>; tags?: string[] }
+    profile: { name: string; description: string; avatar: string; banner: string; theme?: DaoTheme; links: Record<string, string>; tags: string[] }
+    currentProfile: { name?: string; description?: string; avatar?: string; banner?: string; theme?: DaoTheme; links?: Record<string, string>; tags?: string[] }
   }) => {
     setSubmitError(null)
     try {
       const encoder = new ProposalEncoder(dao.id)
-      const cur = data.currentProfile
-      const next = data.profile
 
-      // Build update payload with only changed fields
-      const update: Record<string, unknown> = { daoAddress: dao.id }
-      if (next.name !== (cur.name || '')) update.name = next.name
-      if (next.description !== (cur.description || '')) update.description = next.description
-      if (next.avatar !== (cur.avatar || '')) update.avatar = next.avatar
-
-      const curLinks = cur.links || {}
-      const linksChanged = JSON.stringify(next.links) !== JSON.stringify(curLinks)
-      if (linksChanged) update.links = next.links
-
-      const curTags = cur.tags || []
-      const tagsChanged = JSON.stringify(next.tags) !== JSON.stringify(curTags)
-      if (tagsChanged) update.tags = next.tags
-
-      // If nothing changed, we still need at least the name for a full profile post
-      const changedKeys = Object.keys(update).filter((k) => k !== 'daoAddress')
-      if (changedKeys.length === 0) {
+      const update = buildProfileUpdate(dao.id, data.currentProfile, data.profile)
+      if (!update) {
         setSubmitError('No profile changes detected')
         return
       }
@@ -410,7 +500,23 @@ export function NewProposal() {
         data.navigators.map((n) => n.address),
         data.navigators.map((n) => BigInt(n.permission)),
       )
-      submitEncoded(data, encoder.encode(), 'navigator_add')
+      submitEncoded(data, encoder.encode(), 'navigator')
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
+    }
+  }
+
+  const handleNavigatorSanctionSubmit = (data: SharedFormFields & {
+    navigators: Array<{ address: string; type?: string }>
+  }) => {
+    setSubmitError(null)
+    try {
+      // Vault post of the DAO's COMPLETE sanctioned read-only-navigator set, wrapped as a
+      // governance proposal so msg.sender is the avatar (VERIFIED). Last-write-wins.
+      const content = posterService.buildSanctionNavigatorsContent(dao.id, data.navigators)
+      const encoder = new ProposalEncoder(dao.id)
+      encoder.addPosterPost(CONTRACT_ADDRESSES.POSTER, content, POSTER_TAGS.DAO_NAVIGATORS)
+      submitEncoded(data, encoder.encode(), 'navigator_sanction')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Invalid proposal parameters')
     }
@@ -428,6 +534,53 @@ export function NewProposal() {
           You need a connected wallet and DAO membership to submit proposals.
         </p>
         <ConnectWallet />
+      </div>
+    )
+  }
+
+  // Submission requires membership (shares or loot). Wait for the member query to settle
+  // first so a real member never flashes the block screen, then gate non-members out.
+  if (memberLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loading size="sm" />
+      </div>
+    )
+  }
+
+  if (!isMember) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <h2 className="text-2xl font-bold font-display text-dao-text">
+          Only members can create proposals
+        </h2>
+        <p className="text-dao-text-muted text-center max-w-md">
+          You need shares or loot in this DAO to submit a proposal. Join through one of the DAO's
+          navigators, then come back to create one.
+        </p>
+        <Link to={`/dao/${daoId}`} className="btn-primary">
+          Back to DAO
+        </Link>
+      </div>
+    )
+  }
+
+  // Submitted — confirmation state while we wait for the proposal to sync, then redirect.
+  if (submittedProposalId !== null) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-5 text-center">
+        <div className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+          <svg aria-hidden="true" className="w-7 h-7 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold font-display text-dao-text">Proposal submitted!</h2>
+          <p className="text-dao-text-muted mt-1 max-w-md">
+            Waiting for it to sync, then we'll take you to your proposal…
+          </p>
+        </div>
+        <Loading size="sm" />
       </div>
     )
   }
@@ -491,7 +644,7 @@ export function NewProposal() {
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/40 border border-primary-200 dark:border-primary-700/30 flex items-center justify-center flex-shrink-0">
-                          <svg className="w-4.5 h-4.5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <svg aria-hidden="true" className="w-4.5 h-4.5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d={opt.icon} />
                           </svg>
                         </div>
@@ -562,11 +715,13 @@ export function NewProposal() {
 
             {selectedType === ProposalType.GovConfig && (
               <GovernanceForm
+                daoId={dao.id}
                 currentConfig={extractDaoConfig(dao)}
                 minOfferingDisplay={minOfferingDisplay}
                 canSelfSponsor={canSelfSponsor}
                 onSubmit={handleGovernanceSubmit}
                 isSubmitting={isSubmitting}
+                activeTimelock={activeTimelock}
               />
             )}
 
@@ -579,9 +734,24 @@ export function NewProposal() {
                   governor: dao.governor_locked,
                 }}
                 prefill={prefillNavigator}
+                prefillName={prefillNavigatorName}
                 minOfferingDisplay={minOfferingDisplay}
                 canSelfSponsor={canSelfSponsor}
                 onSubmit={handleNavigatorSubmit}
+                isSubmitting={isSubmitting}
+              />
+            )}
+
+            {selectedType === ProposalType.NavigatorSanction && (
+              <NavigatorSanctionForm
+                readOnlyNavigators={(navigators || []).filter(
+                  (n) => n.permission === NavigatorPermission.None && !n.permission_ever_granted,
+                )}
+                prefillAddress={prefillSanctionAddress}
+                prefillMode={prefillSanctionMode}
+                minOfferingDisplay={minOfferingDisplay}
+                canSelfSponsor={canSelfSponsor}
+                onSubmit={handleNavigatorSanctionSubmit}
                 isSubmitting={isSubmitting}
               />
             )}
@@ -607,6 +777,8 @@ export function NewProposal() {
                     name: dao.name || '',
                     description: dao.description || '',
                     avatar: dao.avatar_img || safeString(profileContent, 'avatar') || '',
+                    banner: safeString(profileContent, 'banner') || '',
+                    theme: extractTheme(profileContent) ?? undefined,
                     links: profileLinks,
                     tags: profileTags,
                   }}
@@ -637,6 +809,9 @@ export function NewProposal() {
                 knownTokens={(balances?.tokenBalances ?? [])
                   .filter((tb) => !tb.isNative)
                   .map((tb) => ({ address: tb.address, symbol: tb.symbol, name: tb.name, decimals: tb.decimals, balance: tb.balance }))}
+                prefillActions={prefillCustomActions}
+                prefillTitle={prefillCustomTitle}
+                prefillDescription={prefillCustomDescription}
               />
             )}
 
@@ -687,10 +862,10 @@ export function NewProposal() {
                   <p className="text-dao-text-secondary font-mono text-xs truncate">{parsed.discussionUrl}</p>
                 </div>
               )}
-              {!canSelfSponsor && p.offering > 0n && (
+              {!canSelfSponsor && minOffering > 0n && (
                 <div>
                   <p className="text-dao-text-hint text-xs mb-0.5">Offering</p>
-                  <p className="text-dao-text-secondary">{formatTokenAmount(p.offering)} QUAI</p>
+                  <p className="text-dao-text-secondary">{minOfferingDisplay} QUAI</p>
                 </div>
               )}
               {p.expiration > 0 && (

@@ -5,8 +5,13 @@
 /**
  * Default IPFS gateway for resolving ipfs:// URIs.
  * Configurable via VITE_IPFS_GATEWAY environment variable.
+ * Accepts either `https://gateway.example.com/ipfs/` (with path) or
+ * `https://gateway.example.com` (bare host — we'll append `/ipfs/`).
  */
-const IPFS_GATEWAY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_IPFS_GATEWAY) || 'https://gateway.pinata.cloud/ipfs/'
+const RAW_IPFS_GATEWAY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_IPFS_GATEWAY) || 'https://gateway.pinata.cloud/ipfs/'
+const IPFS_GATEWAY = /\/ipfs\/?$/.test(RAW_IPFS_GATEWAY)
+  ? RAW_IPFS_GATEWAY.replace(/\/?$/, '/')
+  : `${RAW_IPFS_GATEWAY.replace(/\/$/, '')}/ipfs/`
 
 /**
  * Positive allowlist: only these schemes are permitted.
@@ -67,4 +72,32 @@ export function resolveUrl(url: string | null | undefined): string | null {
  */
 export function safeHref(url: string | null | undefined): string {
   return resolveUrl(url) ?? '#'
+}
+
+/** Public ipfs.io gateway used for rendering NFT media (metadata + images). */
+const IPFS_IO_GATEWAY = 'https://ipfs.io/ipfs/'
+
+/**
+ * Resolve an NFT media/metadata URI to an https URL via the public ipfs.io gateway.
+ * - `ipfs://<cid>[/path]` and `ipfs://ipfs/<cid>` → `https://ipfs.io/ipfs/<cid>[/path]`
+ * - `http(s)://…` → passed through unchanged (already fetchable)
+ * Returns null for anything else (data:, javascript:, empty, malformed CID, traversal).
+ * Use this instead of resolveUrl() when you specifically want the ipfs.io gateway.
+ */
+export function resolveIpfsMedia(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string') return null
+  const trimmed = url.trim()
+  if (trimmed === '') return null
+
+  if (/^ipfs:\/\//i.test(trimmed)) {
+    // Accept both `ipfs://<cid>` and the redundant `ipfs://ipfs/<cid>` form.
+    const cid = trimmed.replace(/^ipfs:\/\//i, '').replace(/^ipfs\//i, '')
+    if (!cid || !VALID_CID.test(cid)) return null
+    if (/\.\.|%2e/i.test(cid)) return null // block path traversal (raw + encoded)
+    return `${IPFS_IO_GATEWAY}${encodeURI(cid)}`
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+
+  return null
 }

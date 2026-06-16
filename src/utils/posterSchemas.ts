@@ -126,3 +126,58 @@ export function validatePosterContent(
 
   return { valid: errors.length === 0, errors }
 }
+
+// Mirror of the indexer's validateSignalPoll limits (daoships.signal.poll).
+const SIGNAL_POLL_MIN_OPTIONS = 2
+const SIGNAL_POLL_MAX_OPTIONS = 10
+const SIGNAL_POLL_LABEL_MAX = 200
+const SIGNAL_POLL_DESCRIPTION_MAX = 1000
+
+/**
+ * Validate a `daoships.signal.poll` labels payload before posting. The generic flat-field
+ * validator can't express the `options` array, so this is bespoke. Mirrors the indexer's
+ * `validateSignalPoll` so we never spend gas on a post the indexer will discard.
+ *
+ * Note: the cross-check `options.length === on-chain optionCount` cannot happen here (the
+ * indexer enforces it at apply time); the caller pins the count instead — see SignalPlugin.
+ */
+export function validateSignalPollLabels(content: {
+  options?: unknown
+  description?: unknown
+  discussionUrl?: unknown
+}): ValidationResult {
+  const errors: string[] = []
+
+  const { options, description, discussionUrl } = content
+
+  if (!Array.isArray(options)) {
+    errors.push('options must be an array')
+  } else {
+    if (options.length < SIGNAL_POLL_MIN_OPTIONS || options.length > SIGNAL_POLL_MAX_OPTIONS) {
+      errors.push(`options must have between ${SIGNAL_POLL_MIN_OPTIONS} and ${SIGNAL_POLL_MAX_OPTIONS} entries`)
+    }
+    options.forEach((opt, i) => {
+      if (typeof opt !== 'string' || opt.trim() === '') {
+        errors.push(`option ${i + 1} must be a non-empty label`)
+      } else if (opt.length > SIGNAL_POLL_LABEL_MAX) {
+        errors.push(`option ${i + 1} must be ${SIGNAL_POLL_LABEL_MAX} characters or fewer`)
+      }
+    })
+  }
+
+  if (description !== undefined && description !== null && description !== '') {
+    if (typeof description !== 'string') {
+      errors.push('description must be a string')
+    } else if (description.length > SIGNAL_POLL_DESCRIPTION_MAX) {
+      errors.push(`description must be ${SIGNAL_POLL_DESCRIPTION_MAX} characters or fewer`)
+    }
+  }
+
+  if (discussionUrl !== undefined && discussionUrl !== null && discussionUrl !== '') {
+    if (typeof discussionUrl !== 'string' || !isValidUrl(discussionUrl)) {
+      errors.push('discussionUrl must be a valid URL (https or ipfs)')
+    }
+  }
+
+  return { valid: errors.length === 0, errors }
+}

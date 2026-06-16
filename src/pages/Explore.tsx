@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useDaos } from '@/hooks/useDaos'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -10,6 +10,8 @@ import type { Dao } from '@/types'
 // ═══════════════════════════════════════════════════════════════════════════
 // Explore - Filterable/sortable DAO list with search
 // ═══════════════════════════════════════════════════════════════════════════
+
+const DAOS_PER_PAGE = 24
 
 type SortOption = 'newest' | 'members' | 'proposals'
 
@@ -41,8 +43,12 @@ export function Explore() {
   usePageTitle('Explore DAOs')
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortOption>('newest')
+  const [page, setPage] = useState(1)
   const debouncedSearch = useDebounce(search, 300)
   const { data: daos, isLoading, error } = useDaos()
+
+  // Reset page when search changes
+  useEffect(() => { setPage(1) }, [debouncedSearch])
 
   const filteredDaos = useMemo(() => {
     if (!daos) return []
@@ -61,6 +67,12 @@ export function Explore() {
     return sortDaos(filtered, sortBy)
   }, [daos, debouncedSearch, sortBy])
 
+  const totalPages = Math.max(1, Math.ceil(filteredDaos.length / DAOS_PER_PAGE))
+  const paginatedDaos = useMemo(
+    () => filteredDaos.slice((page - 1) * DAOS_PER_PAGE, page * DAOS_PER_PAGE),
+    [filteredDaos, page],
+  )
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -74,7 +86,7 @@ export function Explore() {
       {/* Search and sort controls */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1 relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dao-text-hint pointer-events-none"
+          <svg aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dao-text-hint pointer-events-none"
             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
@@ -115,10 +127,19 @@ export function Explore() {
             {filteredDaos.length} {filteredDaos.length === 1 ? 'DAO' : 'DAOs'} found
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredDaos.map((dao) => (
+            {paginatedDaos.map((dao) => (
               <DaoCard key={dao.id} dao={dao} />
             ))}
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 pt-4">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="btn-secondary px-4 py-2 text-sm disabled:opacity-50">Previous</button>
+              <span className="text-sm text-dao-text-muted">Page {page} of {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="btn-secondary px-4 py-2 text-sm disabled:opacity-50">Next</button>
+            </div>
+          )}
         </>
       ) : (
         <EmptyState

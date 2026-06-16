@@ -82,7 +82,7 @@ export function AllowlistInput({ value, onChange, disabled = false }: AllowlistI
 
       {/* Privacy notice */}
       {addresses.length > 0 && (
-        <p className="text-[11px] text-dao-text-hint">
+        <p className="text-2xs text-dao-text-hint">
           These addresses will be stored publicly on-chain via the Poster contract.
         </p>
       )}

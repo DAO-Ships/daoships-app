@@ -33,7 +33,7 @@ export function VoteButton({ daoId, proposalId, disabled = false, onVote }: Vote
           disabled={disabled || isVoting}
           loading={isVoting}
           onClick={() => handleVote(true)}
-          className="flex-1 bg-green-600 hover:bg-green-700 border-green-500"
+          className="flex-1 bg-emerald-600 hover:bg-emerald-700 border-emerald-500"
         >
           Vote Yes
         </Button>

@@ -19,8 +19,10 @@ export interface Dao {
   /** Vault / treasury address */
   avatar: string
 
-  /** Factory/deployer address that launched this DAO (NOT NULL in schema) */
-  launcher: string
+  /** Wallet address that deployed the DAO (EOA) */
+  deployer: string
+  /** Factory contract address that launched this DAO */
+  launcher_contract: string
   /** Whether a new vault was created during launch */
   new_vault: boolean
 
@@ -31,7 +33,11 @@ export interface Dao {
   // Governance configuration (BIGINT → number in JS)
   grace_period: number
   voting_period: number
-  /** Generated column: voting_period + grace_period */
+  /**
+   * Generated column: voting_period + grace_period (seconds).
+   * Currently unused by the frontend — indexer exposes it for query ordering/filtering.
+   * Keep in the type so Supabase rows deserialize correctly.
+   */
   voting_plus_grace_duration: number
   proposal_offering: string
   quorum_percent: string
@@ -118,7 +124,20 @@ export interface Ragequit {
   amounts: string[]
   created_at: string
   tx_hash: string
-  block_number: string
+  /** BIGINT from indexer — safe as number (blocks stay < 2^53 for centuries) */
+  block_number: number
+}
+
+/**
+ * Extract the expiry-related config from a full Dao object.
+ * Used by deriveProposalStatus, useProposalStatus, VotingSidebar, etc.
+ */
+export function extractDaoExpiryConfig(dao: Dao): DaoExpiryConfig {
+  return {
+    voting_period: dao.voting_period,
+    grace_period: dao.grace_period,
+    default_expiry_window: dao.default_expiry_window,
+  }
 }
 
 /**

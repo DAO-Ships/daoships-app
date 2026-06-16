@@ -7,6 +7,7 @@ import { queryClient } from '@/lib/queryClient'
 import { Layout } from '@/components/layout/Layout'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { NotificationContainer } from '@/components/common/NotificationContainer'
+import { ConnectModal } from '@/components/common/ConnectModal'
 import { Loading } from '@/components/common/Loading'
 import { DaoLayout } from '@/components/layout/DaoLayout'
 
@@ -54,6 +55,7 @@ export function App() {
               </div>
               </Suspense>
             </ErrorBoundary>
+            <ConnectModal />
           </Layout>
           <ErrorBoundary>
             <NotificationContainer />

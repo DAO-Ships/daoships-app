@@ -3,9 +3,18 @@ import { Button } from '@/components/common/Button'
 import { OfferingField } from './OfferingField'
 import { ProposalSettingsFields } from './ProposalSettingsFields'
 import { ProposalActionSection } from './ProposalActionSection'
-import { formatDuration, parseDurationToSeconds } from '@/utils/time'
-import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
+import { formatDuration, parseDurationToSeconds, formatDurationInput } from '@/utils/time'
+import { formatTokenAmount, parseTokenAmount, bpsToPercent } from '@/utils/format'
+import { daoService } from '@/services/DaoService'
 import type { DaoConfig } from '@/types'
+
+/** An active, sanctioned TimelockNavigator that config changes should route through. */
+export interface ActiveTimelock {
+  address: string
+  delaySeconds: number
+  /** Window (seconds) after the delay during which the queued change must be executed. */
+  executionWindowSeconds: number
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GovernanceForm - Update governance configuration proposal form
@@ -27,19 +36,24 @@ interface GovernanceFormData {
 }
 
 interface GovernanceFormProps {
+  daoId: string
   currentConfig?: DaoConfig
   minOfferingDisplay: string
   canSelfSponsor?: boolean
   onSubmit: (data: GovernanceFormData) => void
   isSubmitting?: boolean
+  /** If set, every config change from this form is queued through the timelock — no bypass. */
+  activeTimelock?: ActiveTimelock | null
 }
 
 export function GovernanceForm({
+  daoId,
   currentConfig,
   minOfferingDisplay,
   canSelfSponsor = false,
   onSubmit,
   isSubmitting = false,
+  activeTimelock = null,
 }: GovernanceFormProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -55,18 +69,37 @@ export function GovernanceForm({
   const [defaultExpiryWindowInput, setDefaultExpiryWindowInput] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Pre-fill from current config
+  // Pre-fill from current config — use shorthand duration format (3d, 1h) so
+  // users see the same input style they used in the launch wizard.
   useEffect(() => {
     if (currentConfig) {
-      setVotingPeriodInput(String(currentConfig.voting_period))
-      setGracePeriodInput(String(currentConfig.grace_period))
-      setQuorumPercent(String(Number(currentConfig.quorum_percent) / 100))
+      setVotingPeriodInput(formatDurationInput(currentConfig.voting_period))
+      setGracePeriodInput(formatDurationInput(currentConfig.grace_period))
+      setQuorumPercent(String(bpsToPercent(currentConfig.quorum_percent)))
       setProposalOffering(formatTokenAmount(BigInt(currentConfig.proposal_offering || '0'), 18, 4, 0))
       setSponsorThreshold(formatTokenAmount(BigInt(currentConfig.sponsor_threshold || '0'), 18, 4, 0))
-      setMinRetentionPercent(String(Number(currentConfig.min_retention_percent) / 100))
-      setDefaultExpiryWindowInput(String(currentConfig.default_expiry_window || 0))
+      setMinRetentionPercent(String(bpsToPercent(currentConfig.min_retention_percent)))
+      setDefaultExpiryWindowInput(formatDurationInput(currentConfig.default_expiry_window || 0))
     }
   }, [currentConfig])
+
+  // Defense-in-depth: if the indexer value is 0, read from the contract directly.
+  // This covers DAOs launched before the indexer started capturing defaultExpiryWindow
+  // from SetupComplete, and also handles brief indexer lag after launch.
+  useEffect(() => {
+    if (!daoId) return
+    if (currentConfig?.default_expiry_window && currentConfig.default_expiry_window > 0) return
+    let cancelled = false
+    daoService.getDefaultExpiryWindow(daoId)
+      .then((seconds) => {
+        if (cancelled) return
+        if (seconds > 0) {
+          setDefaultExpiryWindowInput(formatDurationInput(seconds))
+        }
+      })
+      .catch((err) => console.warn('[GovernanceForm] on-chain defaultExpiryWindow read failed:', err))
+    return () => { cancelled = true }
+  }, [daoId, currentConfig?.default_expiry_window])
 
   const votingPeriodSeconds = parseDurationToSeconds(votingPeriodInput)
   const gracePeriodSeconds = parseDurationToSeconds(gracePeriodInput)
@@ -222,7 +255,7 @@ export function GovernanceForm({
             <p className="text-xs text-dao-text-hint mt-1">{formatDuration(gracePeriodSeconds)}</p>
           )}
           {gracePeriodSeconds === 0 && (
-            <p className="text-xs text-yellow-400 mt-1">
+            <p className="text-xs text-amber-400 mt-1">
               Warning: A grace period of 0 means members cannot ragequit before proposals are processed.
             </p>
           )}
@@ -355,6 +388,9 @@ export function GovernanceForm({
         expiration={expiration}
         onExpirationChange={setExpiration}
         disabled={isSubmitting}
+        minProcessableSeconds={
+          currentConfig ? currentConfig.voting_period + currentConfig.grace_period : undefined
+        }
       />
 
       {/* Tribute */}
@@ -366,6 +402,38 @@ export function GovernanceForm({
         disabled={isSubmitting}
       />
 
+      {/* Timelock routing notice — when a timelock is active, every config change is queued
+          through it (no bypass). Spell out the full two-phase lifecycle so proposers/voters know
+          the change does NOT land when the proposal passes — there's a second execution step. */}
+      {activeTimelock && (
+        <div className="rounded-lg border border-accent-500/30 bg-accent-500/10 px-4 py-3 space-y-2">
+          <p className="text-sm text-accent-400 font-medium">Routed through the timelock — two steps</p>
+          <p className="text-xs text-dao-text-muted">
+            This DAO has an active timelock, so this change takes effect in two phases (it does
+            <strong> not</strong> apply the moment the proposal passes):
+          </p>
+          <ol className="text-xs text-dao-text-muted list-decimal pl-4 space-y-1">
+            <li>
+              <strong>Proposal</strong> — vote, grace, then anyone processes it before it expires.
+              Processing <strong>queues</strong> the change (it does not apply it).
+            </li>
+            <li>
+              <strong>Timelock</strong> — the queued change becomes executable after a{' '}
+              <strong>{formatDuration(activeTimelock.delaySeconds)}</strong> delay (a second window for
+              members to ragequit), then anyone must <strong>execute</strong> it
+              {activeTimelock.executionWindowSeconds > 0
+                ? <> within <strong>{formatDuration(activeTimelock.executionWindowSeconds)}</strong></>
+                : ' within the execution window'}{' '}
+              from the timelock navigator’s page, or it expires and must be re-proposed.
+            </li>
+          </ol>
+          <p className="text-xs text-dao-text-hint">
+            Set the proposal expiration to comfortably cover voting + grace — it’s independent of the
+            timelock delay, which only starts after the proposal is processed.
+          </p>
+        </div>
+      )}
+
       {/* Submit */}
       <div className="flex justify-end">
         <Button
@@ -374,7 +442,7 @@ export function GovernanceForm({
           loading={isSubmitting}
           disabled={!title.trim()}
         >
-          Submit Governance Proposal
+          {activeTimelock ? 'Submit (Queue via Timelock)' : 'Submit Governance Proposal'}
         </Button>
       </div>
     </form>

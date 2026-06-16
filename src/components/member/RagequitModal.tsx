@@ -92,7 +92,7 @@ function TokenRow({
         }`}
       >
         {selected && (
-          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <svg aria-hidden="true" className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         )}
@@ -102,9 +102,9 @@ function TokenRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-dao-text truncate">{tokenLabel(token)}</span>
-          {isEmpty && <span className="text-[10px] text-dao-text-hint">(empty)</span>}
+          {isEmpty && <span className="text-2xs text-dao-text-hint">(empty)</span>}
         </div>
-        <span className="text-[11px] font-mono text-dao-text-hint">
+        <span className="text-2xs font-mono text-dao-text-hint">
           {token.address.slice(0, 8)}...{token.address.slice(-4)}
         </span>
       </div>
@@ -112,7 +112,7 @@ function TokenRow({
       {/* Return amount */}
       <span
         className={`text-sm font-mono flex-shrink-0 ${
-          selected ? 'text-green-400' : 'text-dao-text-hint line-through'
+          selected ? 'text-emerald-400' : 'text-dao-text-hint line-through'
         }`}
       >
         {formatTokenAmount(returnAmount, decimals)}
@@ -160,6 +160,19 @@ export function RagequitModal({
     }
     prevOpenRef.current = isOpen
   }, [isOpen, guildTokens])
+
+  // Move focus into the new step's content when the step changes (configure→confirm→success),
+  // so keyboard/screen-reader users land on the fresh content instead of a removed node.
+  // Skip the first render — Modal handles initial focus on open.
+  const stepContainerRef = useRef<HTMLDivElement>(null)
+  const firstStepRenderRef = useRef(true)
+  useEffect(() => {
+    if (firstStepRenderRef.current) {
+      firstStepRenderRef.current = false
+      return
+    }
+    stepContainerRef.current?.focus()
+  }, [step])
 
   const sharesToBurnBigInt = sharesToBurn ? parseTokenAmount(sharesToBurn) : 0n
   const lootToBurnBigInt = lootToBurn ? parseTokenAmount(lootToBurn) : 0n
@@ -306,11 +319,13 @@ export function RagequitModal({
             }}
             maxLength={30}
             placeholder="0"
+            aria-invalid={sharesOverflow}
+            aria-describedby={sharesToBurn ? 'rq-shares-hint' : undefined}
             className={`input w-full font-mono ${sharesOverflow ? 'border-red-500/50' : ''}`}
             disabled={isRagequitting}
           />
           {sharesToBurn && (
-            <p className={`text-xs mt-1 ${sharesOverflow ? 'text-red-400' : 'text-dao-text-hint'}`}>
+            <p id="rq-shares-hint" className={`text-xs mt-1 ${sharesOverflow ? 'text-red-400' : 'text-dao-text-hint'}`}>
               {sharesOverflow
                 ? `Exceeds balance by ${formatTokenAmount(sharesToBurnBigInt - userShares)}`
                 : `Remaining after burn: ${formatTokenAmount(userShares - sharesToBurnBigInt)}`}
@@ -346,11 +361,13 @@ export function RagequitModal({
             }}
             maxLength={30}
             placeholder="0"
+            aria-invalid={lootOverflow}
+            aria-describedby={lootToBurn ? 'rq-loot-hint' : undefined}
             className={`input w-full font-mono ${lootOverflow ? 'border-red-500/50' : ''}`}
             disabled={isRagequitting}
           />
           {lootToBurn && (
-            <p className={`text-xs mt-1 ${lootOverflow ? 'text-red-400' : 'text-dao-text-hint'}`}>
+            <p id="rq-loot-hint" className={`text-xs mt-1 ${lootOverflow ? 'text-red-400' : 'text-dao-text-hint'}`}>
               {lootOverflow
                 ? `Exceeds balance by ${formatTokenAmount(lootToBurnBigInt - userLoot)}`
                 : `Remaining after burn: ${formatTokenAmount(userLoot - lootToBurnBigInt)}`}
@@ -438,7 +455,7 @@ export function RagequitModal({
 
       {/* Estimated returns label */}
       {guildTokens.length > 0 && totalBurn > 0n && (
-        <p className="text-[11px] text-dao-text-hint">
+        <p className="text-2xs text-dao-text-hint">
           Estimated returns may change before execution if treasury balances shift.
         </p>
       )}
@@ -504,7 +521,7 @@ export function RagequitModal({
             selectedReturns.map((token) => (
               <div key={token.address} className="flex justify-between">
                 <span className="text-sm text-dao-text-secondary">{tokenLabel(token)}</span>
-                <span className="text-sm font-mono text-green-400">
+                <span className="text-sm font-mono text-emerald-400">
                   +{formatTokenAmount(token.returnAmount, token.decimals ?? 18)}
                 </span>
               </div>
@@ -561,7 +578,7 @@ export function RagequitModal({
           <a
             href={`${NETWORK_CONFIG.blockExplorerUrl}/tx/${txHash}`}
             target="_blank"
-            rel="noopener noreferrer"
+            rel="noopener noreferrer nofollow"
             className="font-mono text-primary-400 hover:text-primary-300"
           >
             {txHash.slice(0, 10)}...{txHash.slice(-6)}
@@ -613,8 +630,8 @@ export function RagequitModal({
     <div className="space-y-5 text-center">
       {/* Checkmark */}
       <div className="flex justify-center">
-        <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
-          <svg className="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
+          <svg aria-hidden="true" className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
@@ -638,7 +655,7 @@ export function RagequitModal({
           {selectedReturns.map((token) => (
             <div key={token.address} className="px-4 py-2 flex items-center justify-between">
               <span className="text-sm text-dao-text-muted">{tokenLabel(token)}</span>
-              <span className="text-sm font-mono text-green-400">
+              <span className="text-sm font-mono text-emerald-400">
                 +{formatTokenAmount(token.returnAmount, token.decimals ?? 18)}
               </span>
             </div>
@@ -646,7 +663,7 @@ export function RagequitModal({
         </div>
       )}
 
-      <p className="text-[11px] text-dao-text-hint">
+      <p className="text-2xs text-dao-text-hint">
         Estimated amounts shown. Actual amounts depend on block confirmation.
       </p>
 
@@ -672,9 +689,11 @@ export function RagequitModal({
       size="lg"
       preventClose={isRagequitting}
     >
-      {step === 'configure' && renderConfigure()}
-      {step === 'confirm' && renderConfirm()}
-      {step === 'success' && renderSuccess()}
+      <div ref={stepContainerRef} tabIndex={-1} className="outline-none">
+        {step === 'configure' && renderConfigure()}
+        {step === 'confirm' && renderConfirm()}
+        {step === 'success' && renderSuccess()}
+      </div>
     </Modal>
   )
 }

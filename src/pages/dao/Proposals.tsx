@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import type { Dao, Proposal, DaoExpiryConfig } from '@/types'
+import type { Dao, Proposal } from '@/types'
+import { extractDaoExpiryConfig } from '@/types'
 import { ProposalStatus, deriveProposalStatus } from '@/types/proposal'
 import { useProposals } from '@/hooks/useProposals'
 import { safeBigInt } from '@/utils/bigint'
@@ -33,6 +34,8 @@ const FILTER_TABS: { value: FilterTab; label: string }[] = [
   { value: 'passed', label: 'Passed' },
   { value: 'failed', label: 'Failed' },
 ]
+
+const PROPOSALS_PER_PAGE = 20
 
 interface ProposalWithStatus {
   proposal: Proposal
@@ -69,15 +72,15 @@ function ProposalCard({ proposal, daoId, status }: { proposal: Proposal; daoId: 
   return (
     <Link
       to={`/dao/${daoId}/proposals/${proposal.proposal_id}`}
-      className="flex items-center gap-4 px-5 py-3.5 hover:bg-dao-surface/50 transition-colors"
+      className="flex items-center gap-2 sm:gap-4 px-3 sm:px-5 py-3.5 hover:bg-dao-surface/50 transition-colors"
     >
       {/* ID */}
       <span className="text-xs font-mono text-dao-text-hint w-8 flex-shrink-0">#{proposal.proposal_id}</span>
 
       {/* Type badge */}
-      <div className="w-20 flex-shrink-0">
+      <div className="w-16 sm:w-20 flex-shrink-0">
         {proposalType && (
-          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${proposalType.color}`}>
+          <span className={`text-2xs font-medium px-1.5 py-0.5 rounded ${proposalType.color}`}>
             {proposalType.label}
           </span>
         )}
@@ -88,6 +91,9 @@ function ProposalCard({ proposal, daoId, status }: { proposal: Proposal; daoId: 
         <h3 className="text-sm text-dao-text font-medium truncate">{details.title}</h3>
         <p className="text-xs text-dao-text-hint mt-0.5">
           {formatTimeAgo(new Date(proposal.created_at).getTime())}
+          {totalBalance > 0n && (
+            <span className="sm:hidden"> · {yesPercent}% yes</span>
+          )}
         </p>
       </div>
 
@@ -99,12 +105,12 @@ function ProposalCard({ proposal, daoId, status }: { proposal: Proposal; daoId: 
               <div className="h-full bg-emerald-500" style={{ width: `${yesPercent}%` }} />
               <div className="h-full bg-red-500" style={{ width: `${noPercent}%` }} />
             </div>
-            <span className="text-[10px] text-dao-text-hint">
+            <span className="text-2xs text-dao-text-hint">
               {yesPercent}% yes · {proposal.yes_votes + proposal.no_votes} votes
             </span>
           </>
         ) : (
-          <span className="text-[10px] text-dao-text-hint">No votes</span>
+          <span className="text-2xs text-dao-text-hint">No votes</span>
         )}
       </div>
 
@@ -120,11 +126,8 @@ export function Proposals() {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
   const { data: proposals, isLoading, error } = useProposals(dao.id)
 
-  const daoConfig = useMemo<DaoExpiryConfig>(() => ({
-    voting_period: dao.voting_period,
-    grace_period: dao.grace_period,
-    default_expiry_window: dao.default_expiry_window,
-  }), [dao.voting_period, dao.grace_period, dao.default_expiry_window])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- extractDaoExpiryConfig reads only these three fields; depending on the whole `dao` over-recomputes on every poll
+  const daoConfig = useMemo(() => extractDaoExpiryConfig(dao), [dao.voting_period, dao.grace_period, dao.default_expiry_window])
 
   // Compute all proposals with status once, then filter
   const allWithStatus = useMemo(() => {
@@ -135,6 +138,15 @@ export function Proposals() {
   const filteredProposals = useMemo(
     () => allWithStatus.filter((ps) => matchesFilter(ps, activeFilter)),
     [allWithStatus, activeFilter],
+  )
+
+  // Paginate so a DAO with hundreds of proposals doesn't mount them all at once.
+  const [page, setPage] = useState(1)
+  useEffect(() => { setPage(1) }, [activeFilter])
+  const totalPages = Math.max(1, Math.ceil(filteredProposals.length / PROPOSALS_PER_PAGE))
+  const paginatedProposals = useMemo(
+    () => filteredProposals.slice((page - 1) * PROPOSALS_PER_PAGE, page * PROPOSALS_PER_PAGE),
+    [filteredProposals, page],
   )
 
   // Count per filter tab
@@ -174,6 +186,7 @@ export function Proposals() {
             <button
               key={tab.value}
               onClick={() => setActiveFilter(tab.value)}
+              aria-pressed={activeFilter === tab.value}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${
                 activeFilter === tab.value
                   ? 'bg-primary-600 text-white'
@@ -182,7 +195,7 @@ export function Proposals() {
             >
               {tab.label}
               {count > 0 && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                <span className={`text-2xs font-bold px-1.5 py-0.5 rounded-full ${
                   activeFilter === tab.value
                     ? 'bg-white/20 text-white'
                     : 'bg-dao-dark-2 text-dao-text-hint'
@@ -206,13 +219,24 @@ export function Proposals() {
           description={error instanceof Error ? error.message : 'An unexpected error occurred.'}
         />
       ) : filteredProposals.length > 0 ? (
-        <Card>
-          <div className="divide-y divide-dao-border">
-            {filteredProposals.map(({ proposal, status }) => (
-              <ProposalCard key={proposal.id} proposal={proposal} daoId={dao.id} status={status} />
-            ))}
-          </div>
-        </Card>
+        <>
+          <Card>
+            <div className="divide-y divide-dao-border">
+              {paginatedProposals.map(({ proposal, status }) => (
+                <ProposalCard key={proposal.id} proposal={proposal} daoId={dao.id} status={status} />
+              ))}
+            </div>
+          </Card>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 pt-4">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                className="btn-secondary px-4 py-2 text-sm disabled:opacity-50">Previous</button>
+              <span className="text-sm text-dao-text-muted">Page {page} of {totalPages}</span>
+              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="btn-secondary px-4 py-2 text-sm disabled:opacity-50">Next</button>
+            </div>
+          )}
+        </>
       ) : (
         <EmptyState
           title={activeFilter === 'all' ? 'No proposals yet' : `No ${activeFilter} proposals`}

@@ -14,6 +14,7 @@ export function useProposals(daoId: string | undefined, status?: string) {
     queryKey: ['proposals', daoId, status ?? 'all'],
     queryFn: () => daoService.getProposals(daoId!, status ? { status: status as 'active' | 'cancelled' | 'processed' } : undefined),
     enabled: !!daoId,
+    staleTime: 8000,
     refetchInterval: isVisible ? 10000 : false,
   })
 }

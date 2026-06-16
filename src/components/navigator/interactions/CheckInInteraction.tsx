@@ -106,7 +106,7 @@ export function CheckInInteraction({
           </div>
           <div>
             <p className="text-dao-text-hint">Your Missed</p>
-            <p className={`font-medium ${missedCount >= config.maxMissed ? 'text-red-400' : missedCount > 0 ? 'text-yellow-400' : 'text-green-400'}`}>
+            <p className={`font-medium ${missedCount >= config.maxMissed ? 'text-red-400' : missedCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
               {missedCount} / {config.maxMissed}
             </p>
           </div>
@@ -121,7 +121,7 @@ export function CheckInInteraction({
             </div>
           ) : canCheckIn ? (
             <div>
-              <p className="text-sm text-green-400 font-medium">Check-In Available</p>
+              <p className="text-sm text-emerald-400 font-medium">Check-In Available</p>
               <p className="text-xs text-dao-text-hint mt-0.5">
                 Last check-in: {new Date(lastCheckIn!).toLocaleString()}
               </p>
@@ -138,8 +138,8 @@ export function CheckInInteraction({
 
         {/* Missed check-in warning */}
         {missedCount > 0 && missedCount < config.maxMissed && (
-          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3">
-            <p className="text-sm text-yellow-400">
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
+            <p className="text-sm text-amber-400">
               You have missed {missedCount} check-in{missedCount > 1 ? 's' : ''}. Missing {config.maxMissed} will result in a penalty.
             </p>
           </div>

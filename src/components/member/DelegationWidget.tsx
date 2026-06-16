@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDelegation } from '@/hooks/useDelegation'
 import { Button } from '@/components/common/Button'
+import { isAddress } from '@/services/utils/AddressUtils'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DelegationWidget - Delegate/undelegate shares to another member
@@ -12,8 +13,6 @@ interface DelegationWidgetProps {
   currentDelegate?: string | null
   userAddress?: string
 }
-
-const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/
 
 export function DelegationWidget({
   daoId,
@@ -33,7 +32,7 @@ export function DelegationWidget({
   const handleDelegate = async () => {
     setError(null)
 
-    if (!ADDRESS_REGEX.test(delegateAddress)) {
+    if (!isAddress(delegateAddress)) {
       setError('Must be a valid 42-character hex address')
       return
     }

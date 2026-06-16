@@ -1,4 +1,5 @@
 import { quais } from 'quais'
+import { NETWORK_CONFIG } from '@/config/contracts'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BaseService - Singleton provider/signer management for Quai network
@@ -16,6 +17,7 @@ import { quais } from 'quais'
 class BaseService {
   private signer: quais.Signer | null = null
   private walletProvider: quais.Provider | null = null
+  private chainId: number | null = null
 
   /**
    * Get the wallet provider for read-only calls.
@@ -59,13 +61,35 @@ class BaseService {
   }
 
   /**
-   * Get the signer, throwing if not connected.
+   * Record the wallet's current chainId (set from the wallet hook on connect/switch).
+   */
+  setChainId(chainId: number | null): void {
+    this.chainId = chainId
+  }
+
+  /**
+   * Hard-block writes when the wallet is on the wrong network. Wrong-network state
+   * otherwise causes silent reverts / "missing revert data" on Quai/Pelagus. Only
+   * throws when the chainId is known AND mismatched — never blocks on unknown.
+   */
+  assertCorrectChain(): void {
+    if (this.chainId != null && this.chainId !== NETWORK_CONFIG.chainId) {
+      throw new Error(
+        `Wrong network: your wallet is on chain ${this.chainId}, but this app requires ` +
+          `${NETWORK_CONFIG.chainName} (chain ${NETWORK_CONFIG.chainId}). Switch networks and try again.`,
+      )
+    }
+  }
+
+  /**
+   * Get the signer, throwing if not connected or on the wrong chain.
    * Convenience for write operations that require a wallet.
    */
   requireSigner(): quais.Signer {
     if (!this.signer) {
       throw new Error('Wallet not connected. Please connect your wallet first.')
     }
+    this.assertCorrectChain()
     return this.signer
   }
 }

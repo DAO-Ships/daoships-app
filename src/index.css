@@ -3,6 +3,36 @@
 @tailwind utilities;
 
 @layer base {
+  /* ── Brand ramps (theme-independent defaults) ───────────────────
+     primary = DAOShips helm violet, accent = cyan. Space-separated RGB so
+     Tailwind's `rgb(var(--primary-500) / <alpha-value>)` works. A DAO's posted
+     theme overrides these per-DAO at runtime via useDaoTheme (set on <html>). */
+  :root {
+    --primary-50: 241 240 252;
+    --primary-100: 229 227 249;
+    --primary-200: 206 203 243;
+    --primary-300: 175 169 236;
+    --primary-400: 150 142 229;
+    --primary-500: 127 119 221;
+    --primary-600: 98 87 201;
+    --primary-700: 83 74 183;
+    --primary-800: 66 58 143;
+    --primary-900: 54 48 113;
+    --primary-950: 33 29 72;
+
+    --accent-50: 236 254 255;
+    --accent-100: 207 250 254;
+    --accent-200: 165 243 252;
+    --accent-300: 103 232 249;
+    --accent-400: 34 211 238;
+    --accent-500: 6 182 212;
+    --accent-600: 8 145 178;
+    --accent-700: 14 116 144;
+    --accent-800: 21 94 117;
+    --accent-900: 22 78 99;
+    --accent-950: 8 51 68;
+  }
+
   /* ── Light theme (default) ──────────────────────────────────── */
   :root {
     --dao-bg-1: #f8f9fc;
@@ -14,7 +44,8 @@
     --dao-text: #0f172a;
     --dao-text-secondary: #334155;
     --dao-text-muted: #64748b;
-    --dao-text-hint: #94a3b8;
+    /* Darkened from #94a3b8 (2.4:1) to meet WCAG AA 4.5:1 on light backgrounds. */
+    --dao-text-hint: #5b6472;
     --dao-shadow-strength: 0.08;
     --dao-glow-strength: 0.15;
     --dao-overlay: rgba(0, 0, 0, 0.05);
@@ -31,7 +62,8 @@
     --dao-text: #f3f4f6;
     --dao-text-secondary: #d1d5db;
     --dao-text-muted: #9ca3af;
-    --dao-text-hint: #6b7280;
+    /* Lightened from #6b7280 (~3.7:1) to meet WCAG AA 4.5:1 on dark backgrounds. */
+    --dao-text-hint: #8b93a1;
     --dao-shadow-strength: 0.8;
     --dao-glow-strength: 0.3;
     --dao-overlay: rgba(0, 0, 0, 0.5);
@@ -67,7 +99,7 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-500 text-white font-medium px-4 py-2 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2;
+    @apply bg-primary-600 hover:bg-primary-500 hover:shadow-indigo-glow text-white font-medium px-4 py-2 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2;
     --tw-ring-offset-color: var(--dao-bg-1);
   }
 
@@ -93,6 +125,29 @@
     @apply rounded-xl shadow-sm;
   }
 
+  /* ── Semantic badge/pill system ──────────────────────────────────────
+     One canonical palette per role (success=emerald, warning=amber,
+     danger=red, info=primary, neutral=surface) so components stop
+     hand-rolling divergent green/yellow/orange recipes. */
+  .badge {
+    @apply inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full;
+  }
+  .badge-success {
+    @apply bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400;
+  }
+  .badge-warning {
+    @apply bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400;
+  }
+  .badge-danger {
+    @apply bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400;
+  }
+  .badge-info {
+    @apply bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-400;
+  }
+  .badge-neutral {
+    @apply bg-dao-surface text-dao-text-muted;
+  }
+
   .input {
     background-color: var(--dao-bg-2);
     border: 1px solid var(--dao-border);
@@ -101,5 +156,25 @@
   }
   .input::placeholder {
     color: var(--dao-text-hint);
+  }
+  /* On touch viewports, force ≥16px so iOS Safari doesn't auto-zoom on focus (many inputs
+     add `text-sm` = 14px). !important is needed to beat the utility class's font-size. */
+  @media (max-width: 640px) {
+    .input {
+      font-size: 16px !important;
+    }
+  }
+}
+
+/* Respect the OS "reduce motion" setting — neutralize animations/transitions for users
+   who are motion-sensitive (the app uses animate-ping/pulse/spin/slide-in/fade-in). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

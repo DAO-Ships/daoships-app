@@ -1,5 +1,7 @@
 import type { DaoAnnouncement } from '@/hooks/useDaoAnnouncements'
 import { formatTimeAgo } from '@/utils/time'
+import { safeHref } from '@/utils/url'
+import { SafeMarkdown } from '@/components/common/SafeMarkdown'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AnnouncementBanner - Severity-styled DAO announcement display
@@ -13,10 +15,10 @@ const SEVERITY_STYLES = {
     body: 'text-primary-600 dark:text-primary-400/80',
   },
   warning: {
-    container: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700/30',
-    icon: 'text-yellow-500',
-    title: 'text-yellow-700 dark:text-yellow-300',
-    body: 'text-yellow-600 dark:text-yellow-400/80',
+    container: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700/30',
+    icon: 'text-amber-500',
+    title: 'text-amber-700 dark:text-amber-300',
+    body: 'text-amber-600 dark:text-amber-400/80',
   },
   critical: {
     container: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700/30',
@@ -44,6 +46,7 @@ export function AnnouncementBanner({ announcement }: AnnouncementBannerProps) {
     <div className={`rounded-xl border px-5 py-4 ${styles.container}`}>
       <div className="flex items-start gap-3">
         <svg
+          aria-hidden="true"
           className={`w-5 h-5 flex-shrink-0 mt-0.5 ${styles.icon}`}
           fill="none"
           viewBox="0 0 24 24"
@@ -63,18 +66,18 @@ export function AnnouncementBanner({ announcement }: AnnouncementBannerProps) {
           </div>
           {announcement.body && (
             <p className={`text-sm mt-1 ${styles.body}`}>
-              {announcement.body}
+              <SafeMarkdown>{announcement.body}</SafeMarkdown>
             </p>
           )}
           {announcement.url && (
             <a
-              href={announcement.url}
+              href={safeHref(announcement.url)}
               target="_blank"
               rel="noopener noreferrer nofollow"
               className={`inline-flex items-center gap-1 text-sm mt-1.5 hover:underline ${styles.title}`}
             >
               Learn more
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg aria-hidden="true" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
             </a>

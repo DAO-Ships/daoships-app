@@ -43,6 +43,13 @@ export function encodeMultiSendTx(
   value: bigint,
   data: string,
 ): Uint8Array {
+  // Defense-in-depth: a negative value would serialize to a '-'-prefixed hex string and
+  // corrupt the packed blob (shifting every subsequent field). Callers gate input upstream,
+  // but the encoder must not trust them.
+  if (value < 0n) {
+    throw new Error('encodeMultiSendTx: value must be non-negative')
+  }
+
   // Strip 0x prefix and convert data to bytes
   const dataHex = data.startsWith('0x') ? data.slice(2) : data
   const dataBytes = quais.getBytes(`0x${dataHex}`)
@@ -57,6 +64,9 @@ export function encodeMultiSendTx(
   // 20 bytes: to address (strip 0x, left-padded is not needed - addresses are 20 bytes)
   const toHex = to.startsWith('0x') ? to.slice(2) : to
   const toBytes = quais.getBytes(`0x${toHex.padStart(40, '0')}`)
+  if (toBytes.length !== 20) {
+    throw new Error('encodeMultiSendTx: `to` must be a 20-byte address')
+  }
   packed.set(toBytes, 1)
 
   // 32 bytes: value (big-endian uint256)

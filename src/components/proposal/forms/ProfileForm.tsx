@@ -4,6 +4,8 @@ import { OfferingField } from './OfferingField'
 import { ProposalSettingsFields } from './ProposalSettingsFields'
 import { ProposalActionSection } from './ProposalActionSection'
 import { DaoAvatar } from '@/components/dao/DaoAvatar'
+import { DaoThemeEditor } from '@/components/dao/DaoThemeEditor'
+import type { DaoTheme } from '@/utils/daoTheme'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ProfileForm - DAO profile update proposal form
@@ -19,6 +21,8 @@ export interface ProfileFormData {
     name: string
     description: string
     avatar: string
+    banner: string
+    theme?: DaoTheme
     links: Record<string, string>
     tags: string[]
   }
@@ -26,6 +30,8 @@ export interface ProfileFormData {
     name?: string
     description?: string
     avatar?: string
+    banner?: string
+    theme?: DaoTheme
     links?: Record<string, string>
     tags?: string[]
   }
@@ -36,6 +42,8 @@ interface ProfileFormProps {
     name?: string
     description?: string
     avatar?: string
+    banner?: string
+    theme?: DaoTheme
     links?: Record<string, string>
     tags?: string[]
   }
@@ -72,6 +80,8 @@ export function ProfileForm({
   const [name, setName] = useState(currentProfile.name || '')
   const [description, setDescription] = useState(currentProfile.description || '')
   const [avatar, setAvatar] = useState(currentProfile.avatar || '')
+  const [banner, setBanner] = useState(currentProfile.banner || '')
+  const [theme, setTheme] = useState<DaoTheme>(currentProfile.theme || {})
   const [links, setLinks] = useState<Record<string, string>>(currentProfile.links || {})
   const [tagsInput, setTagsInput] = useState((currentProfile.tags || []).join(', '))
 
@@ -81,10 +91,12 @@ export function ProfileForm({
   const isNameChanged = name.trim() !== (currentProfile.name || '')
   const isDescChanged = description.trim() !== (currentProfile.description || '')
   const isAvatarChanged = avatar.trim() !== (currentProfile.avatar || '')
+  const isBannerChanged = banner.trim() !== (currentProfile.banner || '')
+  const isThemeChanged = JSON.stringify(theme) !== JSON.stringify(currentProfile.theme || {})
   const isLinksChanged = JSON.stringify(links) !== JSON.stringify(currentProfile.links || {})
   const isTagsChanged = tagsInput.split(',').map((t) => t.trim()).filter(Boolean).join(',') !==
     (currentProfile.tags || []).join(',')
-  const hasAnyChange = isNameChanged || isDescChanged || isAvatarChanged || isLinksChanged || isTagsChanged
+  const hasAnyChange = isNameChanged || isDescChanged || isAvatarChanged || isBannerChanged || isThemeChanged || isLinksChanged || isTagsChanged
 
   const updateLink = (key: string, value: string) => {
     setLinks((prev) => {
@@ -115,6 +127,9 @@ export function ProfileForm({
     }
     if (avatar && avatar.length > 200) {
       newErrors.avatar = 'Avatar URL must be 200 characters or fewer'
+    }
+    if (banner && banner.length > 2048) {
+      newErrors.banner = 'Banner URL must be 2048 characters or fewer'
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -147,6 +162,8 @@ export function ProfileForm({
         name: name.trim(),
         description: description.trim(),
         avatar: avatar.trim(),
+        banner: banner.trim(),
+        theme: Object.keys(theme).length > 0 ? theme : undefined,
         links: cleanLinks,
         tags,
       },
@@ -291,6 +308,35 @@ export function ProfileForm({
           </div>
         </div>
 
+        {/* Banner URL */}
+        <div>
+          <label htmlFor="profile-banner" className="block text-sm font-medium text-dao-text-secondary mb-1.5">
+            Banner URL
+            {isBannerChanged && <span className="ml-2 text-xs text-accent-500">modified</span>}
+          </label>
+          <input
+            id="profile-banner"
+            type="url"
+            value={banner}
+            onChange={(e) => setBanner(e.target.value)}
+            placeholder="https://example.com/banner.png or ipfs://..."
+            className="input w-full"
+            maxLength={2048}
+            disabled={isSubmitting}
+          />
+          <p className="text-xs text-dao-text-hint mt-1">Wide image shown across the top of your DAO page</p>
+          {errors.banner && <p className="text-xs text-red-400 mt-1">{errors.banner}</p>}
+        </div>
+
+        {/* Color scheme */}
+        <div>
+          <h4 className="text-sm font-medium text-dao-text-secondary mb-3">
+            Color Scheme
+            {isThemeChanged && <span className="ml-2 text-xs text-accent-500">modified</span>}
+          </h4>
+          <DaoThemeEditor value={theme} onChange={setTheme} disabled={isSubmitting} />
+        </div>
+
         {/* Links */}
         <div>
           <h4 className="text-sm font-medium text-dao-text-secondary mb-3">
@@ -299,8 +345,8 @@ export function ProfileForm({
           </h4>
           <div className="space-y-3">
             {STANDARD_LINKS.map(({ key, label, placeholder }) => (
-              <div key={key} className="grid grid-cols-[120px_1fr] gap-3 items-center">
-                <label htmlFor={`profile-link-${key}`} className="text-xs text-dao-text-muted text-right">
+              <div key={key} className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-1 sm:gap-3 sm:items-center">
+                <label htmlFor={`profile-link-${key}`} className="text-xs text-dao-text-muted sm:text-right">
                   {label}
                 </label>
                 <input

@@ -16,7 +16,7 @@
 //   const proposals = await daoService.getProposals(daoId)
 //
 //   // Writes (always on-chain)
-//   await daoService.submitProposal(daoId, proposalData, expiration, details)
+//   await daoService.submitProposal(daoId, proposalData, expiration, details) — offering computed on-chain
 //
 //   // Direct sub-service access when needed
 //   const config = daoService.daoShip.getGovernanceConfig(daoId)
@@ -109,15 +109,15 @@ function getLauncherContract(): quais.Contract {
 }
 
 function getSharesContract(sharesAddress: string): quais.Contract {
-  return new quais.Contract(sharesAddress, SharesERC20Abi, baseService.getProvider())
+  return new quais.Contract(quais.getAddress(sharesAddress), SharesERC20Abi, baseService.getProvider())
 }
 
 function getSharesContractWithSigner(sharesAddress: string): quais.Contract {
-  return new quais.Contract(sharesAddress, SharesERC20Abi, baseService.requireSigner())
+  return new quais.Contract(quais.getAddress(sharesAddress), SharesERC20Abi, baseService.requireSigner())
 }
 
 function getLootContract(lootAddress: string): quais.Contract {
-  return new quais.Contract(lootAddress, LootERC20Abi, baseService.getProvider())
+  return new quais.Contract(quais.getAddress(lootAddress), LootERC20Abi, baseService.getProvider())
 }
 
 function getPosterContractWithSigner(): quais.Contract {
@@ -125,15 +125,15 @@ function getPosterContractWithSigner(): quais.Contract {
 }
 
 function getERC20TributeNavigatorContract(navigatorAddress: string): quais.Contract {
-  return new quais.Contract(navigatorAddress, ERC20TributeNavigatorAbi, baseService.getProvider())
+  return new quais.Contract(quais.getAddress(navigatorAddress), ERC20TributeNavigatorAbi, baseService.getProvider())
 }
 
 function getERC20TributeNavigatorContractWithSigner(navigatorAddress: string): quais.Contract {
-  return new quais.Contract(navigatorAddress, ERC20TributeNavigatorAbi, baseService.requireSigner())
+  return new quais.Contract(quais.getAddress(navigatorAddress), ERC20TributeNavigatorAbi, baseService.requireSigner())
 }
 
 function getOnboarderNavigatorContractWithSigner(navigatorAddress: string): quais.Contract {
-  return new quais.Contract(navigatorAddress, OnboarderNavigatorAbi, baseService.requireSigner())
+  return new quais.Contract(quais.getAddress(navigatorAddress), OnboarderNavigatorAbi, baseService.requireSigner())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -165,13 +165,17 @@ class DaoService {
    * Get a single DAO by its DAOShip contract address.
    */
   async getDao(daoId: string): Promise<Dao | null> {
-    if (await isIndexerAvailable()) {
-      try {
-        const dao = await daoIndexerService.getDao(daoId)
-        if (dao) return dao
-      } catch {
-        // Silently fall back to on-chain
-      }
+    // Query the indexer directly — do NOT gate this single-row read on the cached health
+    // check. A transient health blip (slow/failed /health fetch, momentary non-"healthy"
+    // status, or an unset HEALTH_URL) would otherwise route every DAO load onto the
+    // wallet-dependent on-chain fallback, which throws "No wallet connected" for logged-out
+    // users and surfaces as a false "DAO Not Found". The Supabase read fails fast on its own.
+    try {
+      const dao = await daoIndexerService.getDao(daoId)
+      if (dao) return dao
+    } catch {
+      // Indexer unreachable — fall through to on-chain (e.g. a freshly-deployed DAO, or
+      // Supabase momentarily down).
     }
 
     return this.getDaoFromChain(daoId)
@@ -473,6 +477,19 @@ class DaoService {
   }
 
   /**
+   * Read the defaultExpiryWindow directly from the DAOShip contract.
+   *
+   * Defense-in-depth fallback: the indexer now captures `defaultExpiryWindow`
+   * from both `SetupComplete` and `GovernanceConfigSet` events. This on-chain
+   * read covers DAOs launched before the indexer fix and brief post-launch lag.
+   */
+  async getDefaultExpiryWindow(daoId: string): Promise<number> {
+    const daoShip = getDAOShipContract(daoId)
+    const value = await daoShip.defaultExpiryWindow() as bigint
+    return Number(value)
+  }
+
+  /**
    * Get historical voting power at a specific timepoint.
    */
   async getPriorVotes(daoId: string, memberAddress: string, timepoint: bigint): Promise<bigint> {
@@ -538,17 +555,28 @@ class DaoService {
     proposalData: string,
     expiration: number,
     details: string,
-    offering: bigint = 0n,
   ): Promise<bigint> {
     const daoShip = getDAOShipContractWithSigner(daoId)
 
-    // The contract's submitProposal uses sharesToken.getPriorVotes(sender, block.timestamp - 1)
-    // to decide self-sponsorship. daoShip.getCurrentVotes() now correctly proxies to
-    // sharesToken.getCurrentVotes() which is delegation-aware.
+    // The contract's submitProposal decides self-sponsorship from
+    // sharesToken.getPriorVotes(sender, block.timestamp - 1) — PRIOR votes, not current.
+    // Using getCurrentVotes() here can over-count power that changed in the current block
+    // (mint/delegate/claim same-block), wrongly zeroing the offering and producing a
+    // guaranteed revert. Mirror the contract: read prior votes as of the latest block
+    // timestamp (a conservative lower bound on block.timestamp - 1 at execution time).
     const signer = baseService.requireSigner()
     const signerAddress = await signer.getAddress()
+    // Quai's sharded RPC rejects a shardless `getProvider().getBlock('latest')` with
+    // "Invalid shard" (the wallet provider/Pelagus requires explicit shard context — same
+    // reason NavigatorService.tryPermitOnboard avoids it). So derive the timepoint from local
+    // time instead. getPriorVotes needs a timepoint strictly in the past; the 60s buffer
+    // absorbs clock skew (typically <30s) and keeps this a CONSERVATIVE lower bound on the
+    // contract's execution-time `getPriorVotes(sender, block.timestamp - 1)` self-sponsorship
+    // check — it under-counts at worst (an offering that wasn't strictly needed), never
+    // over-counts (which would wrongly zero the offering and guarantee a revert).
+    const timepoint = BigInt(Math.floor(Date.now() / 1000) - 60)
     const [votingPower, sponsorThreshold, contractOffering] = await Promise.all([
-      daoShip.getCurrentVotes(signerAddress) as Promise<bigint>,
+      daoShip.getPriorVotes(signerAddress, timepoint) as Promise<bigint>,
       daoShip.sponsorThreshold() as Promise<bigint>,
       daoShip.proposalOffering() as Promise<bigint>,
     ])
@@ -613,9 +641,16 @@ class DaoService {
   /**
    * Process a proposal that has passed voting and grace period.
    *
+   * The contract requires the EXACT data for the outcome: a Ready (passing) proposal
+   * must be processed with the original action bytes (checked against proposalDataHash),
+   * while a Defeated proposal must be closed with empty `0x`. The caller selects which
+   * via willProposalPass(), which mirrors the contract's quorum+majority Ready decision.
+   * Sending the wrong one reverts with HashMismatch (surfaced as "missing revert data"
+   * since Pelagus drops custom-error data during estimateGas).
+   *
    * @param daoId        DAOShip contract address
    * @param proposalId   The proposal number to process
-   * @param proposalData The same proposalData bytes that were submitted
+   * @param proposalData Original action bytes for a passing proposal, or '0x' to close a defeated one
    */
   async processProposal(daoId: string, proposalId: number, proposalData: string): Promise<void> {
     const daoShip = getDAOShipContractWithSigner(daoId)
@@ -624,7 +659,12 @@ class DaoService {
     // See: daoships-contracts/docs/GAS_ESTIMATION_BUG_REPORT.md
     const gasEstimate = await estimateGasOrThrow(daoShip, 'processProposal', [proposalId, proposalData], 'Process Proposal')
     const gasLimit = gasEstimate ? (gasEstimate * 150n) / 100n : undefined
-    const tx = await daoShip.processProposal(proposalId, proposalData, gasLimit ? { gasLimit } : undefined)
+    // Pass overrides only when we have a gas limit. quais alpha can't match a
+    // function fragment when a trailing `undefined`/`null` overrides arg is present
+    // (throws UNSUPPORTED_OPERATION "no matching fragment"), so omit it entirely.
+    const tx = gasLimit
+      ? await daoShip.processProposal(proposalId, proposalData, { gasLimit })
+      : await daoShip.processProposal(proposalId, proposalData)
     await tx.wait()
   }
 
@@ -863,7 +903,10 @@ class DaoService {
         loot_address: lootTokenAddr,
         shares_address: sharesTokenAddr,
         avatar: avatarAddr,
-        launcher: '',
+        // On-chain fallback cannot recover deployer/launcher_contract — those live in event logs.
+        // Callers that need these fields should use the indexer path.
+        deployer: '',
+        launcher_contract: '',
         new_vault: false,
         loot_paused: false,
         shares_paused: false,
@@ -888,6 +931,12 @@ class DaoService {
       }
     } catch (error) {
       console.error('[DaoService] getDaoFromChain error:', error)
+      // With no wallet provider we can't read chain at all — that's "couldn't load", NOT
+      // "this DAO doesn't exist". Throw so React Query treats it as a transient error and
+      // keeps any previously-loaded DAO, instead of rendering a false "DAO Not Found".
+      if (!baseService.hasProvider()) {
+        throw new Error('Unable to load DAO: the indexer is unreachable and no wallet is connected.')
+      }
       return null
     }
   }

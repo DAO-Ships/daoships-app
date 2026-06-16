@@ -346,6 +346,8 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
               name: formData.name,
               description: formData.description || undefined,
               avatar: formData.avatarUrl || undefined,
+              banner: formData.bannerUrl || undefined,
+              theme: formData.theme && Object.keys(formData.theme).length > 0 ? formData.theme : undefined,
               links: profileLinks,
             })
             updatePipeline(prev => ({ ...prev, profilePosted: true }))
@@ -390,8 +392,8 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
     return (
       <div className="space-y-6">
         {/* Success Banner */}
-        <div className="bg-green-500/10 border border-green-500/30 rounded-lg px-6 py-4">
-          <h2 className="text-lg font-bold font-display text-green-400 mb-1">DAO Deployed Successfully</h2>
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-6 py-4">
+          <h2 className="text-lg font-bold font-display text-emerald-400 mb-1">Your DAO is underway</h2>
           <p className="text-sm text-dao-text-muted">
             Your DAO contracts have been deployed to the network.
             {pipeline.onboarderAddress && ' Onboarder navigator is active.'}
@@ -562,8 +564,8 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
 
     return (
       <div className="space-y-6">
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-6 py-4">
-          <h2 className="text-lg font-bold font-display text-yellow-400 mb-2">Previous Launch In Progress</h2>
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-6 py-4">
+          <h2 className="text-lg font-bold font-display text-amber-400 mb-2">Previous Launch In Progress</h2>
           <p className="text-sm text-dao-text-muted mb-3">
             A previous launch attempt was interrupted. Some steps may have already completed and spent gas.
           </p>
@@ -636,8 +638,8 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
       </div>
 
       {/* Transaction count banner */}
-      <div className="bg-accent-500/10 border border-accent-500/30 rounded-lg px-4 py-3">
-        <p className="text-sm text-accent-300">
+      <div className="bg-accent-100 dark:bg-accent-500/10 border border-accent-500/40 dark:border-accent-500/30 rounded-lg px-4 py-3">
+        <p className="text-sm text-accent-900 dark:text-accent-300">
           This launch requires <span className="font-semibold">{txCount} transactions</span>:
           salt mining (off-chain)
           {formData.enableOnboarder && ', deploy Onboarder Navigator'}
@@ -702,13 +704,13 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
           {formData.pauseSharesOnLaunch && (
             <div className="flex justify-between">
               <span className="text-dao-text-hint">Share Transfers</span>
-              <span className="text-yellow-400">Paused</span>
+              <span className="text-amber-400">Paused</span>
             </div>
           )}
           {formData.pauseLootOnLaunch && (
             <div className="flex justify-between">
               <span className="text-dao-text-hint">Loot Transfers</span>
-              <span className="text-yellow-400">Paused</span>
+              <span className="text-amber-400">Paused</span>
             </div>
           )}
         </div>
@@ -989,18 +991,18 @@ function StepIndicator({ label, status }: { label: string; status: PipelineStepS
   return (
     <div className="flex items-center gap-3 text-sm">
       {status === 'done' && (
-        <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+        <svg aria-hidden="true" className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       )}
       {status === 'active' && (
-        <svg className="w-4 h-4 text-accent-400 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+        <svg aria-hidden="true" className="w-4 h-4 text-accent-400 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
       )}
       {status === 'failed' && (
-        <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg aria-hidden="true" className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
       )}
@@ -1008,7 +1010,7 @@ function StepIndicator({ label, status }: { label: string; status: PipelineStepS
         <div className="w-4 h-4 rounded-full border-2 border-dao-border flex-shrink-0" />
       )}
       <span className={
-        status === 'done' ? 'text-green-400'
+        status === 'done' ? 'text-emerald-400'
           : status === 'active' ? 'text-dao-text'
             : status === 'failed' ? 'text-red-400'
               : 'text-dao-text-hint'

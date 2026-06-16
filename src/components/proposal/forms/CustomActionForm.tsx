@@ -7,6 +7,7 @@ import { ProposalSettingsFields } from './ProposalSettingsFields'
 import { TransactionBuilder, type TransactionAction } from './TransactionBuilder'
 import { baseService } from '@/services/core/BaseService'
 import { formatTokenAmount } from '@/utils/format'
+import { isAddress } from '@/services/utils/AddressUtils'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CustomActionForm - Intent-based multi-transaction proposal builder
@@ -38,11 +39,16 @@ interface CustomActionFormProps {
   isSubmitting?: boolean
   vaultAddress?: string
   knownTokens?: KnownToken[]
+  /** Pre-fill the transaction list (e.g. from a navigator deep-link). */
+  prefillActions?: TransactionAction[]
+  /** Pre-fill the title/description (e.g. from a navigator deep-link). */
+  prefillTitle?: string
+  prefillDescription?: string
 }
 
 const EMPTY_ACTION: TransactionAction = { to: '', value: '0', data: '0x' }
 
-export function CustomActionForm({ minOfferingDisplay, canSelfSponsor = false, onSubmit, isSubmitting = false, vaultAddress, knownTokens = [] }: CustomActionFormProps) {
+export function CustomActionForm({ minOfferingDisplay, canSelfSponsor = false, onSubmit, isSubmitting = false, vaultAddress, knownTokens = [], prefillActions, prefillTitle, prefillDescription }: CustomActionFormProps) {
   // ── Vault balance (lifted to avoid duplicate RPC calls) ────────────────
   const hasProvider = baseService.hasProvider()
   const { data: vaultQuaiBalance } = useQuery({
@@ -57,13 +63,17 @@ export function CustomActionForm({ minOfferingDisplay, canSelfSponsor = false, o
   })
 
   // ── Form state ─────────────────────────────────────────────────────────
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
+  // Prefill is consumed once at mount (initializer) — editable thereafter.
+  const initialActions = prefillActions && prefillActions.length > 0
+    ? prefillActions.map((a) => ({ ...a }))
+    : [{ ...EMPTY_ACTION }]
+  const [title, setTitle] = useState(prefillTitle ?? '')
+  const [description, setDescription] = useState(prefillDescription ?? '')
   const [offering, setOffering] = useState('')
   const [expiration, setExpiration] = useState('')
   const [discussionUrl, setDiscussionUrl] = useState('')
-  const [actions, setActions] = useState<TransactionAction[]>([{ ...EMPTY_ACTION }])
-  const [actionKeys, setActionKeys] = useState<string[]>([crypto.randomUUID()])
+  const [actions, setActions] = useState<TransactionAction[]>(initialActions)
+  const [actionKeys, setActionKeys] = useState<string[]>(() => initialActions.map(() => crypto.randomUUID()))
   const [expandedIndex, setExpandedIndex] = useState(0)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showVaultPanel, setShowVaultPanel] = useState(false)
@@ -107,7 +117,7 @@ export function CustomActionForm({ minOfferingDisplay, canSelfSponsor = false, o
     let hasValidAction = false
     for (let i = 0; i < actions.length; i++) {
       const a = actions[i]
-      if (!/^0x[0-9a-fA-F]{40}$/.test(a.to)) {
+      if (!isAddress(a.to)) {
         newErrors[`action-${i}`] = `Action #${i + 1}: invalid target address`
       } else {
         hasValidAction = true
@@ -131,7 +141,7 @@ export function CustomActionForm({ minOfferingDisplay, canSelfSponsor = false, o
       onSubmit({
         title: title.trim(),
         description: description.trim(),
-        actions: actions.filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a.to)),
+        actions: actions.filter((a) => isAddress(a.to)),
         offering,
         expiration,
         discussionUrl,
@@ -139,7 +149,7 @@ export function CustomActionForm({ minOfferingDisplay, canSelfSponsor = false, o
     }
   }
 
-  const configuredCount = actions.filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a.to)).length
+  const configuredCount = actions.filter((a) => isAddress(a.to)).length
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -166,7 +176,7 @@ export function CustomActionForm({ minOfferingDisplay, canSelfSponsor = false, o
                   {configuredCount} action{configuredCount !== 1 ? 's' : ''}
                 </span>
               )}
-              <svg className={`w-4 h-4 text-dao-text-hint transition-transform ${showVaultPanel ? 'rotate-180' : ''}`}
+              <svg aria-hidden="true" className={`w-4 h-4 text-dao-text-hint transition-transform ${showVaultPanel ? 'rotate-180' : ''}`}
                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
@@ -256,6 +266,7 @@ export function CustomActionForm({ minOfferingDisplay, canSelfSponsor = false, o
                   knownTokens={knownTokens}
                   collapsed={actions.length > 1 && i !== expandedIndex}
                   onToggle={() => setExpandedIndex(i === expandedIndex ? -1 : i)}
+                  initialAction={initialActions[i]}
                 />
               ))}
             </div>
@@ -323,13 +334,13 @@ function VaultPanel({ vaultQuaiBalance, knownTokens, actions, netQuaiImpact }: {
   actions: TransactionAction[]
   netQuaiImpact: bigint
 }) {
-  const configuredActions = actions.filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a.to))
+  const configuredActions = actions.filter((a) => isAddress(a.to))
 
   return (
     <div className="bg-dao-dark-2 rounded-lg border border-dao-border overflow-hidden">
       {/* Treasury balances */}
       <div className="px-4 py-3 border-b border-dao-border">
-        <p className="text-[10px] font-medium text-dao-text-hint uppercase tracking-wider mb-2">Treasury</p>
+        <p className="text-2xs font-medium text-dao-text-hint uppercase tracking-wider mb-2">Treasury</p>
         {vaultQuaiBalance != null && (
           <p className="text-sm font-mono text-dao-text">
             {formatTokenAmount(vaultQuaiBalance)} <span className="text-dao-text-hint">QUAI</span>
@@ -350,7 +361,7 @@ function VaultPanel({ vaultQuaiBalance, knownTokens, actions, netQuaiImpact }: {
       {/* Configured actions summary */}
       {configuredActions.length > 0 && (
         <div className="px-4 py-3 border-b border-dao-border">
-          <p className="text-[10px] font-medium text-dao-text-hint uppercase tracking-wider mb-2">
+          <p className="text-2xs font-medium text-dao-text-hint uppercase tracking-wider mb-2">
             Actions ({configuredActions.length})
           </p>
           <div className="space-y-1.5">
@@ -377,12 +388,12 @@ function VaultPanel({ vaultQuaiBalance, knownTokens, actions, netQuaiImpact }: {
       {/* Net impact */}
       {netQuaiImpact > 0n && (
         <div className="px-4 py-3">
-          <p className="text-[10px] font-medium text-dao-text-hint uppercase tracking-wider mb-1">Net Impact</p>
+          <p className="text-2xs font-medium text-dao-text-hint uppercase tracking-wider mb-1">Net Impact</p>
           <p className="text-sm font-mono text-red-400">
             -{(() => { try { return quais.formatQuai(netQuaiImpact) } catch { return '?' } })()} QUAI
           </p>
           {vaultQuaiBalance != null && netQuaiImpact > vaultQuaiBalance && (
-            <p className="text-[10px] text-red-400 mt-1">Exceeds vault balance</p>
+            <p className="text-2xs text-red-400 mt-1">Exceeds vault balance</p>
           )}
         </div>
       )}

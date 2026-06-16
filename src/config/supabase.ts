@@ -25,6 +25,10 @@ export const supabase: SupabaseClient | null =
   SUPABASE_URL && SUPABASE_ANON_KEY
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         db: {
+          // The schema is chosen at runtime (dev/testnet/mainnet). supabase-js types
+          // `schema` as a static literal, so we suppress here rather than assert a
+          // misleading one — the real value is whichever network schema is configured.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           schema: NETWORK_SCHEMA as any,
         },
         auth: {
@@ -55,6 +59,6 @@ export const INDEXER_CONFIG: IndexerConfig = {
   SUPABASE_URL,
   NETWORK_SCHEMA,
   POLLING_INTERVAL: parseInt(import.meta.env.VITE_INDEXER_POLLING_INTERVAL || '5000', 10),
-  HEALTH_URL: (import.meta.env.VITE_INDEXER_HEALTH_URL as string) || 'http://localhost:8080/health',
+  HEALTH_URL: (import.meta.env.VITE_INDEXER_HEALTH_URL as string) || (import.meta.env.PROD ? '' : 'http://localhost:8080/health'),
   HEALTH_CACHE_MS: 5000,
 }

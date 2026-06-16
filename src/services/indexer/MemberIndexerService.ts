@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { supabase } from '@/config/supabase'
+import { indexerError } from './indexerError'
 import type { Member } from '@/types'
 
 class MemberIndexerService {
@@ -21,10 +22,7 @@ class MemberIndexerService {
       .or('shares.gt.0,loot.gt.0')
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('[MemberIndexerService] listMembers error:', error.message)
-      return []
-    }
+    if (error) indexerError('[MemberIndexerService] listMembers', error)
 
     return (data as Member[]) ?? []
   }
@@ -39,16 +37,15 @@ class MemberIndexerService {
     const normalizedAddress = address.toLowerCase()
     const compositeKey = `${daoId}-${normalizedAddress}`
 
+    // maybeSingle so a non-member resolves to null (the common case — every isMember check
+    // relies on it) rather than throwing; only real query failures throw.
     const { data, error } = await supabase
       .from('ds_members')
       .select('*')
       .eq('id', compositeKey)
-      .single()
+      .maybeSingle()
 
-    if (error) {
-      console.error('[MemberIndexerService] getMember error:', error.message)
-      return null
-    }
+    if (error) indexerError('[MemberIndexerService] getMember', error)
 
     return (data as Member) ?? null
   }
@@ -66,10 +63,7 @@ class MemberIndexerService {
       .eq('dao_id', daoId)
       .or('shares.gt.0,loot.gt.0')
 
-    if (error) {
-      console.error('[MemberIndexerService] getActiveMemberCount error:', error.message)
-      return 0
-    }
+    if (error) indexerError('[MemberIndexerService] getActiveMemberCount', error)
 
     return count ?? 0
   }

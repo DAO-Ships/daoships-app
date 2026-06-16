@@ -2,14 +2,14 @@ import { useState, useCallback } from 'react'
 import type { Control, FieldErrors } from 'react-hook-form'
 import { useFieldArray, useController, useWatch } from 'react-hook-form'
 import { tokenService } from '@/services/core/TokenService'
-import { NETWORK_CONFIG } from '@/config/contracts'
+import { NETWORK_CONFIG, MAX_GUILD_TOKENS } from '@/config/contracts'
 import type { LaunchFormValues } from './BasicInfoStep'
+import { isAddress } from '@/services/utils/AddressUtils'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GuildTokensStep - Configure native or ERC-20 tokens claimable during ragequit
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/
 
 interface VerificationResult {
   status: 'idle' | 'verifying' | 'valid' | 'invalid'
@@ -32,6 +32,7 @@ export function GuildTokensStep({ control, errors }: GuildTokensStepProps) {
 
   const tokens = useWatch({ control, name: 'guildTokens' })
   const hasNativeToken = tokens?.some(t => t.type === 'native') ?? false
+  const atLimit = fields.length >= MAX_GUILD_TOKENS
 
   return (
     <div className="space-y-5">
@@ -59,7 +60,7 @@ export function GuildTokensStep({ control, errors }: GuildTokensStepProps) {
       </div>
 
       <div className="flex items-center gap-3">
-        {!hasNativeToken && (
+        {!hasNativeToken && !atLimit && (
           <button
             type="button"
             onClick={() => append({ type: 'native', address: '' })}
@@ -68,14 +69,24 @@ export function GuildTokensStep({ control, errors }: GuildTokensStepProps) {
             + Add {NETWORK_CONFIG.nativeCurrency.symbol}
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => append({ type: 'erc20', address: '' })}
-          className="text-sm text-accent-400 hover:text-accent-300 transition-colors"
-        >
-          + Add ERC-20 Token
-        </button>
+        {!atLimit && (
+          <button
+            type="button"
+            onClick={() => append({ type: 'erc20', address: '' })}
+            className="text-sm text-accent-400 hover:text-accent-300 transition-colors"
+          >
+            + Add ERC-20 Token
+          </button>
+        )}
+        <span className="text-xs text-dao-text-hint ml-auto">
+          {fields.length} / {MAX_GUILD_TOKENS}
+        </span>
       </div>
+      {atLimit && (
+        <p className="text-xs text-amber-400">
+          Maximum of {MAX_GUILD_TOKENS} guild tokens reached. Remove a token to add another.
+        </p>
+      )}
 
       {fields.length === 0 && (
         <div className="bg-dao-dark-2 border border-dao-border rounded-lg px-4 py-6 text-center">
@@ -115,7 +126,7 @@ function GuildTokenRow({
   )
 }
 
-function NativeTokenRow({ index, onRemove }: { index: number; onRemove: () => void }) {
+function NativeTokenRow({ onRemove }: { index: number; onRemove: () => void }) {
   return (
     <div className="flex items-center gap-3 bg-dao-dark-2 border border-dao-border rounded-lg px-4 py-3">
       <div className="flex-1 flex items-center gap-2">
@@ -132,8 +143,9 @@ function NativeTokenRow({ index, onRemove }: { index: number; onRemove: () => vo
       <button
         type="button"
         onClick={onRemove}
-        className="text-dao-text-hint hover:text-red-400 transition-colors"
+        className="p-2 -m-2 text-dao-text-hint hover:text-red-400 transition-colors"
         title="Remove token"
+        aria-label="Remove token"
       >
         <RemoveIcon />
       </button>
@@ -160,14 +172,14 @@ function ERC20TokenRow({
     rules: {
       validate: (value) => {
         if (!value) return 'Token address is required'
-        if (!ADDRESS_REGEX.test(value)) return 'Invalid address format'
+        if (!isAddress(value)) return 'Invalid address format'
         return true
       },
     },
   })
 
   const verifyToken = useCallback(async (address: string) => {
-    if (!ADDRESS_REGEX.test(address)) {
+    if (!isAddress(address)) {
       setVerification({ status: 'idle' })
       return
     }
@@ -198,7 +210,7 @@ function ERC20TokenRow({
 
   const handleBlur = () => {
     field.onBlur()
-    if (field.value && ADDRESS_REGEX.test(field.value)) {
+    if (field.value && isAddress(field.value)) {
       verifyToken(field.value)
     }
   }
@@ -225,8 +237,8 @@ function ERC20TokenRow({
         {/* Verification result */}
         {verification.status === 'valid' && (
           <div className="mt-1.5 flex items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-1 text-green-400">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <span className="inline-flex items-center gap-1 text-emerald-400">
+              <svg aria-hidden="true" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
               Verified
@@ -246,8 +258,9 @@ function ERC20TokenRow({
       <button
         type="button"
         onClick={onRemove}
-        className="mt-2 text-dao-text-hint hover:text-red-400 transition-colors"
+        className="mt-2 p-2 -m-2 text-dao-text-hint hover:text-red-400 transition-colors"
         title="Remove token"
+        aria-label="Remove token"
       >
         <RemoveIcon />
       </button>
@@ -257,7 +270,7 @@ function ERC20TokenRow({
 
 function RemoveIcon() {
   return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg aria-hidden="true" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
   )

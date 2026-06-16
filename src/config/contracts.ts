@@ -7,6 +7,14 @@
 // for the cyprus1 network (chain ID 15000).
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { quais } from 'quais'
+import { isAddress } from '@/services/utils/AddressUtils'
+
+// ── Protocol Constants ────────────────────────────────────────────────────
+
+/** Max guild tokens per DAO (contract hard limit — ragequit reverts above this). */
+export const MAX_GUILD_TOKENS = 20
+
 // ── Network Configuration ─────────────────────────────────────────────────
 
 export interface NetworkConfig {
@@ -75,25 +83,25 @@ export interface ContractAddresses {
 export const CONTRACT_ADDRESSES: ContractAddresses = {
   // Singletons
   DAOSHIP_SINGLETON:
-    import.meta.env.VITE_DAOSHIP_SINGLETON || '0x001C3A866f7E0065DB4950C01D0D703E7bBb2ddd',
+    import.meta.env.VITE_DAOSHIP_SINGLETON || '0x0034B574bDC240d37b6F08248Ae069727164002C',
   SHARES_SINGLETON:
-    import.meta.env.VITE_SHARES_SINGLETON || '0x00173065bF05a31180794BC85E0E4c35baD719D5',
+    import.meta.env.VITE_SHARES_SINGLETON || '0x00366CedcB0B99A9E5Dfb9B7dE1484A895118235',
   LOOT_SINGLETON:
-    import.meta.env.VITE_LOOT_SINGLETON || '0x003c12aE6918E59D27AfF47C4E1D3e5B46BeFFE0',
+    import.meta.env.VITE_LOOT_SINGLETON || '0x00521258bBD3B23Bc10c3Fc77d360Df4379dE054',
   VAULT_SINGLETON:
-    import.meta.env.VITE_VAULT_SINGLETON || '0x001e1c40f1B96f530eC816A68f760E34673Ee7b8',
+    import.meta.env.VITE_VAULT_SINGLETON || '0x004E539Cf477A5Cb456A56023f083cD91Bc4934e',
 
   // Factories
   DAOSHIP_LAUNCHER:
-    import.meta.env.VITE_DAOSHIP_LAUNCHER || '0x0050D3014f2BC52Ae87CD6000e83806B8b572eEE',
+    import.meta.env.VITE_DAOSHIP_LAUNCHER || '0x00487182EA7a7881d84C63099001B0195a41BFB3',
   DAOSHIP_AND_VAULT_LAUNCHER:
-    import.meta.env.VITE_DAOSHIP_AND_VAULT_LAUNCHER || '0x006BF79F5001b5314d7537DAA027B89a50aF0e09',
+    import.meta.env.VITE_DAOSHIP_AND_VAULT_LAUNCHER || '0x0036B11eEC6aa17407b0e157fA9caa32b7EFC9D1',
   QUAIVAULT_FACTORY:
-    import.meta.env.VITE_QUAIVAULT_FACTORY || '0x00233Cb4F587287aFe5c7e88b971A3a36b3ba0d6',
+    import.meta.env.VITE_QUAIVAULT_FACTORY || '0x002d1305D597c157bB975967FA2e5337674b0E5F',
 
   // Infrastructure
   POSTER:
-    import.meta.env.VITE_POSTER || '0x002D9EF06bE4f6fA5ea7eD4C026bee4d0a18e7F1',
+    import.meta.env.VITE_POSTER || '0x005C3957b8f612BBcdCFCbeDb8C53C3d3b3FEEdc',
   MULTISEND_CALL_ONLY:
     import.meta.env.VITE_MULTISEND_CALL_ONLY || '0x002ae8A47C2da497fe569AfCF0486410aA1093E0',
 }
@@ -112,7 +120,7 @@ export function validateContractConfig(): boolean {
     if (!address) {
       console.warn(`[contracts] Missing address for ${name}. Set VITE_${name} in .env`)
       valid = false
-    } else if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    } else if (!isAddress(address)) {
       console.warn(`[contracts] Invalid address format for ${name}: ${address}`)
       valid = false
     }
@@ -123,5 +131,67 @@ export function validateContractConfig(): boolean {
     valid = false
   }
 
+  if (!valid && import.meta.env.PROD) {
+    throw new Error('[contracts] Invalid contract configuration in production build. Check VITE_* env vars.')
+  }
+
   return valid
+}
+
+/** EIP-1193 provider shape (Pelagus, MetaMask, WalletConnect) — wallet-level RPC. */
+interface Eip1193Provider {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
+}
+
+/**
+ * Verifies each configured contract address actually has bytecode deployed.
+ * Must be called AFTER wallet connection (uses the wallet provider, not direct RPC).
+ *
+ * Bypasses quais.BrowserProvider.getCode (which silently returns '0x' for every
+ * lookup against Pelagus on Quai testnets) and calls quai_getCode directly via
+ * EIP-1193. Falls back to eth_getCode for non-Quai wallets.
+ *
+ * Returns a list of missing contracts (empty = all good).
+ */
+export async function verifyContractDeployments(
+  rawProvider: Eip1193Provider,
+): Promise<Array<{ name: keyof ContractAddresses; address: string }>> {
+  const missing: Array<{ name: keyof ContractAddresses; address: string }> = []
+  const entries = Object.entries(CONTRACT_ADDRESSES) as [keyof ContractAddresses, string][]
+
+  async function getCodeRaw(address: string): Promise<string> {
+    try {
+      const code = await rawProvider.request({ method: 'quai_getCode', params: [address, 'latest'] })
+      return typeof code === 'string' ? code : '0x'
+    } catch {
+      const code = await rawProvider.request({ method: 'eth_getCode', params: [address, 'latest'] })
+      return typeof code === 'string' ? code : '0x'
+    }
+  }
+
+  await Promise.all(
+    entries.map(async ([name, address]) => {
+      try {
+        const checksummed = quais.getAddress(address)
+        const code = await getCodeRaw(checksummed)
+        const empty = !code || code === '0x' || code.length <= 2
+        console.debug(`[contracts] ${name} ${address} → code.length=${code?.length ?? 0} empty=${empty}`)
+        if (empty) {
+          missing.push({ name, address })
+        }
+      } catch (err) {
+        console.warn(`[contracts] Failed to verify ${name} at ${address}:`, err)
+        missing.push({ name, address })
+      }
+    }),
+  )
+
+  if (missing.length > 0) {
+    console.error(
+      '[contracts] Missing or invalid contract deployments:',
+      missing.map((m) => `${m.name}=${m.address}`).join(', '),
+    )
+  }
+
+  return missing
 }

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { quais } from 'quais'
 import { isContract, fetchAbi, type AbiSource } from '@/services/utils/ContractMetadataService'
 import { baseService } from '@/services/core/BaseService'
+import { isAddress } from '@/services/utils/AddressUtils'
 
 export interface TokenMetadata {
   symbol: string
@@ -28,9 +29,7 @@ export interface FunctionInfo {
   payable: boolean
 }
 
-const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/
-
-function parseFunctions(abi: any[]): FunctionInfo[] {
+function parseFunctions(abi: quais.InterfaceAbi): FunctionInfo[] {
   try {
     const iface = new quais.Interface(abi)
     const functions: FunctionInfo[] = []
@@ -67,7 +66,7 @@ function parseFunctions(abi: any[]): FunctionInfo[] {
 }
 
 export function useContractInteraction(address: string | undefined) {
-  const isValidAddress = address ? ADDRESS_REGEX.test(address) : false
+  const isValidAddress = address ? isAddress(address) : false
   const hasProvider = baseService.hasProvider()
 
   // Contract detection query
@@ -84,7 +83,7 @@ export function useContractInteraction(address: string | undefined) {
   })
 
   // ABI fetch query (only if it's a contract and no manual ABI)
-  const [manualAbi, setManualAbiState] = useState<any[] | null>(null)
+  const [manualAbi, setManualAbiState] = useState<quais.JsonFragment[] | null>(null)
 
   const {
     data: fetchedResult,
@@ -106,7 +105,7 @@ export function useContractInteraction(address: string | undefined) {
   // Detect ERC-20 and fetch token metadata (symbol, decimals)
   const isErc20 = useMemo(() => {
     if (!abi) return false
-    const names = new Set(abi.filter((e: any) => e.type === 'function').map((e: any) => e.name))
+    const names = new Set(abi.filter((e) => e.type === 'function').map((e) => e.name))
     return names.has('transfer') && names.has('balanceOf') && names.has('approve') && names.has('totalSupply')
   }, [abi])
 
@@ -122,7 +121,7 @@ export function useContractInteraction(address: string | undefined) {
         ], provider)
         const [symbol, decimals, name] = await Promise.all([
           contract.symbol() as Promise<string>,
-          contract.decimals().then((d: any) => Number(d)),
+          contract.decimals().then((d: unknown) => Number(d)),
           contract.name().catch(() => '') as Promise<string>,
         ])
         return { symbol, decimals, name }
@@ -134,7 +133,7 @@ export function useContractInteraction(address: string | undefined) {
     staleTime: Infinity,
   })
 
-  const setManualAbi = useCallback((input: any[]): { success: boolean; error?: string } => {
+  const setManualAbi = useCallback((input: quais.JsonFragment[]): { success: boolean; error?: string } => {
     try {
       if (!Array.isArray(input)) return { success: false, error: 'ABI must be a JSON array' }
       // Validate it parses as an Interface

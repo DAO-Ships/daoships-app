@@ -1,53 +1,39 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Wallet Store - Manages wallet connection state for Quai / Pelagus
+// Wallet Store - Connection + connect-modal state for Quai / Pelagus
 // ═══════════════════════════════════════════════════════════════════════════
+// Wagmi is the source of truth for `connected` and `address`; this store
+// mirrors them so non-wagmi consumers can read connection state, and owns
+// the connect-modal open state + connection error string.
 
 interface WalletStore {
-  // Connection state
   connected: boolean
   address: string | null
-  signer: unknown | null
-  provider: unknown | null
-  chainId: number | null
+  connectModalOpen: boolean
+  error: string | null
 
-  // Actions
-  setConnected: (address: string, signer: unknown, provider: unknown, chainId: number) => void
-  setDisconnected: () => void
+  setConnected: (connected: boolean, address: string | null) => void
+  setConnectModalOpen: (open: boolean) => void
+  setError: (error: string | null) => void
 }
 
 const initialState = {
   connected: false,
   address: null,
-  signer: null,
-  provider: null,
-  chainId: null,
+  connectModalOpen: false,
+  error: null,
 }
 
-export const useWalletStore = create<WalletStore>()(
-  persist(
-    (set) => ({
-      ...initialState,
+export const useWalletStore = create<WalletStore>()((set) => ({
+  ...initialState,
 
-      setConnected: (address, signer, provider, chainId) =>
-        set({ connected: true, address, signer, provider, chainId }),
+  setConnected: (connected, address) =>
+    set({ connected, address }),
 
-      setDisconnected: () =>
-        set(initialState),
-    }),
-    {
-      name: 'wallet-storage',
-      // Only persist the address — signer/provider are runtime objects
-      partialize: (state) => ({ address: state.address }),
-      onRehydrateStorage: () => (state) => {
-        if (!state) return
-        // Validate persisted address is a string or null
-        if (state.address !== null && typeof state.address !== 'string') {
-          state.address = null
-        }
-      },
-    }
-  )
-)
+  setConnectModalOpen: (open) =>
+    set({ connectModalOpen: open }),
+
+  setError: (error) =>
+    set({ error }),
+}))

@@ -53,6 +53,8 @@ export function MembersStep({ control, errors }: MembersStepProps) {
                       return true
                     },
                   })}
+                  aria-label={`Member ${index + 1} address`}
+                  aria-invalid={!!errors.members?.[index]?.address}
                   placeholder="0x00... member address"
                   className="input w-full text-sm font-mono"
                 />
@@ -69,6 +71,7 @@ export function MembersStep({ control, errors }: MembersStepProps) {
                 <input
                   type="text"
                   {...control.register(`members.${index}.shares`)}
+                  aria-label={`Member ${index + 1} shares`}
                   placeholder="0"
                   className="input w-full text-sm"
                 />
@@ -85,6 +88,7 @@ export function MembersStep({ control, errors }: MembersStepProps) {
                 <input
                   type="text"
                   {...control.register(`members.${index}.loot`)}
+                  aria-label={`Member ${index + 1} loot`}
                   placeholder="0"
                   className="input w-full text-sm"
                 />
@@ -100,11 +104,12 @@ export function MembersStep({ control, errors }: MembersStepProps) {
                 <button
                   type="button"
                   onClick={() => remove(index)}
-                  className="text-dao-text-hint hover:text-red-400 transition-colors disabled:opacity-30"
+                  className="p-2 -m-2 text-dao-text-hint hover:text-red-400 transition-colors disabled:opacity-30"
                   disabled={fields.length <= 1}
                   title="Remove member"
+                  aria-label="Remove member"
                 >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg aria-hidden="true" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                 </button>

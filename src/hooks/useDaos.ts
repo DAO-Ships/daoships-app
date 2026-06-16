@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { daoIndexerService } from '@/services/indexer/DaoIndexerService'
+import { daoService } from '@/services/DaoService'
 import { usePageVisibility } from './usePageVisibility'
 
 /**
@@ -12,7 +12,8 @@ export function useDaos() {
 
   return useQuery({
     queryKey: ['daos'],
-    queryFn: () => daoIndexerService.listDaos(),
+    queryFn: () => daoService.getDaos(),
+    staleTime: 25000,
     refetchInterval: isVisible ? 30000 : false,
   })
 }

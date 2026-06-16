@@ -20,6 +20,16 @@ export interface TransactionError {
 }
 
 /**
+ * The loosely-typed shape wallet/provider errors arrive in. Fields are all
+ * optional — we probe whichever are present.
+ */
+interface ErrorLike {
+  code?: string | number
+  message?: string
+  reason?: string
+}
+
+/**
  * Parse a blockchain / wallet error and return a user-friendly TransactionError.
  *
  * Handles the following common cases:
@@ -43,7 +53,7 @@ export function parseTransactionError(error: unknown): TransactionError {
     }
   }
 
-  const err = error as Record<string, any>
+  const err = error as ErrorLike
 
   // ── User rejection ────────────────────────────────────────────────────
   if (
@@ -162,7 +172,7 @@ export function formatTransactionError(error: unknown): string {
  */
 export function isUserRejection(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
-  const err = error as Record<string, any>
+  const err = error as ErrorLike
   return (
     err.code === 'ACTION_REJECTED' ||
     err.code === 4001 ||

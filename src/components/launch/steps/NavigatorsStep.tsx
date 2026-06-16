@@ -244,6 +244,7 @@ export function NavigatorsStep({ control, errors: _errors }: NavigatorsStepProps
                 className="flex items-center gap-2 text-sm text-dao-text-muted hover:text-dao-text transition-colors"
               >
                 <svg
+                  aria-hidden="true"
                   className={`w-4 h-4 transition-transform ${showOnboarderAdvanced ? 'rotate-90' : ''}`}
                   fill="none"
                   viewBox="0 0 24 24"
@@ -445,6 +446,7 @@ export function NavigatorsStep({ control, errors: _errors }: NavigatorsStepProps
                 className="flex items-center gap-2 text-sm text-dao-text-muted hover:text-dao-text transition-colors"
               >
                 <svg
+                  aria-hidden="true"
                   className={`w-4 h-4 transition-transform ${showERC20Advanced ? 'rotate-90' : ''}`}
                   fill="none"
                   viewBox="0 0 24 24"
@@ -544,7 +546,7 @@ export function NavigatorsStep({ control, errors: _errors }: NavigatorsStepProps
       {/* Info note */}
       {!enableOnboarder.field.value && !enableERC20Tribute.field.value && (
         <div className="flex items-start gap-3 px-4 py-3 bg-dao-dark-200/50 rounded-lg">
-          <svg className="w-5 h-5 text-dao-text-hint flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg aria-hidden="true" className="w-5 h-5 text-dao-text-hint flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p className="text-sm text-dao-text-hint">
