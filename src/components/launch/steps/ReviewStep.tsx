@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/common/Button'
 import { useSaltMining } from '@/hooks/useSaltMining'
+import { useLaunchCost, type LaunchCostEstimate } from '@/hooks/useLaunchCost'
 import { formatDuration, parseDurationToSeconds } from '@/utils/time'
-import { parseTokenAmount } from '@/utils/format'
+import { formatNumber, formatTokenAmount, parseTokenAmount } from '@/utils/format'
 import { NETWORK_CONFIG } from '@/config/contracts'
 import { posterService } from '@/services/core/PosterService'
 import { navigatorDeployService } from '@/services/core/NavigatorDeployService'
@@ -112,6 +113,7 @@ function clearPipelineState() {
 export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
   const navigate = useNavigate()
   const { mining, progress, mine, cancel } = useSaltMining()
+  const cost = useLaunchCost(formData)
 
   // Check for a saved pipeline from a previous attempt
   const [savedPipeline] = useState<PipelineState | null>(() => loadPipelineState())
@@ -385,6 +387,7 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
   const expirySecs = parseDurationToSeconds(formData.defaultExpiryWindow || '0') ?? 0
   const txCount = getTransactionCount(formData)
   const isRunning = pipeline.steps.some(s => s.status === 'active')
+  const nativeSymbol = NETWORK_CONFIG.nativeCurrency.symbol
   const allDone = pipeline.steps.every(s => s.status === 'done')
 
   // ── Post-Launch Completion View ──────────────────────────────────────
@@ -647,6 +650,9 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
           , deploy DAO, and post profile.
         </p>
       </div>
+
+      {/* Estimated gas cost + balance check */}
+      <LaunchCostCard cost={cost} />
 
       {/* Basic Info Summary */}
       <div className="card">
@@ -971,12 +977,17 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
       </div>
 
       {/* Submit Button */}
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-2">
+        {cost.insufficient && (
+          <p className="text-sm text-red-400 text-right">
+            Add at least {formatTokenAmount(cost.shortfall, 18, 3, 2)} {nativeSymbol} to your wallet to launch.
+          </p>
+        )}
         <Button
           variant="primary"
           size="lg"
           onClick={handleStartLaunch}
-          disabled={isRunning}
+          disabled={isRunning || cost.insufficient}
         >
           Launch DAO
         </Button>
@@ -986,6 +997,85 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
 }
 
 // ── Helper Components ────────────────────────────────────────────────────
+
+/**
+ * Estimated gas cost of the whole launch, priced at the live gas price, with
+ * the connected wallet's balance checked against it. The per-step figures are
+ * modeled (the transactions can't be simulated before the salts are mined);
+ * the services re-check each transaction exactly before it is signed.
+ */
+function LaunchCostCard({ cost }: { cost: LaunchCostEstimate }) {
+  const symbol = NETWORK_CONFIG.nativeCurrency.symbol
+  const fmt = (v: bigint | null) => (v == null ? '—' : `${formatTokenAmount(v, 18, 3, 2)} ${symbol}`)
+
+  return (
+    <div className="card">
+      <div className="px-6 py-3 border-b border-dao-border flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-dao-text-muted uppercase tracking-wider">
+          Estimated Gas Cost
+        </h3>
+        {cost.gasPrice != null && (
+          <span className="text-xs text-dao-text-hint">
+            @ {formatNumber(Math.round(Number(cost.gasPrice) / 1e9))} gwei
+          </span>
+        )}
+      </div>
+      <div className="px-6 py-4 space-y-2 text-sm">
+        {cost.lines.map(line => (
+          <div key={line.id} className="flex justify-between gap-4">
+            <span className="text-dao-text-hint">{line.label}</span>
+            <span className="text-dao-text-secondary flex-shrink-0">
+              <span className="text-dao-text-hint mr-2">{(Number(line.gas) / 1e6).toFixed(2)}M gas</span>
+              {fmt(line.cost)}
+            </span>
+          </div>
+        ))}
+
+        <div className="flex justify-between pt-2 border-t border-dao-border">
+          <span className="text-dao-text font-medium">Estimated total</span>
+          <span className="text-dao-text font-medium">{fmt(cost.totalCost)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-dao-text-hint">Recommended balance (incl. headroom)</span>
+          <span className="text-dao-text-secondary">{fmt(cost.requiredBalance)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-dao-text-hint">Your balance</span>
+          <span className={cost.insufficient ? 'text-red-400 font-medium' : 'text-dao-text-secondary'}>
+            {fmt(cost.balance)}
+          </span>
+        </div>
+
+        {cost.gasPrice == null && (
+          <p className="text-xs text-dao-text-hint pt-1">
+            Could not read the current gas price, so this launch cannot be priced up front.
+            Your wallet will show the cost of each transaction before you sign it.
+          </p>
+        )}
+        {cost.insufficient && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2.5 mt-2">
+            <p className="text-xs text-red-400">
+              Your wallet is short about {formatTokenAmount(cost.shortfall, 18, 3, 2)} {symbol}.
+              Launching now would deploy part of your DAO and then fail, leaving orphaned
+              contracts behind — so the launch is blocked until you top up.
+            </p>
+          </div>
+        )}
+        {cost.low && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2.5 mt-2">
+            <p className="text-xs text-amber-400">
+              This is close to your full balance. Gas prices can move between now and signing —
+              consider topping up before launching.
+            </p>
+          </div>
+        )}
+        <p className="text-xs text-dao-text-hint pt-1">
+          Estimates are based on a measured mainnet launch and the current gas price; actual cost varies.
+        </p>
+      </div>
+    </div>
+  )
+}
 
 function StepIndicator({ label, status }: { label: string; status: PipelineStepStatus }) {
   return (

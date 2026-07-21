@@ -17,6 +17,7 @@ import { TIMELOCK_NAVIGATOR_BYTECODE } from '@/config/abi/TimelockNavigator.byte
 import { SUBSCRIPTION_NAVIGATOR_BYTECODE } from '@/config/abi/SubscriptionNavigator.bytecode'
 import { BUDGET_NAVIGATOR_BYTECODE } from '@/config/abi/BudgetNavigator.bytecode'
 import { addressesEqual } from '../utils/AddressUtils'
+import { assertAffordable, estimateTxGas, modelDeployGas } from '../utils/LaunchGasEstimator'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NavigatorDeployService - Deploy navigator contracts via ContractFactory
@@ -145,6 +146,34 @@ export interface NFTGatedDeployParams {
 class NavigatorDeployService {
 
   /**
+   * Block a deploy the wallet cannot pay for, before it reaches the wallet.
+   *
+   * During a DAO launch the navigators are deployed ahead of the DAO itself, so
+   * running out of QUAI midway leaves orphaned navigators pointing at a DAO that
+   * was never created. Estimating first turns that into a clear, retryable error.
+   *
+   * Falls back to the modeled deploy gas when the wallet's RPC bridge refuses to
+   * simulate contract creations, and skips entirely when gas price or balance
+   * cannot be read — this never blocks on an unknown.
+   */
+  private async preflightDeploy(
+    factory: quais.ContractFactory,
+    args: unknown[],
+    label: string,
+  ): Promise<void> {
+    let gas: bigint | null = null
+    try {
+      const from = await baseService.requireSigner().getAddress()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ContractFactory args are constructor-shaped and untyped here
+      const deployTx = await factory.getDeployTransaction(...(args as any[]))
+      gas = await estimateTxGas({ ...deployTx, from }, label)
+    } catch (err) {
+      console.warn(`[NavigatorDeployService] Could not prepare "${label}" for estimation:`, err)
+    }
+    await assertAffordable(gas ?? modelDeployGas(factory.bytecode), label)
+  }
+
+  /**
    * Deploy an OnboarderNavigator.
    *
    * Constructor: (daoShip, shareMultiplier, lootMultiplier, pricePerUnit,
@@ -177,7 +206,7 @@ class NavigatorDeployService {
       lootMultiplier = 0n
     }
 
-    const contract = await factory.deploy(
+    const deployArgs = [
       params.daoShipAddress,
       shareMultiplier,
       lootMultiplier,
@@ -191,7 +220,11 @@ class NavigatorDeployService {
       params.allowlistRoot || ZERO_BYTES32,
       params.name,
       params.description,
-    )
+    ]
+
+    await this.preflightDeploy(factory, deployArgs, 'Deploy Onboarder Navigator')
+
+    const contract = await factory.deploy(...deployArgs)
 
     await contract.waitForDeployment()
     const address = await contract.getAddress()
@@ -227,7 +260,7 @@ class NavigatorDeployService {
       ERC20_TRIBUTE_IPFS_HASH,
     )
 
-    const contract = await factory.deploy(
+    const deployArgs = [
       params.daoShipAddress,
       params.tributeToken,
       params.pricePerShare,
@@ -238,7 +271,11 @@ class NavigatorDeployService {
       params.allowlistRoot || ZERO_BYTES32,
       params.name,
       params.description,
-    )
+    ]
+
+    await this.preflightDeploy(factory, deployArgs, 'Deploy ERC-20 Tribute Navigator')
+
+    const contract = await factory.deploy(...deployArgs)
 
     await contract.waitForDeployment()
     const address = await contract.getAddress()

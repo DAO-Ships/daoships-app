@@ -46,6 +46,7 @@ import type {
 } from '@/types'
 
 import { estimateGasOrThrow } from '@/services/utils/GasEstimator'
+import { assertAffordable, FALLBACK_LAUNCH_GAS } from '@/services/utils/LaunchGasEstimator'
 import DAOShipAbi from '@/config/abi/DAOShip.json'
 import DAOShipAndVaultLauncherAbi from '@/config/abi/DAOShipAndVaultLauncher.json'
 import SharesERC20Abi from '@/config/abi/SharesERC20.json'
@@ -734,6 +735,31 @@ class DaoService {
     daoShipSalt: bigint,
   ): Promise<{ daoShip: string; vault: string }> {
     const launcher = getLauncherContract()
+
+    const launchArgs = [
+      initializationParamsTemplate,
+      shareTokenName,
+      shareTokenSymbol,
+      lootTokenName,
+      lootTokenSymbol,
+      vaultOwners,
+      vaultThreshold,
+      vaultSalt,
+      sharesSalt,
+      lootSalt,
+      daoShipSalt,
+    ]
+
+    // The navigators are already on-chain by this point — a wallet that cannot
+    // pay for this transaction would orphan them, so stop before signing.
+    const launchGas = await estimateGasOrThrow(
+      launcher,
+      'launchDAOShipAndVault',
+      launchArgs,
+      'Launch DAO',
+    )
+    await assertAffordable(launchGas ?? FALLBACK_LAUNCH_GAS, 'Launch DAO')
+
     const tx = await launcher.launchDAOShipAndVault(
       initializationParamsTemplate,
       shareTokenName,

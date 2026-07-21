@@ -3,6 +3,7 @@ import { baseService } from './BaseService.ts'
 import PosterABI from '@/config/abi/Poster.json'
 import { CONTRACT_ADDRESSES } from '@/config/contracts'
 import { POSTER_TAGS } from '@/types/poster'
+import { assertAffordable, modelPostGas } from '../utils/LaunchGasEstimator'
 import type { DaoTheme } from '@/utils/daoTheme'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -53,6 +54,11 @@ class PosterService {
     }
 
     const contract = this.getWriteContract()
+
+    // Cheap relative to a launch, but a post that dies for lack of gas leaves a
+    // freshly launched DAO with no profile — surface the shortfall instead.
+    await assertAffordable(modelPostGas(contentBytes), 'Post to Poster')
+
     const tx = await contract['post(string,string)'](content, tag)
     const receipt = await tx.wait()
     if (!receipt || receipt.status !== 1) {
