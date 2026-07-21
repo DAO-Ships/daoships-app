@@ -30,9 +30,14 @@ export interface NetworkConfig {
   }
 }
 
+const CHAIN_ID = parseInt(import.meta.env.VITE_CHAIN_ID || '15000', 10)
+
+/** Quai mainnet is chain 9; anything else (15000 = Orchard) is a test network. */
+export const IS_MAINNET = CHAIN_ID === 9
+
 export const NETWORK_CONFIG: NetworkConfig = {
-  chainId: parseInt(import.meta.env.VITE_CHAIN_ID || '15000', 10),
-  chainName: import.meta.env.VITE_CHAIN_NAME || 'Orchard Testnet',
+  chainId: CHAIN_ID,
+  chainName: import.meta.env.VITE_CHAIN_NAME || (IS_MAINNET ? 'Quai Network' : 'Orchard Testnet'),
   rpcUrl: import.meta.env.VITE_RPC_URL || 'https://rpc.cyprus1.colosseum.quai.network',
   blockExplorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://cyprus1.colosseum.quaiscan.io',
   quaiVaultUrl: (import.meta.env.VITE_QUAIVAULT_URL as string) || 'https://testnet.quaivault.org',
