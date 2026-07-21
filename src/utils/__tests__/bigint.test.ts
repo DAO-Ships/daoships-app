@@ -35,6 +35,19 @@ describe('safeBigInt', () => {
     expect(safeBigInt('not a number')).toBe(0n)
   })
 
+  it('expands exponential notation rather than reporting zero', () => {
+    // A 1000-share balance (1e21) that reached JS as a double stringifies this way
+    expect(safeBigInt('1e+21')).toBe(1000000000000000000000n)
+    expect(safeBigInt(1e21)).toBe(1000000000000000000000n)
+    expect(safeBigInt('1.5e3')).toBe(1500n)
+    expect(safeBigInt('3e21')).toBe(3000000000000000000000n)
+  })
+
+  it('returns fallback for exponential values that are not whole numbers', () => {
+    expect(safeBigInt('1.234e2')).toBe(0n)
+    expect(safeBigInt('1e-21')).toBe(0n)
+  })
+
   it('uses custom fallback values', () => {
     expect(safeBigInt(null, 99n)).toBe(99n)
     expect(safeBigInt('invalid', 42n)).toBe(42n)

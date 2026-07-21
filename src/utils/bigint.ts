@@ -17,13 +17,41 @@ export function safeBigInt(
   if (typeof value === 'bigint') return value
 
   const str = String(value).trim()
-  if (str === '' || !/^\d+$/.test(str)) return fallback
+  if (str === '') return fallback
+
+  if (!/^\d+$/.test(str)) {
+    // A number that arrived as a JavaScript double rather than a string
+    // stringifies in exponential notation once it passes 1e21 — every
+    // 18-decimal balance of 1000+ tokens does. Expanding it back beats
+    // reporting a balance of zero, though the double may already have lost
+    // its low digits; values should reach here as strings wherever possible.
+    const expanded = expandExponential(str)
+    if (expanded === null) return fallback
+    return BigInt(expanded)
+  }
 
   try {
     return BigInt(str)
   } catch {
     return fallback
   }
+}
+
+/**
+ * Expand exponential notation ("1e+21", "1.5e3") into a plain integer string.
+ *
+ * @returns The integer digits, or null if the input is not exponential
+ *          notation or does not denote a whole number.
+ */
+function expandExponential(str: string): string | null {
+  const match = /^(\d+)(?:\.(\d+))?[eE]\+?(\d+)$/.exec(str)
+  if (!match) return null
+
+  const [, whole, fraction = '', exponent] = match
+  const shift = parseInt(exponent, 10)
+  if (fraction.length > shift) return null // Not a whole number
+
+  return whole + fraction.padEnd(shift, '0')
 }
 
 /**

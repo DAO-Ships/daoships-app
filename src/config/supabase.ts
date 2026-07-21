@@ -8,6 +8,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { quoteUnsafeIntegers } from '@/utils/jsonBigInt'
 
 // ── Environment Variables ─────────────────────────────────────────────────
 
@@ -16,6 +17,35 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | und
 const NETWORK_SCHEMA = (import.meta.env.VITE_NETWORK_SCHEMA as string) || 'dev'
 
 // ── Supabase Client ───────────────────────────────────────────────────────
+
+/**
+ * fetch wrapper that preserves oversized integers in indexer responses.
+ *
+ * Token balances are stored as exact numerics and sent by PostgREST as bare
+ * JSON numbers. Anything at or above 2^53 — which every 18-decimal balance of
+ * 1000+ tokens is — would otherwise be parsed into a lossy double that
+ * stringifies in exponential notation ("1e+21") and reads back as 0. Quoting
+ * those literals before parse keeps balances exact and matches the `string`
+ * types the row interfaces already declare.
+ */
+async function bigIntSafeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const response = await fetch(input, init)
+
+  // 204/205/304 must not carry a body, and non-JSON payloads are passed through
+  if (response.status === 204 || response.status === 205 || response.status === 304) {
+    return response
+  }
+  if (!(response.headers.get('content-type') ?? '').includes('json')) {
+    return response
+  }
+
+  const text = await response.text()
+  return new Response(quoteUnsafeIntegers(text), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  })
+}
 
 /**
  * Nullable Supabase client.
@@ -33,6 +63,9 @@ export const supabase: SupabaseClient | null =
         },
         auth: {
           persistSession: false,
+        },
+        global: {
+          fetch: bigIntSafeFetch,
         },
       })
     : null
