@@ -11,14 +11,15 @@ export function useRealtimeTimelockChanges(daoId: string | undefined) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    if (!supabase || !daoId) return
+    const client = supabase
+    if (!client || !daoId) return
 
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: ['timelockChanges', daoId] })
       queryClient.invalidateQueries({ queryKey: ['bypassedConfigChanges', daoId] })
     }
 
-    const channel = supabase
+    const channel = client
       .channel(`timelockChanges:${daoId}`)
       .on(
         'postgres_changes',
@@ -35,7 +36,7 @@ export function useRealtimeTimelockChanges(daoId: string | undefined) {
       })
 
     return () => {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     }
   }, [daoId, queryClient])
 }

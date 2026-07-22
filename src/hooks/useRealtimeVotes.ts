@@ -20,11 +20,12 @@ export function useRealtimeVotes(daoId: string | undefined, proposalId: string |
   })
 
   useEffect(() => {
-    if (!supabase || !daoId || !proposalId) return
+    const client = supabase
+    if (!client || !daoId || !proposalId) return
 
     const compositeProposalId = `${daoId}-${proposalId}`
 
-    const channel = supabase
+    const channel = client
       .channel(`votes:${compositeProposalId}`)
       .on(
         'postgres_changes',
@@ -41,7 +42,7 @@ export function useRealtimeVotes(daoId: string | undefined, proposalId: string |
       })
 
     return () => {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     }
   }, [daoId, proposalId, invalidate])
 }

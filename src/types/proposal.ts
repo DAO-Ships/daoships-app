@@ -55,36 +55,36 @@ export interface Proposal {
   tx_hash: string
 
   proposal_data_hash: string
-  proposal_data?: string
-  details?: string
+  proposal_data?: string | null
+  details?: string | null
 
-  prev_proposal_id?: number
+  prev_proposal_id?: number | null
 
   // Sponsorship
   sponsored: boolean
-  sponsor?: string
-  sponsor_tx_hash?: string
-  sponsor_tx_at?: string
+  sponsor?: string | null
+  sponsor_tx_hash?: string | null
+  sponsor_tx_at?: string | null
   self_sponsored?: boolean
-  max_total_shares_at_sponsor?: string
+  max_total_shares_at_sponsor?: string | null
 
   // Timing (voting_period is BIGINT → number)
   voting_period: number
-  voting_starts?: string
-  voting_ends?: string
-  grace_ends?: string
+  voting_starts?: string | null
+  voting_ends?: string | null
+  grace_ends?: string | null
   expiration?: string | null
 
   // Cancellation
   cancelled: boolean
-  cancelled_tx_hash?: string
-  cancelled_tx_at?: string
+  cancelled_tx_hash?: string | null
+  cancelled_tx_at?: string | null
   cancelled_by?: string | null
 
   // Processing
   processed: boolean
-  process_tx_hash?: string
-  process_tx_at?: string
+  process_tx_hash?: string | null
+  process_tx_at?: string | null
   processed_by?: string | null
 
   action_failed: boolean

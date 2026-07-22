@@ -41,8 +41,9 @@ function parseFunctions(abi: quais.InterfaceAbi): FunctionInfo[] {
         name: fragment.name,
         signature: fragment.format('minimal'),
         selector: fragment.selector,
-        inputs: fragment.inputs.map((inp) => ({
-          name: inp.name || `arg${inp.index ?? 0}`,
+        inputs: fragment.inputs.map((inp, i) => ({
+          // ParamType has no `index`; fall back to positional order for unnamed args.
+          name: inp.name || `arg${i}`,
           type: inp.type,
         })),
         stateMutability: fragment.stateMutability,

@@ -20,7 +20,7 @@ import { Button } from '@/components/common/Button'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { MemberIdentity } from '@/components/member/MemberIdentity'
 import { useMemberProfiles, type MemberProfile } from '@/hooks/useMemberProfile'
-import { formatTokenAmount } from '@/utils/format'
+import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
 import { formatDuration, formatCountdown } from '@/utils/time'
 import { safeBigInt } from '@/utils/bigint'
 import { addressesEqual } from '@/services/utils/AddressUtils'
@@ -586,7 +586,16 @@ function WithdrawStuckTokensButton({ daoId, navigatorAddress }: { daoId: string;
 
   const tokenValid = token.startsWith('0x') && token.length === 42
   const toValid = to.startsWith('0x') && to.length === 42
-  const amountWei = (() => { try { return amount ? parseTokenAmount(amount) : 0n } catch { return 0n } })()
+  const amountWei = (() => {
+    try {
+      return amount ? parseTokenAmount(amount) : 0n
+    } catch (err) {
+      // Malformed user input parses to 0n (button stays disabled). A ReferenceError
+      // or TypeError is a programmer bug, not bad input — never swallow it.
+      if (err instanceof ReferenceError || err instanceof TypeError) throw err
+      return 0n
+    }
+  })()
   const valid = tokenValid && toValid && amountWei > 0n
 
   if (!open) {

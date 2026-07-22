@@ -14,7 +14,8 @@ export function useRealtimeSubscriptions(daoId: string | undefined) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    if (!supabase || !daoId) return
+    const client = supabase
+    if (!client || !daoId) return
 
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: ['subscriptionMembers', daoId] })
@@ -23,7 +24,7 @@ export function useRealtimeSubscriptions(daoId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: ['subscriptionCollections'] })
     }
 
-    const channel = supabase
+    const channel = client
       .channel(`subscriptionMembers:${daoId}`)
       .on(
         'postgres_changes',
@@ -40,7 +41,7 @@ export function useRealtimeSubscriptions(daoId: string | undefined) {
       })
 
     return () => {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     }
   }, [daoId, queryClient])
 }

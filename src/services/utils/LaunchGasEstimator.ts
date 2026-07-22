@@ -120,8 +120,12 @@ export function modelPostGas(contentBytes: number): bigint {
 export async function getGasPrice(address?: string): Promise<bigint | null> {
   if (!baseService.hasProvider()) return null
   try {
-    const zone = address ? quais.getZoneForAddress(address) ?? undefined : undefined
-    const feeData = await baseService.getProvider().getFeeData(zone)
+    // Every DAOShips contract lives in Cyprus-1; fall back to it explicitly rather
+    // than relying on quais' internal default when no address is supplied.
+    const zone = (address ? quais.getZoneForAddress(address) : null) ?? quais.Zone.Cyprus1
+    // txType defaults to true in quais' implementation, but the Provider interface
+    // declares both params as required — pass it explicitly to keep behaviour identical.
+    const feeData = await baseService.getProvider().getFeeData(zone, true)
     return feeData.gasPrice ?? null
   } catch (err) {
     console.warn('[LaunchGasEstimator] Could not determine gas price:', err)

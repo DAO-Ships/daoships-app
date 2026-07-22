@@ -346,7 +346,10 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
             await posterService.postDaoProfileInitial({
               daoAddress: result.daoShip.toLowerCase(),
               name: formData.name,
-              description: formData.description || undefined,
+              // `description` is required by POSTER_SCHEMAS[DAO_PROFILE_INITIAL];
+              // '' and undefined both fail that check identically, so pass the raw
+              // string rather than widening the service signature.
+              description: formData.description,
               avatar: formData.avatarUrl || undefined,
               banner: formData.bannerUrl || undefined,
               theme: formData.theme && Object.keys(formData.theme).length > 0 ? formData.theme : undefined,

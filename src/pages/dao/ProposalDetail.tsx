@@ -327,7 +327,14 @@ export function ProposalDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-dao-text-hint mb-1">Created by</p>
-                <MemberIdentity address={proposal.submitter} profile={profiles?.get(proposal.submitter.toLowerCase())} />
+                {proposal.submitter ? (
+                  <MemberIdentity
+                    address={proposal.submitter}
+                    profile={profiles?.get(proposal.submitter.toLowerCase())}
+                  />
+                ) : (
+                  <p className="text-dao-text-secondary">Unknown</p>
+                )}
               </div>
               <div>
                 <p className="text-dao-text-hint mb-1">Submitted</p>
@@ -369,7 +376,7 @@ export function ProposalDetail() {
                 delegatingTo={delegatingTo}
                 delegateVote={delegateVote}
                 delegateVoteReason={delegateVoteReason}
-                delegateProfile={delegateProfile}
+                delegateProfile={delegateProfile ?? null}
                 sponsorBelowThreshold={sponsorBelowThreshold}
                 onSponsor={() => actions.sponsor()}
                 onVote={handleVote}
@@ -403,7 +410,7 @@ export function ProposalDetail() {
               delegatingTo={delegatingTo}
               delegateVote={delegateVote}
               delegateVoteReason={delegateVoteReason}
-              delegateProfile={delegateProfile}
+              delegateProfile={delegateProfile ?? null}
               sponsorBelowThreshold={sponsorBelowThreshold}
               onSponsor={() => actions.sponsor()}
               onVote={handleVote}

@@ -16,7 +16,10 @@ function useCountUp(target: string, duration = 600): string {
     // Extract the numeric part for animation
     const match = target.match(/^([\d,.]+)/)
     if (!match) { setDisplay(target); return }
-    const numStr = match[1].replace(/,/g, '')
+    // Capture before the tick closure — TS will not narrow `match` inside a
+    // hoisted function declaration.
+    const matched = match[1]
+    const numStr = matched.replace(/,/g, '')
     const targetNum = parseFloat(numStr)
     if (isNaN(targetNum) || targetNum === 0) { setDisplay(target); return }
 
@@ -29,7 +32,7 @@ function useCountUp(target: string, duration = 600): string {
       const formatted = numStr.includes('.')
         ? current.toFixed(numStr.split('.')[1]?.length ?? 0)
         : Math.round(current).toLocaleString()
-      setDisplay(target.replace(match[1], formatted))
+      setDisplay(target.replace(matched, formatted))
       if (progress < 1) rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)

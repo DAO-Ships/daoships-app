@@ -1,4 +1,4 @@
-import { createConfig, http } from 'wagmi'
+import { createConfig, http, type CreateConnectorFn } from 'wagmi'
 import { injected, walletConnect } from 'wagmi/connectors'
 import { custom, defineChain, type EIP1193Provider } from 'viem'
 
@@ -51,7 +51,9 @@ function getTransport() {
     : http()
 }
 
-const connectors = [injected({ shimDisconnect: true })]
+// Explicitly typed: injected() and walletConnect() have different provider generics,
+// so an inferred array type from the first element rejects the second.
+const connectors: CreateConnectorFn[] = [injected({ shimDisconnect: true })]
 
 if (projectId) {
   connectors.push(
@@ -72,12 +74,18 @@ if (projectId) {
   console.warn('[DAOShips] Missing VITE_WC_PROJECT_ID. Only Pelagus (injected) will be available.')
 }
 
+// A computed key off a union (`9 | 15000`) widens to `{ [x: number]: Transport }`,
+// which does not satisfy wagmi's `Record<9 | 15000, Transport>`. Exactly one chain is
+// ever active, so state the record type explicitly.
+const transports = { [activeNetwork.id]: getTransport() } as Record<
+  (typeof activeNetwork)['id'],
+  ReturnType<typeof getTransport>
+>
+
 export const wagmiConfig = createConfig({
   chains: [activeNetwork],
   connectors,
-  transports: {
-    [activeNetwork.id]: getTransport(),
-  },
+  transports,
 })
 
 export const CONNECTOR_IDS = {

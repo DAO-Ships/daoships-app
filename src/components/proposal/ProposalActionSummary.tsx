@@ -171,7 +171,7 @@ function ActionDetail({ action, navigatorMap }: { action: DecodedAction; navigat
         <div className="mt-2 text-xs space-y-1">
           <div><span className="text-dao-text-muted">Recipient:</span> <AddressDisplay address={d.recipient as string} /></div>
           <div><span className="text-dao-text-muted">Amount:</span> <span className="text-dao-text-secondary font-mono">{d.amount as string} {d.token === 'QUAI' ? 'QUAI' : ''}</span></div>
-          {d.token && d.token !== 'QUAI' && (
+          {typeof d.token === 'string' && d.token !== 'QUAI' && (
             <div><span className="text-dao-text-muted">Token:</span> <AddressDisplay address={d.token as string} /></div>
           )}
         </div>

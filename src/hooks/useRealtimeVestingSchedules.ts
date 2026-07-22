@@ -21,9 +21,10 @@ export function useRealtimeVestingSchedules(daoId: string | undefined) {
   })
 
   useEffect(() => {
-    if (!supabase || !daoId) return
+    const client = supabase
+    if (!client || !daoId) return
 
-    const channel = supabase
+    const channel = client
       .channel(`vestingSchedules:${daoId}`)
       .on(
         'postgres_changes',
@@ -40,7 +41,7 @@ export function useRealtimeVestingSchedules(daoId: string | undefined) {
       })
 
     return () => {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     }
   }, [daoId, invalidate])
 }
