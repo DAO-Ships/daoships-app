@@ -1,5 +1,5 @@
 import { useState, useEffect, memo } from 'react'
-import { ProposalStatus, getProposalExpiry } from '@/types/proposal'
+import { ProposalStatus, getProposalExpiry, quorumStatus } from '@/types/proposal'
 import type { Proposal, DaoExpiryConfig, Vote } from '@/types'
 import type { MemberProfile } from '@/hooks/useMemberProfile'
 import { ProposalActions } from './ProposalActions'
@@ -12,7 +12,7 @@ import { formatCountdown, formatIndexerDate } from '@/utils/time'
 
 interface VotingSidebarProps {
   proposal: Proposal
-  dao: { quorum_percent: string; sponsor_threshold: string }
+  dao: { quorum_percent: string; sponsor_threshold: string; total_shares: string }
   status: string
   daoId: string
   daoConfig?: DaoExpiryConfig
@@ -105,27 +105,36 @@ export const VotingSidebar = memo(function VotingSidebar({
 
           {/* Quorum */}
           {(() => {
-            const quorumBps = safeBigInt(dao.quorum_percent)
-            const quorumPct = Number(quorumBps) / 100
-            const maxShares = safeBigInt(proposal.max_total_shares_and_loot_at_vote)
-            const quorumThreshold = maxShares > 0n ? (maxShares * quorumBps) / 10000n : 0n
-            const participation = yesBalance + noBalance
-            const quorumMet = quorumThreshold > 0n && participation >= quorumThreshold
-            const participationPct = quorumThreshold > 0n ? Math.min(100, Number((participation * 100n) / quorumThreshold)) : 0
+            // Single source of truth, shared with willProposalPass. This block used to
+            // compute its own formula — yes+no participation against the shares+loot
+            // at-vote high-water mark — while the contract measures yes-only against the
+            // SHARES-ONLY sponsor snapshot. In a loot-heavy DAO that rendered a green
+            // "Quorum: Reached" on a proposal the contract had already defeated.
+            const q = quorumStatus(proposal, dao.quorum_percent)
 
-            if (quorumBps === 0n) return <p className="text-xs text-dao-text-hint">No quorum requirement</p>
+            if (q === null) {
+              return (
+                <p className="text-xs text-dao-text-hint">
+                  Quorum unavailable — the sponsor snapshot has not been indexed yet.
+                </p>
+              )
+            }
+            if (!q.required) {
+              return <p className="text-xs text-dao-text-hint">No quorum requirement</p>
+            }
 
+            const quorumPct = Number(q.quorumBps) / 100
             return (
               <div>
                 <div className="flex items-center justify-between text-xs mb-1">
                   <span className="text-dao-text-muted">Quorum ({quorumPct.toFixed(1)}%)</span>
-                  <span className={quorumMet ? 'text-emerald-400' : 'text-dao-text-muted'}>
-                    {quorumMet ? 'Reached' : `${participationPct.toFixed(0)}%`}
+                  <span className={q.met ? 'text-emerald-400' : 'text-dao-text-muted'}>
+                    {q.met ? 'Reached' : `${q.progressPct.toFixed(0)}%`}
                   </span>
                 </div>
                 <div className="h-1.5 rounded-full bg-dao-dark-2 overflow-hidden">
-                  <div className={`h-full rounded-full transition-all duration-500 ${quorumMet ? 'bg-emerald-500' : 'bg-primary-500/60'}`}
-                    style={{ width: `${participationPct}%` }} />
+                  <div className={`h-full rounded-full transition-all duration-500 ${q.met ? 'bg-emerald-500' : 'bg-primary-500/60'}`}
+                    style={{ width: `${q.progressPct}%` }} />
                 </div>
               </div>
             )
@@ -194,7 +203,15 @@ export const VotingSidebar = memo(function VotingSidebar({
             daoConfig={daoConfig}
             userAddress={userAddress}
             userShares={userShares}
-            sponsorThreshold={safeBigInt(dao.sponsor_threshold)}
+            sponsorThreshold={(() => {
+              // Mirrors DAOShip._effectiveSponsorThreshold(): min(sponsorThreshold,
+              // sharesTotalSupply). Comparing the RAW threshold meant that after a mass
+              // ragequit (or when shares were minted after governance setup) the Sponsor
+              // button was hidden for everyone and no proposal could be sponsored at all.
+              const raw = safeBigInt(dao.sponsor_threshold)
+              const supply = safeBigInt(dao.total_shares)
+              return raw > supply ? supply : raw
+            })()}
             hasVoted={hasVoted}
             delegatingTo={delegatingTo}
             delegateVote={delegateVote}

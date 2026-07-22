@@ -144,7 +144,15 @@ export function deriveProposalStatus(
     if (proposal.action_failed) return ProposalStatus.ActionFailed
     return ProposalStatus.Processed
   }
-  if (!proposal.sponsored) return ProposalStatus.Submitted
+  // Unsponsored: the contract checks explicit expiration BEFORE returning Submitted
+  // (DAOShip.sol state(), the `prop.sponsor == address(0)` branch). Returning Submitted
+  // unconditionally advertised a Sponsor button on expired proposals that always reverts.
+  if (!proposal.sponsored) {
+    if (proposal.expiration && Date.now() > new Date(proposal.expiration).getTime()) {
+      return ProposalStatus.Expired
+    }
+    return ProposalStatus.Submitted
+  }
 
   // Sponsored but timing data not yet indexed (race between SubmitProposal
   // and SponsorProposal events for auto-sponsored proposals). Treat as Voting
@@ -167,9 +175,25 @@ export function deriveProposalStatus(
     if (now < graceEndsMs) return ProposalStatus.Grace
   }
 
-  // Past grace period — check auto-expiry for proposals with no explicit expiration.
-  // Mirrors the contract's M-7 logic: proposals in Ready state auto-expire after
-  // graceEnds + defaultExpiryWindow (or 2*(votingPeriod+gracePeriod) fallback).
+  // Past grace. The contract checks auto-DEFEAT before auto-expiry:
+  //   if (!_didProposalPass(id)) return Defeated;
+  // This branch was missing entirely, so a failed proposal showed as Ready and an
+  // agent or member processing it with the action bytes reverted with HashMismatch
+  // (a defeated proposal must be closed with '0x').
+  if (daoConfig?.quorum_percent !== undefined) {
+    let passed: boolean
+    try {
+      passed = willProposalPass(proposal, daoConfig.quorum_percent)
+    } catch {
+      // Snapshot unavailable — cannot distinguish Defeated from Ready. Fall through
+      // to the expiry/Ready path rather than asserting either.
+      passed = true
+    }
+    if (!passed) return ProposalStatus.Defeated
+  }
+
+  // M-7 auto-expiry. The contract applies this ONLY to proposals that passed — a
+  // failing one short-circuits to Defeated above and stays closeable forever.
   if (!proposal.expiration && proposal.grace_ends && daoConfig) {
     const graceEndsMs = new Date(proposal.grace_ends).getTime()
     const windowSeconds = daoConfig.default_expiry_window > 0
@@ -229,6 +253,58 @@ export function getProposalExpiry(
  * defeat for passing proposals, so we sent `0x` and the contract reverted with
  * HashMismatch (surfaced as "missing revert data").
  */
+/**
+ * Quorum evaluation, mirroring DAOShip.sol's `_didProposalPass`:
+ *
+ *   prop.yesBalance >= (prop.maxTotalSharesAtSponsor * quorumPercent) / BASIS_POINTS_DIVISOR
+ *
+ * Two things that are easy to get wrong and were both wrong in VotingSidebar:
+ *   - the NUMERATOR is yes-only, not yes+no participation
+ *   - the DENOMINATOR is the SHARES-ONLY sponsor snapshot, not the shares+loot
+ *     at-vote high-water mark (which also floats upward during voting)
+ *
+ * Exported so the sidebar and willProposalPass cannot drift apart again.
+ *
+ * Returns null when quorum cannot be evaluated (no snapshot) so callers can render
+ * "unknown" instead of a confident wrong verdict.
+ */
+export interface QuorumStatus {
+  /** Basis points, 0 = no quorum requirement. */
+  quorumBps: bigint
+  required: boolean
+  threshold: bigint
+  /** Yes-balance only — the contract's numerator. */
+  yesBalance: bigint
+  met: boolean
+  /** 0-100, progress of yesBalance toward the threshold. */
+  progressPct: number
+}
+
+export function quorumStatus(
+  proposal: Proposal,
+  quorumPercent: string | bigint,
+): QuorumStatus | null {
+  const quorumBps = typeof quorumPercent === 'bigint' ? quorumPercent : BigInt(quorumPercent || '0')
+  const yes = BigInt(proposal.yes_balance || '0')
+
+  if (quorumBps === 0n) {
+    return { quorumBps, required: false, threshold: 0n, yesBalance: yes, met: true, progressPct: 100 }
+  }
+
+  const snapshot = proposal.max_total_shares_at_sponsor
+  if (snapshot === undefined || snapshot === null || snapshot === '') return null
+
+  const threshold = (BigInt(snapshot) * quorumBps) / 10000n
+  return {
+    quorumBps,
+    required: true,
+    threshold,
+    yesBalance: yes,
+    met: threshold > 0n ? yes >= threshold : true,
+    progressPct: threshold > 0n ? Math.min(100, Number((yes * 100n) / threshold)) : 100,
+  }
+}
+
 export function willProposalPass(
   proposal: Proposal,
   quorumPercent: string | bigint,
