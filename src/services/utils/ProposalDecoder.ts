@@ -8,6 +8,7 @@
 import { quais } from 'quais'
 import { CONTRACT_ADDRESSES } from '@/config/contracts'
 import { decodeGovernanceConfig, type GovernanceConfig } from './GovernanceEncoder'
+import { addressesEqual } from './AddressUtils'
 
 const DAOSHIP_INTERFACE = new quais.Interface([
   'function mintShares(address[] to, uint256[] amount)',
@@ -58,6 +59,37 @@ export interface DecodedAction {
     | 'posterPost' | 'custom'
   label: string
   details: Record<string, unknown>
+  /**
+   * Native QUAI (wei) this entry sends, as a decimal string. Present on EVERY action.
+   * Previously only surfaced on the native-transfer and custom branches, so an
+   * ERC-20 transfer or governance call carrying native value rendered as if it sent
+   * nothing. Renderers must display this whenever it is non-zero.
+   */
+  nativeValue: string
+  /**
+   * MultiSend operation byte: 0 = CALL, 1 = DELEGATECALL. Present on EVERY action.
+   * Parsed since the decoder was written but discarded before reaching the UI, so a
+   * delegatecall entry rendered byte-identically to a call.
+   */
+  operation: number
+  /**
+   * True when the executeAsGovernance wrapper was verified against the DAO address.
+   * False when the DAO address was unavailable to cross-check (caller passed no daoId).
+   */
+  governanceVerified?: boolean
+}
+
+/** Raw MultiSend entry as parsed off the wire. */
+interface RawTx {
+  operation: number
+  to: string
+  value: bigint
+  data: string
+}
+
+/** Attach the per-entry metadata every action must carry. */
+function withMeta(action: Omit<DecodedAction, 'nativeValue' | 'operation'>, tx: RawTx): DecodedAction {
+  return { ...action, nativeValue: tx.value.toString(), operation: tx.operation }
 }
 
 /**
@@ -112,7 +144,9 @@ function tryDecodeFunctionData(iface: quais.Interface, data: string): { name: st
 /**
  * Decode a single governance-wrapped inner call.
  */
-function decodeGovernanceInner(innerData: string): DecodedAction | null {
+function decodeGovernanceInner(
+  innerData: string,
+): Omit<DecodedAction, 'nativeValue' | 'operation'> | null {
   const decoded = tryDecodeFunctionData(DAOSHIP_INTERFACE, innerData)
   if (!decoded) return null
 
@@ -196,15 +230,39 @@ function decodeGovernanceInner(innerData: string): DecodedAction | null {
 /**
  * Decode a single raw MultiSend transaction into a human-readable action.
  */
-function decodeSingleTx(tx: { to: string; value: bigint; data: string }): DecodedAction {
+function decodeSingleTx(tx: RawTx, daoId?: string): DecodedAction {
   const posterAddr = CONTRACT_ADDRESSES.POSTER.toLowerCase()
 
-  // Check for executeAsGovernance wrapper
+  // ── executeAsGovernance wrapper ──────────────────────────────────────────
+  // proposal_data is attacker-authored: submitProposal is external payable with no
+  // membership check, so this decoder may not assume an honest encoder. Previously
+  // only args[2] (the inner calldata) was read — args[0] (_to), args[1] (_value),
+  // tx.to and tx.value were all ignored, so
+  //   { to: attacker, value: <treasury>, data: executeAsGovernance(dao, 0, mintShares(...)) }
+  // rendered as a plain "Mint shares to 1 address" while actually sending the
+  // treasury to the attacker.
+  //
+  // Only take the governance narrative for the exact shape
+  // ProposalEncoder.wrapGovernance() can produce: a zero-value self-call on the DAO.
+  // Anything else falls through to `custom`, which shows target, value and calldata.
   const govCall = tryDecodeFunctionData(DAOSHIP_INTERFACE, tx.data)
   if (govCall?.name === 'executeAsGovernance') {
+    const govTarget = govCall.args[0] as string
+    const govValue = govCall.args[1] as bigint
     const innerData = govCall.args[2] as string
-    const inner = decodeGovernanceInner(innerData)
-    if (inner) return inner
+
+    // No native value may ride along, at either layer.
+    const noValue = govValue === 0n && tx.value === 0n
+    // With a DAO address we can fully verify. Without one, the best available check
+    // is that the wrapper targets the same contract the entry calls.
+    const verified = daoId
+      ? addressesEqual(tx.to, daoId) && addressesEqual(govTarget, daoId)
+      : addressesEqual(govTarget, tx.to)
+
+    if (noValue && verified) {
+      const inner = decodeGovernanceInner(innerData)
+      if (inner) return withMeta({ ...inner, governanceVerified: Boolean(daoId) }, tx)
+    }
   }
 
   // Check for Poster.post() call
@@ -215,82 +273,91 @@ function decodeSingleTx(tx: { to: string; value: bigint; data: string }): Decode
       const tag = posterCall.args[1] as string
       let parsedContent: Record<string, unknown> | null = null
       try { parsedContent = JSON.parse(content) } catch { /* not JSON */ }
-      return {
+      return withMeta({
         type: 'posterPost',
         label: tag.includes('profile') ? 'Update DAO profile'
           : tag.includes('announcement') ? 'DAO Announcement'
           : `Post to Poster (${tag})`,
         details: { tag, content: parsedContent || content },
-      }
+      }, tx)
     }
   }
 
   // Check for ERC-20 transfer
   const erc20 = tryDecodeFunctionData(ERC20_INTERFACE, tx.data)
   if (erc20?.name === 'transfer') {
-    return {
+    return withMeta({
       type: 'transfer',
       label: 'Transfer ERC-20 tokens',
       details: {
         token: tx.to,
         recipient: erc20.args[0] as string,
+        // Raw base units + the token address, so the renderer can format with the
+        // token's real decimals instead of assuming 18 (formatQuai).
+        amountRaw: (erc20.args[1] as bigint).toString(),
         amount: quais.formatQuai(erc20.args[1] as bigint),
       },
-    }
+    }, tx)
   }
 
   // Native transfer (no calldata or empty)
   if (tx.value > 0n && (tx.data === '0x' || tx.data.length <= 2)) {
-    return {
+    return withMeta({
       type: 'transfer',
       label: 'Transfer QUAI',
       details: { recipient: tx.to, amount: quais.formatQuai(tx.value), token: 'QUAI' },
-    }
+    }, tx)
   }
 
   // TimelockNavigator avatar-only actions (queueChange carries a governance-config blob).
   const tlCall = tryDecodeFunctionData(TIMELOCK_INTERFACE, tx.data)
   if (tlCall?.name === 'queueChange') {
     const config = decodeGovernanceConfig(tlCall.args[0] as string)
-    return {
+    return withMeta({
       type: 'queueGovernanceConfig',
       label: 'Queue governance-config change (via timelock)',
       details: {
         timelock: tx.to,
         ...(config ? { config: govConfigToDetails(config) } : { configBytes: tlCall.args[0] }),
       },
-    }
+    }, tx)
   }
   if (tlCall?.name === 'cancelChange') {
-    return {
+    return withMeta({
       type: 'custom',
       label: 'Cancel a queued timelock change',
       details: { target: tx.to, value: tx.value.toString(), calldata: tx.data },
-    }
+    }, tx)
   }
   if (tlCall?.name === 'emergencyCancelAll') {
-    return {
+    return withMeta({
       type: 'custom',
       label: 'Emergency-cancel all queued timelock changes',
       details: { target: tx.to, value: tx.value.toString(), calldata: tx.data },
-    }
+    }, tx)
   }
 
   // Unknown / custom
-  return {
+  return withMeta({
     type: 'custom',
     label: 'Custom contract call',
     details: { target: tx.to, value: tx.value.toString(), calldata: tx.data },
-  }
+  }, tx)
 }
 
 /**
  * Decode a full proposal_data hex string into an array of human-readable actions.
  *
  * @param proposalData - The raw hex string from proposal.proposal_data
+ * @param daoId - The DAO (DAOShip) address. STRONGLY RECOMMENDED: without it the
+ *   executeAsGovernance wrapper can only be checked for self-consistency, not that it
+ *   actually targets this DAO. Callers that have the address must pass it.
  * @returns Array of decoded actions, or empty array if decoding fails
  */
-export function decodeProposalActions(proposalData: string | undefined | null): DecodedAction[] {
+export function decodeProposalActions(
+  proposalData: string | undefined | null,
+  daoId?: string,
+): DecodedAction[] {
   if (!proposalData || proposalData === '0x') return []
 
   try {
@@ -304,7 +371,7 @@ export function decodeProposalActions(proposalData: string | undefined | null): 
 
     // Parse the packed MultiSend transactions
     const txs = parseMultiSendTxs(packedBytes as string)
-    return txs.map(decodeSingleTx)
+    return txs.map((tx) => decodeSingleTx(tx, daoId))
   } catch {
     return []
   }

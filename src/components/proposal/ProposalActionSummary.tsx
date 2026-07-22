@@ -30,6 +30,38 @@ interface ProposalActionSummaryProps {
   daoId?: string
 }
 
+/**
+ * Surfaces the two per-entry facts the decoder used to discard.
+ *
+ * Both are attacker-controllable and neither is implied by the action label, so an
+ * entry could send the treasury or execute in the DAO's own storage context while
+ * rendering as a routine governance action.
+ */
+function ActionRiskFlags({ action }: { action: DecodedAction }) {
+  // The native-QUAI transfer branch already renders this value as its amount.
+  const isNativeTransfer = action.type === 'transfer' && action.details.token === 'QUAI'
+  const carriesValue = action.nativeValue !== '0' && !isNativeTransfer
+  const isDelegateCall = action.operation === 1
+
+  if (!carriesValue && !isDelegateCall) return null
+
+  return (
+    <div className="mt-1 space-y-1">
+      {carriesValue && (
+        <p className="text-xs font-medium text-red-400">
+          ⚠ Also sends {formatTokenAmount(action.nativeValue)} QUAI of native value
+        </p>
+      )}
+      {isDelegateCall && (
+        <p className="text-xs font-medium text-red-400">
+          ⚠ DELEGATECALL — this code executes in the DAO&apos;s own context and can
+          modify its storage
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ActionIcon({ type }: { type: DecodedAction['type'] }) {
   const paths: Record<string, string> = {
     transfer: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
@@ -369,7 +401,7 @@ function ActionDetail({ action, navigatorMap }: { action: DecodedAction; navigat
 }
 
 export function ProposalActionSummary({ proposalData, daoId }: ProposalActionSummaryProps) {
-  const actions = useMemo(() => decodeProposalActions(proposalData), [proposalData])
+  const actions = useMemo(() => decodeProposalActions(proposalData, daoId), [proposalData, daoId])
   // Fetch the DAO's navigators when there are setNavigators OR custom actions: custom
   // actions need the navigator map to confirm a selector-decoded target's type before
   // rendering a trusted summary (see CustomActionDetail).
@@ -409,6 +441,7 @@ export function ProposalActionSummary({ proposalData, daoId }: ProposalActionSum
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-dao-text">{action.label}</p>
+              <ActionRiskFlags action={action} />
               <ActionDetail action={action} navigatorMap={navigatorMap} />
             </div>
           </div>

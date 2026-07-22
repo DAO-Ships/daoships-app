@@ -67,7 +67,7 @@ function ProposalCard({ proposal, daoId, status }: { proposal: Proposal; daoId: 
   const yesPercent = totalBalance > 0n ? Number((yesBalance * 100n) / totalBalance) : 0
   const noPercent = totalBalance > 0n ? 100 - yesPercent : 0
 
-  const proposalType = getProposalType(proposal.details, proposal.proposal_data)
+  const proposalType = getProposalType(proposal.details, proposal.proposal_data, daoId)
 
   return (
     <Link

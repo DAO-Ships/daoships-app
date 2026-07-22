@@ -185,7 +185,7 @@ export function Overview() {
               <div className="divide-y divide-dao-border">
                 {recentProposals.map((proposal) => {
                   const status = deriveProposalStatus(proposal, daoConfig)
-                  const proposalType = getProposalType(proposal.details, proposal.proposal_data)
+                  const proposalType = getProposalType(proposal.details, proposal.proposal_data, dao.id)
                   return (
                     <Link key={proposal.id} to={`proposals/${proposal.proposal_id}`}
                       className="flex items-center gap-3 px-4 py-3 hover:bg-dao-surface/50 transition-colors">

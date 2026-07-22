@@ -34,7 +34,11 @@ export const PROPOSAL_TYPE_LABELS: Record<string, string> = {
  * Get the proposal type from the details JSON, or infer it from decoded actions.
  * Returns { type, label, color } or null if unknown.
  */
-export function getProposalType(details: string | null | undefined, proposalData?: string | null): {
+export function getProposalType(
+  details: string | null | undefined,
+  proposalData?: string | null,
+  daoId?: string,
+): {
   type: string
   label: string
   color: string
@@ -51,7 +55,7 @@ export function getProposalType(details: string | null | undefined, proposalData
 
   // Infer from decoded actions
   if (proposalData && proposalData !== '0x') {
-    const actions = decodeProposalActions(proposalData)
+    const actions = decodeProposalActions(proposalData, daoId)
     if (actions.length === 0) return { type: 'signal', label: 'Signal', color: PROPOSAL_TYPE_COLORS.signal }
 
     // Check action types to infer proposal type

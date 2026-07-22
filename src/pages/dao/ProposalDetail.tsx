@@ -63,9 +63,10 @@ export function ProposalDetail() {
   // config isn't live until a second `executeChange` after the delay. Detect it so we can guide
   // the user to that step (decoded from the actions, not the details tag, so it's authoritative).
   const timelockQueue = useMemo(() => {
-    const action = decodeProposalActions(proposal?.proposal_data).find((a) => a.type === 'queueGovernanceConfig')
+    const action = decodeProposalActions(proposal?.proposal_data, daoId)
+      .find((a) => a.type === 'queueGovernanceConfig')
     return action ? { timelockAddress: action.details.timelock as string | undefined } : null
-  }, [proposal?.proposal_data])
+  }, [proposal?.proposal_data, daoId])
   const { connected, address, connect } = useWallet()
   const { vote, isVoting, error: voteError } = useVoting(daoId!, proposalId!)
   const actions = useProposalActions(daoId!, proposalId!)
