@@ -15,7 +15,11 @@ export function useRealtimeVotes(daoId: string | undefined, proposalId: string |
 
   // Debounced so a vote sweep collapses into one refetch of the (full) votes table.
   const invalidate = useDebouncedCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['votes', daoId, proposalId] })
+    // The votes query is registered as ['proposalVotes', `${daoId}-${proposalId}`]
+    // (useProposalVotes). Invalidating ['votes', ...] matched nothing, so this
+    // realtime channel was inert: the votes panel stayed frozen at mount while the
+    // tally header polled, and the two visibly disagreed.
+    queryClient.invalidateQueries({ queryKey: ['proposalVotes', `${daoId}-${proposalId}`] })
     queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
   })
 

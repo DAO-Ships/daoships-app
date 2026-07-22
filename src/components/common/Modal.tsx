@@ -65,30 +65,50 @@ export function Modal({
     [onClose, preventClose],
   )
 
+  // Keydown listener. Depends on handleKeyDown, whose identity changes whenever the
+  // PARENT re-renders (callers pass inline arrows for onClose), so this effect churns —
+  // which is fine for an event listener and fatal for focus management.
   useEffect(() => {
     if (!isOpen) return
-
-    // Remember what was focused before the modal opened
-    previousFocusRef.current = document.activeElement as HTMLElement | null
-
     document.addEventListener('keydown', handleKeyDown)
-    document.body.style.overflow = 'hidden'
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, handleKeyDown])
 
-    // Focus first focusable element inside the modal
-    requestAnimationFrame(() => {
-      if (dialogRef.current) {
-        const first = dialogRef.current.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
+  // Focus lifecycle, keyed ONLY on isOpen.
+  //
+  // Previously this lived in the same effect as the keydown listener, so every parent
+  // render tore it down WHILE isOpen was still true, ran the cleanup's
+  // previousFocusRef.current?.focus() — moving focus to the trigger behind the modal —
+  // and then re-focused the dialog's first node. A member typing into "Shares to Burn"
+  // while useMembers (30s), useMember (15s) and realtime pushes re-rendered Members got
+  // their caret yanked onto the Close button; the next Enter destroyed the entry.
+  // Under preventClose every focusable is disabled, so first?.focus() no-ops and focus
+  // landed OUTSIDE the open aria-modal dialog.
+  //
+  // The codebase already had the right shape in RagequitModal.tsx:149-163 (a was-open ref).
+  const wasOpenRef = useRef(false)
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      wasOpenRef.current = true
+      previousFocusRef.current = document.activeElement as HTMLElement | null
+      document.body.style.overflow = 'hidden'
+      requestAnimationFrame(() => {
+        const first = dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
         first?.focus()
-      }
-    })
-
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
+      })
+      return
+    }
+    if (!isOpen && wasOpenRef.current) {
+      wasOpenRef.current = false
       document.body.style.overflow = ''
-      // Restore focus on close
       previousFocusRef.current?.focus()
     }
-  }, [isOpen, handleKeyDown])
+  }, [isOpen])
+
+  // Unmounting while open must still release the scroll lock.
+  useEffect(() => () => {
+    if (wasOpenRef.current) document.body.style.overflow = ''
+  }, [])
 
   if (!isOpen) return null
 
