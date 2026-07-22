@@ -2,6 +2,7 @@ import type { Control, FieldErrors } from 'react-hook-form'
 import { useController } from 'react-hook-form'
 import { formatDuration, parseDurationToSeconds } from '@/utils/time'
 import { MAX_VOTING_PERIOD, MAX_GRACE_PERIOD } from '@/services/utils/GovernanceEncoder'
+import { validateTokenAmount } from '@/utils/validation'
 import type { LaunchFormValues } from './BasicInfoStep'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -53,8 +54,18 @@ export function GovernanceStep({ control, errors }: GovernanceStepProps) {
       },
     },
   })
-  const proposalOffering = useController({ control, name: 'proposalOffering' })
-  const sponsorThreshold = useController({ control, name: 'sponsorThreshold' })
+  // Both were previously registered with NO rules, so validateCurrentStep's trigger()
+  // was a no-op on them and the raw string reached parseTokenAmount mid-pipeline.
+  const proposalOffering = useController({
+    control,
+    name: 'proposalOffering',
+    rules: { validate: (v) => validateTokenAmount(v, { label: 'Proposal offering' }) },
+  })
+  const sponsorThreshold = useController({
+    control,
+    name: 'sponsorThreshold',
+    rules: { validate: (v) => validateTokenAmount(v, { label: 'Sponsor threshold' }) },
+  })
   const minRetentionPercent = useController({
     control,
     name: 'minRetentionPercent',

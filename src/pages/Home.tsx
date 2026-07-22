@@ -18,7 +18,7 @@ import { BrandPattern } from '@/components/common/BrandPattern'
 export function Home() {
   usePageTitle()
   const { connected } = useWallet()
-  const { theme } = useUiStore()
+  const theme = useUiStore((s) => s.theme)
   const isDark = theme === 'dark'
   const { data: daos, isLoading: daosLoading } = useDaos()
   const { data: userDaos, isLoading: userDaosLoading } = useUserDaos()

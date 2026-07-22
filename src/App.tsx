@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense, type ReactNode } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { wagmiConfig } from '@/config/wagmi'
@@ -25,13 +25,27 @@ const Navigators = lazy(() => import('@/pages/dao/Navigators').then((m) => ({ de
 const NavigatorDetail = lazy(() => import('@/pages/dao/NavigatorDetail').then((m) => ({ default: m.NavigatorDetail })))
 const Settings = lazy(() => import('@/pages/dao/Settings').then((m) => ({ default: m.Settings })))
 
+
+/**
+ * Inner boundary that resets when the route changes, so navigating away from a broken
+ * page recovers without a full reload. Must be inside <BrowserRouter> to read location.
+ */
+function RouteResetBoundary({ children }: { children: ReactNode }) {
+  const location = useLocation()
+  return <ErrorBoundary resetKeys={[location.pathname]}>{children}</ErrorBoundary>
+}
+
+
 export function App() {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
+          {/* Wraps Layout, not just Routes: previously a throw in Header, Sidebar or
+              ConnectModal escaped the boundary entirely and white-screened the app. */}
+          <ErrorBoundary>
           <Layout>
-            <ErrorBoundary>
+            <RouteResetBoundary>
               <Suspense fallback={<Loading fullPage />}>
               <div className="animate-fade-in">
               <Routes>
@@ -54,9 +68,10 @@ export function App() {
               </Routes>
               </div>
               </Suspense>
-            </ErrorBoundary>
+            </RouteResetBoundary>
             <ConnectModal />
           </Layout>
+          </ErrorBoundary>
           <ErrorBoundary>
             <NotificationContainer />
           </ErrorBoundary>

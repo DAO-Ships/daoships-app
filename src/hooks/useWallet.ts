@@ -19,11 +19,15 @@ export function useWallet() {
   const { address, isConnected, connector, chainId: wagmiChainId } = useAccount()
   const { connectAsync, connectors } = useConnect()
   const { disconnect: wagmiDisconnect } = useDisconnect()
-  const {
-    setConnected,
-    setConnectModalOpen,
-    setError,
-  } = useWalletStore()
+  // Selector form, one per action. useWallet returns only wagmi-derived values and uses
+  // the store purely for these setters, but destructuring the whole store subscribed
+  // every consumer to connected/address/connectModalOpen/error/providerReady — so any
+  // of those changing re-rendered every component that calls useWallet, which is most
+  // of them. Each selector returns a stable function identity, so none of them re-render.
+  const setConnected = useWalletStore((s) => s.setConnected)
+  const setProviderReady = useWalletStore((s) => s.setProviderReady)
+  const setConnectModalOpen = useWalletStore((s) => s.setConnectModalOpen)
+  const setError = useWalletStore((s) => s.setError)
 
   const prevAddressRef = useRef<string | null>(null)
   const signerRef = useRef<unknown>(null)
@@ -38,6 +42,7 @@ export function useWallet() {
       if (prevAddressRef.current && prevAddressRef.current !== address) {
         signerRef.current = null
         baseService.setSigner(null)
+        setProviderReady(false)
       }
       prevAddressRef.current = address
       setConnected(true, address)
@@ -45,9 +50,10 @@ export function useWallet() {
       prevAddressRef.current = null
       signerRef.current = null
       baseService.setSigner(null)
+      setProviderReady(false)
       setConnected(false, null)
     }
-  }, [isConnected, address, setConnected])
+  }, [isConnected, address, setConnected, setProviderReady])
 
   // ── Keep BaseService's chain in sync so write paths hard-block wrong-network state ──
   useEffect(() => {
@@ -71,6 +77,9 @@ export function useWallet() {
 
         signerRef.current = signer
         baseService.setSigner(signer)
+        // Reactive counterpart to baseService.hasProvider(), which ~19 sites read
+        // imperatively with no subscription.
+        setProviderReady(true)
 
         // Bytecode verification of configured contracts (via wallet's EIP-1193 provider
         // directly — quais.BrowserProvider.getCode silently returns '0x' for every lookup
@@ -97,7 +106,7 @@ export function useWallet() {
       })
 
     return () => { isActive = false }
-  }, [connector, isConnected, address, wagmiChainId])
+  }, [connector, isConnected, address, wagmiChainId, setProviderReady])
 
   // ── Actions ──────────────────────────────────────────────────────────
   const connect = useCallback(() => {

@@ -80,3 +80,28 @@ export function stripHtml(html: string): string {
   // DOMPurify with no allowed tags returns text content
   return clean
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Unicode control-character stripping
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Bidirectional-control and zero-width characters.
+ *
+ * SafeMarkdown's auto-linker uses the matched substring as BOTH the href and the
+ * visible label, and proposal descriptions / Poster content are permissionlessly
+ * attacker-authored. U+202E (RIGHT-TO-LEFT OVERRIDE) and friends therefore let a link
+ * read as one domain while pointing at another; zero-width characters split homographs
+ * invisibly.
+ */
+const BIDI_AND_ZERO_WIDTH = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g
+
+/**
+ * Remove bidi/zero-width control characters from untrusted text.
+ *
+ * Applied to the whole string before parsing, so it cannot alter the display of
+ * surrounding text either. Legitimate non-Latin scripts are unaffected.
+ */
+export function stripBidiControls(text: string): string {
+  return text.replace(BIDI_AND_ZERO_WIDTH, '')
+}

@@ -7,6 +7,13 @@ import { Component, type ReactNode, type ErrorInfo } from 'react'
 interface ErrorBoundaryProps {
   children: ReactNode
   fallback?: ReactNode
+  /**
+   * When any value here changes, the boundary resets itself.
+   * Pass the current route so navigating away from a broken page recovers without a
+   * full reload — previously `hasError` cleared ONLY via window.location.reload(), so
+   * sidebar links changed the URL while the fallback stayed on screen.
+   */
+  resetKeys?: unknown[]
 }
 
 interface ErrorBoundaryState {
@@ -26,6 +33,27 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error('[ErrorBoundary] Uncaught error:', error, errorInfo)
+  }
+
+  componentDidUpdate(prevProps: ErrorBoundaryProps): void {
+    if (!this.state.hasError) return
+    const prev = prevProps.resetKeys
+    const next = this.props.resetKeys
+    if (!prev || !next || prev.length !== next.length) return
+    if (prev.some((v, i) => !Object.is(v, next[i]))) {
+      this.setState({ hasError: false, error: null })
+    }
+  }
+
+  /**
+   * A failed dynamic import is the common case here: 12 routes are React.lazy and the
+   * chunks are served `immutable, max-age=31536000`, so a redeploy strands open tabs on
+   * chunk URLs that no longer exist. That specific failure IS fixed by reloading.
+   */
+  private isChunkLoadError(): boolean {
+    const msg = this.state.error?.message ?? ''
+    return /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError/i
+      .test(msg)
   }
 
   private handleRefresh = () => {
@@ -79,9 +107,21 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               </details>
             )}
 
-            <button onClick={this.handleRefresh} className="btn-primary">
-              Refresh Page
-            </button>
+            <div className="flex items-center justify-center gap-3">
+              {/* Recover in place where the error is likely transient. A stale-chunk
+                  failure genuinely needs the reload, so don't offer a no-op there. */}
+              {!this.isChunkLoadError() && (
+                <button
+                  onClick={() => this.setState({ hasError: false, error: null })}
+                  className="btn-secondary"
+                >
+                  Try again
+                </button>
+              )}
+              <button onClick={this.handleRefresh} className="btn-primary">
+                {this.isChunkLoadError() ? 'Reload for the latest version' : 'Refresh Page'}
+              </button>
+            </div>
           </div>
         </div>
       )

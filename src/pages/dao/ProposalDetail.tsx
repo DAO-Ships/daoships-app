@@ -23,12 +23,13 @@ import { Loading } from '@/components/common/Loading'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { TokenAmount } from '@/components/common/TokenAmount'
 import { ProposalActionSummary } from '@/components/proposal/ProposalActionSummary'
-import { decodeProposalActions } from '@/services/utils/ProposalDecoder'
+import { decodeProposalActions, verifyProposalDataHash } from '@/services/utils/ProposalDecoder'
 import { VotingSidebar } from '@/components/proposal/VotingSidebar'
 import { ProposalVotes, VoteReasonModal } from '@/components/proposal/VoteReasons'
 import { MemberIdentity } from '@/components/member/MemberIdentity'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Breadcrumb } from '@/components/common/Breadcrumb'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { formatTimeAgo } from '@/utils/time'
 import { parseProposalDetails } from '@/utils/format'
 import { safeBigInt } from '@/utils/bigint'
@@ -100,6 +101,10 @@ export function ProposalDetail() {
     : null
 
   // Vote reason modal
+  // Cancelling is terminal and on-chain. The LESS destructive submit path already
+  // gates behind ConfirmDialog (NewProposal.tsx:831); this went straight to the wallet
+  // on a single click.
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [showVoteReasonModal, setShowVoteReasonModal] = useState(false)
   const [lastVoteDirection, setLastVoteDirection] = useState<boolean | null>(null)
   const handleVote = useCallback(async (approved: boolean) => {
@@ -193,7 +198,19 @@ export function ProposalDetail() {
   //   - willProposalPass now throws rather than evaluating quorum against an absent
   //     snapshot, which would white-screen this render body.
   // Both now resolve to a blocked Process button with a stated reason.
+  // The action bytes come from the indexer while the hash was committed on-chain at
+  // submit time — different trust domains, never cross-checked until now. A mismatch
+  // means what voters are being shown is not what the DAO committed to.
+  const dataHashValid = verifyProposalDataHash(proposal.proposal_data, proposal.proposal_data_hash)
+
   const processPlan: { data: string | null; blockedReason: string | null } = (() => {
+    if (dataHashValid === false) {
+      return {
+        data: null,
+        blockedReason: 'The proposal action data does not match the hash committed '
+          + 'on-chain. Processing is blocked — do not act on the displayed actions.',
+      }
+    }
     let willPass: boolean
     try {
       willPass = willProposalPass(proposal, dao.quorum_percent)
@@ -362,8 +379,20 @@ export function ProposalDetail() {
       <div className={`${isTerminal ? '' : 'lg:grid lg:grid-cols-[1fr,360px] lg:gap-6'}`}>
 
         {/* Left column: proposal content */}
-        <div className="space-y-6 min-w-0">
+        <div className="space-y-6 min-w-0 lg:col-start-1 lg:row-start-1">
           {/* Proposed Actions */}
+          {dataHashValid === false && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 mb-3">
+              <p className="text-sm text-red-400 font-medium">
+                These actions do not match the on-chain commitment
+              </p>
+              <p className="text-xs text-dao-text-muted mt-0.5">
+                The action data served by the indexer hashes to a different value than the
+                <code className="mx-1">proposalDataHash</code> recorded when this proposal was
+                submitted. Do not vote on the summary below.
+              </p>
+            </div>
+          )}
           <ProposalActionSummary proposalData={proposal.proposal_data} daoId={daoId} />
 
           {/* Metadata */}
@@ -403,10 +432,25 @@ export function ProposalDetail() {
           <ProposalVotes daoId={daoId!} proposalId={proposalIdNum} />
         </div>
 
-        {/* Right column: voting sidebar (desktop) */}
+        {/*
+          ONE VotingSidebar. Previously mounted twice — `hidden lg:block` and
+          `lg:hidden` — so React mounted BOTH (CSS only hides one) and each ran its own
+          1-second countdown setInterval, doubling the tick and the subtree re-render the
+          component's own comment was written to contain.
+
+          Placement is CSS-only so mobile rendering is byte-for-byte unchanged:
+            - mobile: the container is a plain block (grid classes are `lg:` only), so
+              this renders in DOM order — AFTER the content, exactly where the old
+              `lg:hidden` instance rendered. (Its `order-first` was inert: `order` needs
+              a flex/grid parent, and there is none below `lg`.)
+            - desktop: explicit grid placement puts it in column 2 / row 1, which is
+              where the old `hidden lg:block` instance sat, and `lg:sticky` restores the
+              sticky behaviour that previously lived on an inner wrapper.
+          Mobile voting actions come from the fixed bottom bar below, not from here.
+        */}
         {!isTerminal && (
-          <div className="hidden lg:block">
-            <div className="sticky top-4">
+          <div className="mb-6 lg:mb-0 lg:col-start-2 lg:row-start-1">
+            <div className="lg:sticky lg:top-4">
               <VotingSidebar
                 proposal={proposal}
                 dao={dao}
@@ -426,7 +470,7 @@ export function ProposalDetail() {
                 onSponsor={() => actions.sponsor()}
                 onVote={handleVote}
                 onProcess={() => { if (processData !== null) actions.process(processData) }}
-                onCancel={() => actions.cancel()}
+                onCancel={() => setShowCancelConfirm(true)}
                 onConnect={connect}
                 proposalDataMissing={!proposal.proposal_data || processData === null}
                 isSponsorPending={actions.isSponsorPending}
@@ -436,40 +480,6 @@ export function ProposalDetail() {
                 actionErrors={actionErrors}
               />
             </div>
-          </div>
-        )}
-
-        {/* Mobile voting sidebar — shown above content on non-desktop */}
-        {!isTerminal && (
-          <div className="lg:hidden order-first mb-6">
-            <VotingSidebar
-              proposal={proposal}
-              dao={dao}
-              status={status}
-              daoId={daoId!}
-              daoConfig={daoConfig}
-              connected={connected}
-              userAddress={address}
-              userShares={member ? safeBigInt(member.voting_power) : 0n}
-              hasVoted={hasVoted}
-              delegatingTo={delegatingTo}
-              delegateVote={delegateVote}
-              delegateVoteReason={delegateVoteReason}
-              delegateProfile={delegateProfile ?? null}
-                priorVotes={priorVotes}
-              sponsorBelowThreshold={sponsorBelowThreshold}
-              onSponsor={() => actions.sponsor()}
-              onVote={handleVote}
-              onProcess={() => { if (processData !== null) actions.process(processData) }}
-              onCancel={() => actions.cancel()}
-              onConnect={connect}
-              proposalDataMissing={!proposal.proposal_data || processData === null}
-              isSponsorPending={actions.isSponsorPending}
-              isVotePending={isVoting}
-              isProcessPending={actions.isProcessPending}
-              isCancelPending={actions.isCancelPending}
-              actionErrors={actionErrors}
-            />
           </div>
         )}
 
@@ -500,6 +510,35 @@ export function ProposalDetail() {
       )}
       {/* Bottom padding to prevent content being hidden behind sticky bar */}
       {canVote && <div className="lg:hidden" style={{ height: 'calc(4rem + env(safe-area-inset-bottom))' }} />}
+
+      {/* Cancel confirmation — terminal on-chain action */}
+      <ConfirmDialog
+        isOpen={showCancelConfirm}
+        onClose={() => setShowCancelConfirm(false)}
+        onConfirm={() => {
+          setShowCancelConfirm(false)
+          actions.cancel()
+        }}
+        title="Cancel this proposal?"
+        message={
+          <>
+            <p>
+              Cancelling is permanent and happens on-chain. The proposal cannot be
+              revived, re-sponsored, or voted on afterwards — it would have to be
+              submitted again from scratch.
+            </p>
+            {proposal.sponsored && (
+              <p className="mt-2">
+                Any votes already cast on this proposal are discarded.
+              </p>
+            )}
+          </>
+        }
+        confirmText="Cancel proposal"
+        cancelText="Keep it"
+        variant="danger"
+        isLoading={actions.isCancelPending}
+      />
 
       {/* Vote Reason Modal */}
       <VoteReasonModal

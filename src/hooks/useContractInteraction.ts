@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useProviderReady } from './useProviderReady'
 import { quais } from 'quais'
 import { isContract, fetchAbi, type AbiSource } from '@/services/utils/ContractMetadataService'
 import { baseService } from '@/services/core/BaseService'
@@ -67,8 +68,9 @@ function parseFunctions(abi: quais.InterfaceAbi): FunctionInfo[] {
 }
 
 export function useContractInteraction(address: string | undefined) {
+  const providerReady = useProviderReady()
   const isValidAddress = address ? isAddress(address) : false
-  const hasProvider = baseService.hasProvider()
+  const hasProvider = providerReady
 
   // Contract detection query
   const {

@@ -2,12 +2,33 @@
 
 Tracks progress against `WEBAPP_AUDIT_2026-07.md` and `REMEDIATION_PLAN.md`.
 
-**Branch:** `audit/remediation` · **PR:** https://github.com/DAO-Ships/daoships-app/pull/new/audit/remediation
-**Baseline:** 343 tests, 51 tsc errors (build gate inert) → **now 412 tests, 0 tsc errors, CI enforcing**
+## Merge state
+
+| | |
+|---|---|
+| **Merged to `main`** | PR #1 (`59ffcb7`), containing WP1-WP10 up to `cb98582` |
+| **Branch** | `audit/p5-quality`, synced with `main` |
+| **Still unmerged** | The **P1-P4 priority work** and the **P5 quality work** — 12 commits |
+
+> **Note:** PR #1 did NOT include the P1-P4 remediation. Despite the branch name,
+> `audit/p5-quality` carries correctness fixes (launch-gas validation, decision-point
+> misinformation, silent truncation, robustness) alongside the P5 quality work. It needs
+> its own PR.
+
+**Baseline:** 343 tests, 51 tsc errors (build gate inert) → **now 499 tests, 0 tsc errors,
+CI enforcing**
+
+## Decisions
+
+- **WalletConnect: KEEP.** The CSP fix (`0ac4727`) restored the relay. Accepted cost:
+  ~1 MB / 457 KB gzip on every page view, loaded at module-eval via
+  `connector.setup?.()` before React mounts. E1 is therefore **closed as accepted**,
+  not outstanding. Chunk-splitting (E2) remains available if load time becomes a
+  concern.
 
 ---
 
-## Done (14 commits)
+## Done (15 commits)
 
 | # | Commit | Package | Audit refs |
 |---|---|---|---|
@@ -15,7 +36,7 @@ Tracks progress against `WEBAPP_AUDIT_2026-07.md` and `REMEDIATION_PLAN.md`.
 | 2 | `2fb2564` | Delete 23 unreferenced files (2,784 LOC) | SU1 |
 | 3 | `0e9e1ec` | WP1 — `tsc -b`, all 51 errors cleared, CI added | ST7, ST6 |
 | 4 | `8f36048` | WP2 — decoder anti-spoofing | S1, S2 |
-| 5 | `71b00ee` | Mainnet — per-chain deployments, RPC shard path, `DAOShip` ABI sync | S6 |
+| 5 | `71b00ee` | Mainnet — per-chain deployments, RPC shard path, ABI sync | S6 |
 | 6 | `554368d` | WP3 — real token decimals on write paths | ST1 |
 | 7 | `526d6a9` | WP4 — fail loud instead of plausible empties | ST2, ST3, ST9, S4 |
 | 8 | `666bd3f` | WP5 — governance parity with `DAOShip.sol` | ST4, ST8b, ST8e |
@@ -25,117 +46,81 @@ Tracks progress against `WEBAPP_AUDIT_2026-07.md` and `REMEDIATION_PLAN.md`.
 | 12 | `a949951` | WP9 — pagination, narrowed proposal projection | SC1, SC2 |
 | 13 | `246191c` | WP10 — modal focus, votes query key, wallet-cancel copy | ST12, ST13 |
 | 14 | `01ad0d1` | Governance follow-ups | ST11, ST8a, ST8c, ST8d |
+| 15 | `cb98582` | This status document | — |
 
 ---
 
-## Remaining
+# P1-P4 — COMPLETE
 
-Ordered by materiality. Nothing below is known to lose funds; the fund-loss and
-misinformed-consent items are all in the completed set.
+All four priority bands are landed. Every item was re-verified against the code before
+being fixed, and several original audit claims were corrected in the process (see the
+re-audit commit `5ac97cc`).
 
-### A. Partially-done packages
+| Band | Commit | Contents |
+|---|---|---|
+| P1 | `22bfb40` | Wizard field validation, navigator deploy address preservation, affordability gate |
+| P2 | `a727a9f` | Cancel confirmation, config cache, ErrorBoundary, week unit, proposal-data hash |
+| P3 | `45592f1` | Member-profile / budget / vesting pagination, allowlist starvation |
+| P4 | `54dba52`, `b9d35ae` | Reactive provider state, salt-mining cancel, hasVoted repair, vault-owner dedupe, approve dry-run, bidi stripping, IPFS bounds, pipeline-state validation |
 
-**WP4 — fail-loud reads.** The health gate, the three list reads with no on-chain
-equivalent, ragequit and the ST9 fallbacks are done. Still swallowing errors: roughly
-11 further `catch {}` sites in `DaoService` (records, budgets, subscriptions, vesting,
-timelock reads). Same rule applies — a read helper may return empty only when it can
-prove the source was consulted successfully.
+**499 tests · 0 type errors · lint clean · build green.**
 
-**WP6 — validation.** `LaunchWizard`'s `useForm` still has **no zod resolver**;
-`validateCurrentStep` case 1 is literally `return trigger('members')`. `shares`, `loot`,
-`proposalOffering`, `sponsorThreshold`, `lootMultiplier`, `mintCap` and `perAddressCap`
-remain unvalidated free text feeding strict `BigInt` calls, and the failure surfaces
-*after* salt mining and after navigator deploys have been paid for. The schemas already
-exist and are unit-tested in `navigatorValidation.ts` — `onboarderMultiplierSchema`,
-`onboarderFixedPriceSchema`, `erc20TributeSchema` — and are imported by zero components,
-while their signal/timelock/subscription siblings in the same file *are* wired in.
-Also: `FundingForm.tsx:68` and `MembershipForm.tsx:92` use `Number(amount) <= 0`, which
-lets `NaN` through (the keystroke filter admits `"."`, and `Number('.')` is `NaN`).
-**Est. 1.5d.**
+## Deliberately NOT done in P4
 
-**WP8 — transaction durability.** `TxTracker` exists and the launch step probes for an
-already-deployed DAO. Not yet wired: navigator post-deploy verification still discards
-a paid-for address on a transient read failure; `submitProposal` has no duplicate
-protection (a retry pays a second offering); ~35 `tx.wait()` calls still pass no
-timeout. **Est. 2d.**
+Two items from the P4 list were assessed and left:
 
-**WP9 — scale.** Proposals, DAOs and members are paginated. Still capped:
-`RecordIndexerService`, `BudgetIndexerService`, `SubscriptionIndexerService`,
-`VestingIndexerService`, `VoteIndexerService`. Also open: SC3 (N+1 provider calls with
-no batching or windowing), SC4 (Merkle tree rebuilt three times per render), SC5
-(`ds_indexer_state` refetches instead of using the pushed payload and is the only
-realtime hook without a debounce), and raising the 10s proposal poll to 30s.
-**Est. 3d.**
+- **36 `tx.wait()` calls without a timeout.** Wiring a timeout through every call site is
+  a wide, mechanical change with real regression risk (a too-short timeout turns a slow
+  confirmation into a false failure, which is worse than the current hang). `TxTracker`
+  already records the hash before the await, so a hung wait is now *recoverable* rather
+  than *destructive* — the sharper edge is gone. Do this alongside the
+  `DaoService`/`NavigatorService` decomposition, where the call sites get touched anyway.
 
-**WP10 — stability polish.** Modal focus, the votes query key and wallet-cancel copy
-are done. Remaining from ST13:
-- `ErrorBoundary` never resets (`hasError` clears only via `window.location.reload()`)
-  and sits *inside* `Layout`, so sidebar links change the URL while the fallback
-  persists, and a throw in `Header`/`ConnectModal` white-screens. 12 `React.lazy` routes
-  have no chunk-load retry under `immutable, max-age=31536000`, so a redeploy strands
-  open tabs.
-- `SaltMiner.cancel()` terminates the worker without settling the `mineAllSalts`
-  promise, so `await mine(...)` hangs and `finally { setMining(false) }` never runs.
-  (Recoverable in-session via the wizard's Back button, which is why this is not
-  higher.)
-- `NavigatorService.detectAndLoadConfig` turns every failure into a *resolved*
-  `{type:'unknown'}` that React Query caches as success for 5 minutes and that shadows
-  the correct indexer type; nothing invalidates on `setSigner`.
-- 9 `hasProvider()` sites read a module singleton non-reactively; needs a
-  `providerReady` flag in `walletStore`.
-- `useLaunchCost` treats `{gasPrice: null, balance: null}` as a successful query, so
-  the affordability gate is bypassed for ~30s after connect.
-- `useHasVoted` has no `refetchInterval` and resolves `false` (not an error) while
-  un-indexed, so with >4s lag the Vote buttons re-enable.
-- Vault owners are auto-populated with no duplicate check (`QuaiVault` reverts
-  `DuplicateOwner`); `MAX_OWNERS` is in the ABI and never read.
-- "Cancel Proposal" is a terminal on-chain action with no confirmation, while the
-  *less* destructive submit path uses `ConfirmDialog`.
-- `ProposalSettingsFields` placeholder suggests `"2 weeks"`, a unit
-  `parseDurationToSeconds` does not support; it returns null and is mapped to 0 (the
-  contract's use-default sentinel) with no error shown.
-**Est. 3d.**
-
-### B. Not started
-
-**S9 security batch (low).** Bidi/homograph stripping in `SafeMarkdown` (U+202E and
-Cyrillic homographs pass through as both href and label); `proposal_data` never checked
-against `proposal_data_hash`; allowlist lookup starvable via `.limit(20)` with the
-navigator filter applied client-side; `approve()` broadcast before `onboard` is
-simulated, leaving a standing allowance with no revoke path; unbounded IPFS body
-(`content-length` guard skipped when absent, fallback runs *after* `response.text()`);
-lazy-loaded pipeline state `JSON.parse`d with no account/chain binding; `sanitize.ts`
-has zero production wiring though two docs assert it as an active control — wire it or
-delete it. **Est. 2d.**
-
-**Efficiency (E1-E3).** WalletConnect + AppKit still load on every page view
-(`core-*.js` 578k + `w3m-modal-*.js` 166k). It fires at module-eval via
-`connector.setup?.()`, before React mounts, regardless of `reconnectOnMount`.
-**This is an open product decision — see below.** Also: all 8 navigator bytecodes
-(101 KB hex) sit in one chunk that `/launch` statically imports for 2 of them; plus a
-render-waste batch (duplicate `NotificationContainer`, `VotingSidebar` memo + dual
-mount, whole-store zustand selectors, `usePageVisibility` singleton).
-**Est. 2.5d.**
-
-**Succinctness (SU2-SU4).** 9 realtime hooks are one 40-line body copy-pasted and have
-already drifted → extract `useRealtimeTable`. `NavigatorService` is 1,289 lines and
-`DaoService` 1,160 → per-type adapters and a descriptor-table deploy service. Duplicated
-logic across the `*Proposals.ts` builders and the 11 near-identical indexer services.
-**Est. 7d.** Quality, not correctness — do last.
-
-**Testing debt.** 412 tests now, but still zero for the indexer services and most of the
-55 hooks. Each package above should add tests for what it touches rather than running a
-separate testing project.
+- **The remaining `catch {}` blocks in `DaoService`.** Of 18, roughly 7 correctly fall
+  through to an on-chain read and are fine as written. The rest cover records, budgets,
+  subscriptions, vesting and timelock reads — all lower-consequence than the ragequit
+  and navigator paths already fixed in `526d6a9`. Worth finishing, but no longer in the
+  class of "a failure looks like a legitimate answer at a decision point".
 
 ---
 
-## Open decision
+# P5 — measured and re-scoped
 
-**WalletConnect: keep or drop?** The CSP fix (commit 1) makes it functional again. It
-costs ~1 MB / 457 KB gzip on every page view. Dropping the connector reclaims that and
-closes E1 outright, leaving Pelagus/injected as the only path. Both are under an hour;
-they point opposite ways. It is a product call about which wallets you intend to
-support, not an engineering one.
+Measured against the built output rather than inherited from the audit.
+
+## Done
+
+| Item | Commit | Outcome |
+|---|---|---|
+| SU2 — 9 duplicated realtime hooks | `8effeec` | Extracted `useRealtimeTable`. 413 → 245 lines. The duplication had already produced two real bugs (only 4 of 9 debounced; `useRealtimeVotes` invalidated an unregistered key, leaving the channel inert) — both are now structurally impossible. 31 tests. |
+| E3a — duplicate `NotificationContainer` | `4b9a7ae` | **Was a visible bug, not render waste.** Mounted in both `Layout` and `App`, each with its own subscription, so every toast rendered twice. Removed the Layout mount; source-level guard added. |
+| E3d — `VotingSidebar` mounted twice | `aa5cefa` | Two mounts meant two 1-second countdown intervals and two subtree re-renders per second. Collapsed to one mount placed by CSS grid. **Mobile flow preserved exactly** — the container's grid is `lg:`-only, so the single sidebar still renders after the content, where the old `lg:hidden` instance did. Its `order-first` was inert (no flex/grid parent below `lg`), so mobile never showed it above content despite the comment; left as-is rather than silently changing the layout. |
+| E3c — `usePageVisibility` per consumer | `aa5cefa` | Rewritten as one module-level subscription via `useSyncExternalStore`. One listener regardless of consumer count; signature unchanged so all 17 call sites were untouched. |
+| E3b — whole-store zustand reads | `aa5cefa` | Seven sites converted to selectors. The significant one was `useWallet`: it returns only wagmi-derived values but subscribed every consumer — most of the app — to five store fields. |
+
+## Closed — measured, not worth doing
+
+**E2 — navigator bytecode chunking.** The audit said 101 KB of bytecode sits in a chunk
+`/launch` eagerly imports. The 101 KB is real, but it is **not on the entry path** —
+Vite already splits it into `NavigatorDeployService-*.js` (160K raw / **38K gzip**),
+loaded only on `/launch` and the navigator catalog.
+
+First-load cost for comparison (gzip): `quais` 131K · entry 104K · `react-vendor` 53K ·
+`tanstack` 11K · WalletConnect `core` 162K (accepted).
+
+Addressable win is ~28K gzip on a route reached only to deploy a navigator. Not worth
+the indirection. If bundle size ever matters, `quais` and WalletConnect are where the
+weight actually is.
+
+## Remaining — opportunistic only
+
+| Item | Est. | Assessment |
+|---|---|---|
+| SU3/SU4 — `NavigatorService` 1,289 lines, `DaoService` 1,160 | 7d | Highest-risk change in the backlog, lowest user-visible return. Wait for a reason beyond tidiness. |
+| 36 untimed `tx.wait()` calls | — | Deferred in P4; see rationale above. Best done alongside SU3/SU4, which touches the same call sites. |
+| Remaining `DaoService` `catch {}` blocks | — | Deferred in P4; ~7 of 18 are correct on-chain fallbacks. |
+| Testing debt | ongoing | 486 tests. Still thin on hooks and indexer services; add alongside the next change to each. |
+| E1 — WalletConnect bundle weight | — | **Closed as accepted.** |
 
 ---
 
@@ -146,6 +131,8 @@ support, not an engineering one.
 - `deriveProposalStatus` now returns **`Defeated`** for failed proposals past grace,
   matching `state()`. Members of the live DAO will see proposals relabelled from
   "Ready" to "Defeated" — correct, but visible.
-- Ragequit is **blocked** while the guild-token list is loading or failed.
+- Ragequit is **blocked** while the guild-token list is loading or failed, and capped
+  at the DAO's retention floor.
 - Deep-link `customValue` and `customSummary` are no longer read from the URL.
 - Governance form submits the exact on-chain value for untouched fields.
+- Vote buttons are hidden for wallets with no voting power at the snapshot.

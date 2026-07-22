@@ -143,6 +143,52 @@ export interface NFTGatedDeployParams {
  * Deploys navigator contracts using quais.ContractFactory.
  * Navigators are immutable once deployed — all config is set in the constructor.
  */
+
+/**
+ * Post-deployment verification that never loses a paid-for address.
+ *
+ * The contract is already deployed and paid for (~1.4M gas) by the time this runs.
+ * Previously the navigatorType()/daoShip() reads were unguarded, so a transient RPC
+ * failure was indistinguishable from a genuine type mismatch: the method threw and
+ * `address` — the only record of the deployment — was discarded. Retrying then deployed
+ * a duplicate and orphaned the first, whose allowlist Poster post never ran.
+ *
+ * A real mismatch still throws: that means we deployed something wrong, or the address
+ * belongs to someone else's contract, and proceeding would be worse.
+ * A read failure only warns — the caller keeps the address and can verify later.
+ */
+async function verifyDeployedNavigator(
+  address: string,
+  abi: quais.InterfaceAbi,
+  expectedType: string,
+  expectedDaoShip: string,
+): Promise<void> {
+  let navType: string
+  let daoShipOnChain: string
+  try {
+    const deployed = new quais.Contract(address, abi, baseService.getProvider())
+    ;[navType, daoShipOnChain] = await Promise.all([
+      deployed.navigatorType() as Promise<string>,
+      deployed.daoShip() as Promise<string>,
+    ])
+  } catch (err) {
+    console.warn(
+      `[NavigatorDeployService] Could not verify ${expectedType} at ${address} `
+      + '(transport failure, not a mismatch). The contract IS deployed — keeping the '
+      + 'address rather than discarding it and deploying a duplicate.',
+      err,
+    )
+    return
+  }
+
+  if (navType !== expectedType) {
+    throw new Error(`Deployed contract is not a ${expectedType} (got type: ${navType})`)
+  }
+  if (!addressesEqual(daoShipOnChain, expectedDaoShip)) {
+    throw new Error(`Navigator daoShip mismatch: expected ${expectedDaoShip}, got ${daoShipOnChain}`)
+  }
+}
+
 class NavigatorDeployService {
 
   /**
@@ -230,15 +276,7 @@ class NavigatorDeployService {
     const address = await contract.getAddress()
 
     // Post-deployment verification
-    const deployed = new quais.Contract(address, OnboarderNavigatorABI, baseService.getProvider())
-    const navType = await deployed.navigatorType()
-    if (navType !== 'OnboarderNavigator') {
-      throw new Error(`Deployed contract is not an OnboarderNavigator (got type: ${navType})`)
-    }
-    const daoShipOnChain = await deployed.daoShip()
-    if (!addressesEqual(daoShipOnChain, params.daoShipAddress)) {
-      throw new Error(`Navigator daoShip mismatch: expected ${params.daoShipAddress}, got ${daoShipOnChain}`)
-    }
+    await verifyDeployedNavigator(address, OnboarderNavigatorABI, 'OnboarderNavigator', params.daoShipAddress)
 
     return address
   }
@@ -281,11 +319,9 @@ class NavigatorDeployService {
     const address = await contract.getAddress()
 
     // Post-deployment verification
-    const deployed = new quais.Contract(address, ERC20TributeNavigatorABI, baseService.getProvider())
-    const navType = await deployed.navigatorType()
-    if (navType !== 'ERC20TributeNavigator') {
-      throw new Error(`Deployed contract is not an ERC20TributeNavigator (got type: ${navType})`)
-    }
+    await verifyDeployedNavigator(
+      address, ERC20TributeNavigatorABI, 'ERC20TributeNavigator', params.daoShipAddress,
+    )
 
     return address
   }
@@ -324,17 +360,7 @@ class NavigatorDeployService {
     const address = await contract.getAddress()
 
     // Post-deployment verification: type + DAO binding.
-    const deployed = new quais.Contract(address, SignalNavigatorABI, baseService.getProvider())
-    const [navType, daoShipOnChain] = await Promise.all([
-      deployed.navigatorType(),
-      deployed.daoShip(),
-    ])
-    if (navType !== 'SignalNavigator') {
-      throw new Error(`Deployed contract is not a SignalNavigator (got type: ${navType})`)
-    }
-    if (!addressesEqual(daoShipOnChain, params.daoShipAddress)) {
-      throw new Error(`Navigator daoShip mismatch: expected ${params.daoShipAddress}, got ${daoShipOnChain}`)
-    }
+    await verifyDeployedNavigator(address, SignalNavigatorABI, 'SignalNavigator', params.daoShipAddress)
 
     return address
   }
@@ -369,17 +395,7 @@ class NavigatorDeployService {
     const address = await contract.getAddress()
 
     // Post-deployment verification: type + DAO binding.
-    const deployed = new quais.Contract(address, VestingNavigatorABI, baseService.getProvider())
-    const [navType, daoShipOnChain] = await Promise.all([
-      deployed.navigatorType(),
-      deployed.daoShip(),
-    ])
-    if (navType !== 'VestingNavigator') {
-      throw new Error(`Deployed contract is not a VestingNavigator (got type: ${navType})`)
-    }
-    if (!addressesEqual(daoShipOnChain, params.daoShipAddress)) {
-      throw new Error(`Navigator daoShip mismatch: expected ${params.daoShipAddress}, got ${daoShipOnChain}`)
-    }
+    await verifyDeployedNavigator(address, VestingNavigatorABI, 'VestingNavigator', params.daoShipAddress)
 
     return address
   }
@@ -416,17 +432,7 @@ class NavigatorDeployService {
     const address = await contract.getAddress()
 
     // Post-deployment verification: type + DAO binding.
-    const deployed = new quais.Contract(address, BudgetNavigatorABI, baseService.getProvider())
-    const [navType, daoShipOnChain] = await Promise.all([
-      deployed.navigatorType(),
-      deployed.daoShip(),
-    ])
-    if (navType !== 'BudgetNavigator') {
-      throw new Error(`Deployed contract is not a BudgetNavigator (got type: ${navType})`)
-    }
-    if (!addressesEqual(daoShipOnChain, params.daoShipAddress)) {
-      throw new Error(`Navigator daoShip mismatch: expected ${params.daoShipAddress}, got ${daoShipOnChain}`)
-    }
+    await verifyDeployedNavigator(address, BudgetNavigatorABI, 'BudgetNavigator', params.daoShipAddress)
 
     return address
   }
@@ -463,17 +469,7 @@ class NavigatorDeployService {
     const address = await contract.getAddress()
 
     // Post-deployment verification: type + DAO binding.
-    const deployed = new quais.Contract(address, TimelockNavigatorABI, baseService.getProvider())
-    const [navType, daoShipOnChain] = await Promise.all([
-      deployed.navigatorType(),
-      deployed.daoShip(),
-    ])
-    if (navType !== 'TimelockNavigator') {
-      throw new Error(`Deployed contract is not a TimelockNavigator (got type: ${navType})`)
-    }
-    if (!addressesEqual(daoShipOnChain, params.daoShipAddress)) {
-      throw new Error(`Navigator daoShip mismatch: expected ${params.daoShipAddress}, got ${daoShipOnChain}`)
-    }
+    await verifyDeployedNavigator(address, TimelockNavigatorABI, 'TimelockNavigator', params.daoShipAddress)
 
     return address
   }
@@ -516,17 +512,7 @@ class NavigatorDeployService {
     const address = await contract.getAddress()
 
     // Post-deployment verification: type + DAO binding.
-    const deployed = new quais.Contract(address, SubscriptionNavigatorABI, baseService.getProvider())
-    const [navType, daoShipOnChain] = await Promise.all([
-      deployed.navigatorType(),
-      deployed.daoShip(),
-    ])
-    if (navType !== 'SubscriptionNavigator') {
-      throw new Error(`Deployed contract is not a SubscriptionNavigator (got type: ${navType})`)
-    }
-    if (!addressesEqual(daoShipOnChain, params.daoShipAddress)) {
-      throw new Error(`Navigator daoShip mismatch: expected ${params.daoShipAddress}, got ${daoShipOnChain}`)
-    }
+    await verifyDeployedNavigator(address, SubscriptionNavigatorABI, 'SubscriptionNavigator', params.daoShipAddress)
 
     return address
   }
@@ -607,20 +593,24 @@ class NavigatorDeployService {
     const address = await contract.getAddress()
 
     // Post-deployment verification: type, DAO binding, and the security-critical gate address.
-    const deployed = new quais.Contract(address, NFTGatedNavigatorABI, baseService.getProvider())
-    const [navType, daoShipOnChain, gateOnChain] = await Promise.all([
-      deployed.navigatorType(),
-      deployed.daoShip(),
-      deployed.gateToken(),
-    ])
-    if (navType !== 'NFTGatedNavigator') {
-      throw new Error(`Deployed contract is not an NFTGatedNavigator (got type: ${navType})`)
-    }
-    if (!addressesEqual(daoShipOnChain, params.daoShipAddress)) {
-      throw new Error(`Navigator daoShip mismatch: expected ${params.daoShipAddress}, got ${daoShipOnChain}`)
-    }
-    if (!addressesEqual(gateOnChain, params.gateToken)) {
-      throw new Error(`Navigator gateToken mismatch: expected ${params.gateToken}, got ${gateOnChain}`)
+    await verifyDeployedNavigator(
+      address, NFTGatedNavigatorABI, 'NFTGatedNavigator', params.daoShipAddress,
+    )
+    // The gate address decides who can mint, so it gets its own check — still guarded,
+    // since a failed read must not discard a deployed contract.
+    try {
+      const gateOnChain = await new quais.Contract(
+        address, NFTGatedNavigatorABI, baseService.getProvider(),
+      ).gateToken() as string
+      if (!addressesEqual(gateOnChain, params.gateToken)) {
+        throw new Error(`Navigator gateToken mismatch: expected ${params.gateToken}, got ${gateOnChain}`)
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('gateToken mismatch')) throw err
+      console.warn(
+        `[NavigatorDeployService] Could not verify gateToken at ${address}; contract IS deployed.`,
+        err,
+      )
     }
 
     return address

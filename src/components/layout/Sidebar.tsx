@@ -95,7 +95,12 @@ function MoonIcon() {
 
 
 export function Sidebar() {
-  const { sidebarOpen, setSidebarOpen, theme, setTheme } = useUiStore()
+  // Sidebar genuinely reads all four, but selectors keep it consistent with the rest
+  // and avoid re-rendering on any future field added to the store.
+  const sidebarOpen = useUiStore((s) => s.sidebarOpen)
+  const setSidebarOpen = useUiStore((s) => s.setSidebarOpen)
+  const theme = useUiStore((s) => s.theme)
+  const setTheme = useUiStore((s) => s.setTheme)
   const daoMatch = useMatch('/dao/:daoId/*')
   const daoId = daoMatch?.params.daoId
   const isDark = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)

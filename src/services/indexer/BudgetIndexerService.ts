@@ -9,6 +9,7 @@
 
 import { supabase } from '@/config/supabase'
 import { indexerError } from './indexerError'
+import { fetchAllPages, MAX_ROWS } from './paginate'
 import type { BudgetRow, BudgetDisbursementRow, VaultModuleEventRow } from '@/types'
 
 class BudgetIndexerService {
@@ -75,16 +76,22 @@ class BudgetIndexerService {
   async listDisbursementsByNavigator(navigatorAddress: string): Promise<BudgetDisbursementRow[]> {
     if (!supabase) return []
 
-    const { data, error } = await supabase
+    const { rows, truncated } = await fetchAllPages<BudgetDisbursementRow>(
+      () => supabase!
       .from('ds_budget_disbursements')
       .select('*')
       .eq('navigator_address', navigatorAddress.toLowerCase())
-      .order('block_number', { ascending: false })
-      .limit(200)
+      .order('block_number', { ascending: false }) as never,
+      (error) => indexerError('[BudgetIndexerService] listDisbursementsByNavigator', error),
+    )
+    if (truncated) {
+      console.warn(
+        `[listDisbursementsByNavigator] hit the ${MAX_ROWS}-row ceiling — this feed is incomplete, `
+        + 'and the per-item history grouped from it client-side will be missing entries.',
+      )
+    }
 
-    if (error) indexerError('[BudgetIndexerService] listDisbursementsByNavigator', error)
-
-    return (data as BudgetDisbursementRow[]) ?? []
+    return rows
   }
 
   /**

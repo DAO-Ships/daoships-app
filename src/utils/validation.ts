@@ -5,6 +5,52 @@
 import { z } from 'zod'
 import { isAddress } from '@/services/utils/AddressUtils'
 
+// ── react-hook-form validators ────────────────────────────────────────────
+
+/**
+ * Validate a human-entered token amount destined for parseTokenAmount().
+ *
+ * These fields fed strict BigInt conversion with NO validation rules registered —
+ * `useController({control, name})` and `control.register(name)` without `rules` make
+ * the wizard's `trigger()` call a no-op. Verified failure modes:
+ *
+ *   "1,000"                 -> throws "Cannot convert 1,000000000000000000000 to a BigInt"
+ *   "abc" / "1e3"           -> throws
+ *   "0.0000000000000000001" -> silently 0n (a founding member minted zero shares)
+ *   "  "                    -> silently 0n
+ *
+ * The throw surfaces AFTER salt mining and after navigator deploys have been paid for.
+ *
+ * @param opts.allowZero    permit "0" (loot and offerings may legitimately be zero)
+ * @param opts.label        field name used in the message
+ */
+export function validateTokenAmount(
+  value: string | undefined,
+  opts: { allowZero?: boolean; label?: string } = {},
+): true | string {
+  const { allowZero = true, label = 'Amount' } = opts
+  const raw = (value ?? '').trim()
+
+  if (raw === '') return allowZero ? true : `${label} is required`
+
+  // Reject thousands separators, scientific notation, signs and stray text up front —
+  // parseTokenAmount would otherwise throw deep inside the launch pipeline.
+  if (!/^\d+(\.\d+)?$/.test(raw)) {
+    return `${label} must be a plain number (no commas, letters, or scientific notation)`
+  }
+
+  const [, fraction = ''] = raw.split('.')
+  if (fraction.length > 18) {
+    return `${label} cannot have more than 18 decimal places`
+  }
+
+  // Non-empty input that scales to zero is a silent footgun, not a valid entry.
+  const scalesToZero = /^0*(\.0*)?$/.test(raw)
+  if (scalesToZero && !allowZero) return `${label} must be greater than zero`
+
+  return true
+}
+
 // ── Shared field patterns ─────────────────────────────────────────────────
 
 /** Ethereum / Quai 0x-prefixed address (format + EIP-55 checksum, via quais) */

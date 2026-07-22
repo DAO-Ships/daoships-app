@@ -41,6 +41,8 @@ export interface LaunchCostEstimate {
   balance: bigint | null
   /** Balance is known and below the buffered total. Blocks the launch. */
   insufficient: boolean
+  /** True while gas price or balance is still unresolved — insufficient is conservative. */
+  costUnknown: boolean
   /** Balance clears the gate but by less than LOW_BALANCE_WARN_PERCENT. */
   low: boolean
   /** Shortfall when insufficient, else 0n. */
@@ -141,14 +143,23 @@ export function useLaunchCost(formData: LaunchFormValues): LaunchCostEstimate {
   const requiredBalance =
     totalCost == null ? null : (totalCost * (100n + ESTIMATE_BUFFER_PERCENT)) / 100n
 
-  const insufficient = requiredBalance != null && balance != null && balance < requiredBalance
+  // Unknown cost must BLOCK, not read as affordable. The query resolves successfully
+  // with {gasPrice: null, balance: null} for ~30s after connect — before the wallet
+  // provider is installed — so the old `balance != null &&` guard made `insufficient`
+  // false and opened the gate on a 3-4 transaction paid pipeline the user might not be
+  // able to fund. `costUnknown` is exposed so the UI can say "checking…" rather than
+  // claiming a shortfall.
+  const costUnknown = requiredBalance == null || balance == null
+  const insufficient = costUnknown ? true : balance < requiredBalance
   const low =
     !insufficient &&
+    !costUnknown &&
     requiredBalance != null &&
     balance != null &&
     balance < (requiredBalance * (100n + LOW_BALANCE_WARN_PERCENT)) / 100n
 
   return {
+    costUnknown,
     lines,
     totalGas,
     gasPrice,

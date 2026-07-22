@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { baseService } from '@/services/core/BaseService'
+import { useProviderReady } from './useProviderReady'
 import { fetchTokenMetadata, type TokenMetadata } from '@/utils/tokenMetadata'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -12,7 +12,8 @@ import { fetchTokenMetadata, type TokenMetadata } from '@/utils/tokenMetadata'
 export type { TokenMetadata }
 
 export function useTokenMetadata(tokenAddress: string | undefined | null) {
-  const hasProvider = baseService.hasProvider()
+  const providerReady = useProviderReady()
+  const hasProvider = providerReady
 
   return useQuery<TokenMetadata>({
     queryKey: ['tokenMetadata', tokenAddress?.toLowerCase()],
