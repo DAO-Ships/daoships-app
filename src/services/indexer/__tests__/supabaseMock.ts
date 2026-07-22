@@ -14,6 +14,8 @@
 export interface QueryResult<T = unknown> {
   data: T | null
   error: { message: string } | null
+  /** Present only for `head: true` count queries. */
+  count?: number | null
 }
 
 type Filter =
@@ -21,6 +23,7 @@ type Filter =
   | ['eq', string, unknown]
   | ['in', string, unknown[]]
   | ['or', string]
+  | ['ilike', string, string]
   | ['range', number, number]
 
 /**
@@ -38,7 +41,7 @@ export class MockQuery<T = unknown> implements PromiseLike<QueryResult<T>> {
     private readonly result: QueryResult<T>,
   ) {}
 
-  select(cols: string): this {
+  select(cols: string, _opts?: unknown): this {
     this.filters.push(['select', cols])
     return this
   }
@@ -52,6 +55,10 @@ export class MockQuery<T = unknown> implements PromiseLike<QueryResult<T>> {
   }
   or(expr: string): this {
     this.filters.push(['or', expr])
+    return this
+  }
+  ilike(col: string, pattern: string): this {
+    this.filters.push(['ilike', col, pattern])
     return this
   }
   order(col: string, opts?: { ascending?: boolean }): this {
@@ -96,6 +103,18 @@ export class MockQuery<T = unknown> implements PromiseLike<QueryResult<T>> {
   orArg(): string | undefined {
     const f = this.filters.find((x) => x[0] === 'or')
     return f ? (f as ['or', string])[1] : undefined
+  }
+
+  /** Pattern passed to `.ilike(col, …)`. */
+  ilikeArg(col: string): string | undefined {
+    const f = this.filters.find((x) => x[0] === 'ilike' && x[1] === col)
+    return f ? (f as ['ilike', string, string])[2] : undefined
+  }
+
+  /** The comma-joined column list passed to `.select(…)`. */
+  selectArg(): string | undefined {
+    const f = this.filters.find((x) => x[0] === 'select')
+    return f ? (f as ['select', string])[1] : undefined
   }
 }
 
