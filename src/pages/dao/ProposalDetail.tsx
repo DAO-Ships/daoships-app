@@ -12,6 +12,7 @@ import { useMember } from '@/hooks/useMember'
 import { useMemberProfile, useMemberProfiles } from '@/hooks/useMemberProfile'
 import { useWallet } from '@/hooks/useWallet'
 import { useHasVoted } from '@/hooks/useHasVoted'
+import { usePriorVotes } from '@/hooks/usePriorVotes'
 import { useVoteReasons } from '@/hooks/useVoteReasons'
 import { useRealtimeProposal } from '@/hooks/useRealtimeProposal'
 import { useRealtimeVotes } from '@/hooks/useRealtimeVotes'
@@ -73,6 +74,8 @@ export function ProposalDetail() {
   const { data: member } = useMember(daoId, address ?? undefined)
   const { data: hasVoted = false } = useHasVoted(daoId, proposalId ? Number(proposalId) : undefined, address ?? undefined)
   const { data: proposalVotes } = useProposalVotes(daoId, proposalId ? Number(proposalId) : undefined)
+  // Contract gate: getPriorVotes(voter, votingStarts) must be non-zero to vote.
+  const { data: priorVotes } = usePriorVotes(daoId, address ?? undefined, proposal?.voting_starts)
   const { data: voteReasonsList } = useVoteReasons(daoId, proposalId ? Number(proposalId) : undefined)
 
   // Sponsor threshold check
@@ -418,6 +421,7 @@ export function ProposalDetail() {
                 delegateVote={delegateVote}
                 delegateVoteReason={delegateVoteReason}
                 delegateProfile={delegateProfile ?? null}
+                priorVotes={priorVotes}
                 sponsorBelowThreshold={sponsorBelowThreshold}
                 onSponsor={() => actions.sponsor()}
                 onVote={handleVote}
@@ -452,6 +456,7 @@ export function ProposalDetail() {
               delegateVote={delegateVote}
               delegateVoteReason={delegateVoteReason}
               delegateProfile={delegateProfile ?? null}
+                priorVotes={priorVotes}
               sponsorBelowThreshold={sponsorBelowThreshold}
               onSponsor={() => actions.sponsor()}
               onVote={handleVote}

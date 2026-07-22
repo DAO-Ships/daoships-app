@@ -661,6 +661,7 @@ export function Members() {
             decimals: tb.decimals,
           }))}
           guildTokensStatus={guildTokensStatus}
+          minRetentionBps={safeBigInt(dao.min_retention_percent)}
           totalSupply={safeBigInt(dao.total_shares) + safeBigInt(dao.total_loot)}
         />
       )}

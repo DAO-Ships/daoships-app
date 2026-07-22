@@ -25,6 +25,7 @@ interface VotingSidebarProps {
   delegateVote: Vote | null
   delegateVoteReason: string | null
   delegateProfile: MemberProfile | null
+  priorVotes?: bigint
   sponsorBelowThreshold: boolean
   // Action callbacks
   onSponsor: () => void
@@ -44,7 +45,7 @@ interface VotingSidebarProps {
 export const VotingSidebar = memo(function VotingSidebar({
   proposal, dao, status, daoId, daoConfig,
   connected, userAddress, userShares, hasVoted,
-  delegatingTo, delegateVote, delegateVoteReason, delegateProfile,
+  delegatingTo, delegateVote, delegateVoteReason, delegateProfile, priorVotes,
   sponsorBelowThreshold,
   onSponsor, onVote, onProcess, onCancel, onConnect,
   proposalDataMissing,
@@ -217,6 +218,7 @@ export const VotingSidebar = memo(function VotingSidebar({
             delegateVote={delegateVote}
             delegateVoteReason={delegateVoteReason}
             delegateProfile={delegateProfile}
+            priorVotes={priorVotes}
             onSponsor={onSponsor}
             onVote={onVote}
             onProcess={onProcess}

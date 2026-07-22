@@ -26,6 +26,12 @@ interface ProposalActionsProps {
   delegateVoteReason?: string | null
   /** Profile of the delegate, if available */
   delegateProfile?: MemberProfile | null
+  /**
+   * Voting power at the proposal's votingStarts snapshot. undefined = not yet
+   * resolved (do not block on it); 0n = confirmed no power, so the contract would
+   * reject the vote.
+   */
+  priorVotes?: bigint
   onSponsor?: () => void
   onVote?: (approved: boolean) => void
   onProcess?: () => void
@@ -51,6 +57,7 @@ export function ProposalActions({
   delegateVote,
   delegateVoteReason,
   delegateProfile,
+  priorVotes,
   onSponsor,
   onVote,
   onProcess,
@@ -80,7 +87,13 @@ export function ProposalActions({
   const isProposer = userAddress.toLowerCase() === proposal.submitter?.toLowerCase()
   const isExpired = status === ProposalStatus.Expired
   const canSponsor = status === ProposalStatus.Submitted && userShares >= sponsorThreshold
+  // The contract requires getPriorVotes(msg.sender, prop.votingStarts) != 0
+  // (DAOShip.submitVote). Without this, members onboarded mid-vote and zero-share
+  // wallets saw an enabled Vote button that reverts at gas estimation.
+  // undefined means "not resolved yet" — do not block on a pending or failed read.
+  const hasNoSnapshotPower = priorVotes !== undefined && priorVotes === 0n
   const canVote = status === ProposalStatus.Voting && !hasVoted && !hasDelegated
+    && !hasNoSnapshotPower
   const canProcess = status === ProposalStatus.Ready
   const isCancellableStatus = status === ProposalStatus.Submitted || status === ProposalStatus.Voting
   const canCancelAsProposer = isProposer && isCancellableStatus
@@ -88,8 +101,12 @@ export function ProposalActions({
   const canCancel = canCancelAsProposer || canCancelSponsorBelow
 
   const showVotedMessage = status === ProposalStatus.Voting && hasVoted
+  // Explain the disabled Vote button rather than leaving it silently absent.
+  const showNoSnapshotPower = status === ProposalStatus.Voting && !hasVoted
+    && !hasDelegated && hasNoSnapshotPower
   const showDelegationInfo = status === ProposalStatus.Voting && hasDelegated
-  const hasActions = canSponsor || canVote || canProcess || canCancel || showVotedMessage || showDelegationInfo || isExpired || sponsorBelowThreshold
+  const hasActions = canSponsor || canVote || canProcess || canCancel || showVotedMessage
+    || showDelegationInfo || isExpired || sponsorBelowThreshold || showNoSnapshotPower
 
   if (!hasActions) {
     return null
@@ -114,6 +131,17 @@ export function ProposalActions({
         )}
 
         {/* Vote buttons */}
+        {showNoSnapshotPower && (
+          <div className="bg-dao-surface/60 border border-dao-border rounded-lg px-4 py-3">
+            <p className="text-sm text-dao-text-secondary font-medium">
+              You had no voting power when this vote opened.
+            </p>
+            <p className="text-xs text-dao-text-muted mt-0.5">
+              Voting power is snapshotted at the moment voting starts, so shares received
+              after that do not count for this proposal.
+            </p>
+          </div>
+        )}
         {canVote && onVote && (
           <>
             <Button
