@@ -2,21 +2,52 @@
 
 Tracks progress against `WEBAPP_AUDIT_2026-07.md` and `REMEDIATION_PLAN.md`.
 
-## Merge state
+## Merge state — ALL MERGED
 
 | | |
 |---|---|
-| **Merged to `main`** | PR #1 (`59ffcb7`), containing WP1-WP10 up to `cb98582` |
-| **Branch** | `audit/p5-quality`, synced with `main` |
-| **Still unmerged** | The **P1-P4 priority work** and the **P5 quality work** — 12 commits |
+| PR #1 (`59ffcb7`) | WP1-WP10 remediation |
+| PR #2 (`d036b1b`) | P1-P4 priority work + P5 quality work |
 
-> **Note:** PR #1 did NOT include the P1-P4 remediation. Despite the branch name,
-> `audit/p5-quality` carries correctness fixes (launch-gas validation, decision-point
-> misinformation, silent truncation, robustness) alongside the P5 quality work. It needs
-> its own PR.
+Everything described in this document is on `main`. Both feature branches are merged and
+deleted. `main` verified green after PR #2: **499 tests · 0 tsc errors · lint clean ·
+build succeeds**.
 
-**Baseline:** 343 tests, 51 tsc errors (build gate inert) → **now 499 tests, 0 tsc errors,
-CI enforcing**
+**Baseline → now:** 343 tests / 51 tsc errors with an inert build gate → 499 tests /
+0 errors / CI enforcing.
+
+## Next session — start here
+
+Nothing is in flight; the tree is clean and `main` is green. In rough priority order:
+
+### 1. Visual check on the E3d layout change (5 min, do this first)
+`aa5cefa` collapsed two `VotingSidebar` mounts into one placed by CSS grid. Verified
+structurally (classes emitted, compiled CSS correct, guard tests fail on regression) but
+**never rendered in a browser**. Open an **active, non-terminal** proposal at
+`/dao/:daoId/proposals/:proposalId` and confirm at desktop and mobile widths that the
+sidebar sits where it always did and the countdown ticks. If it is wrong it is a visible,
+trivially-revertable CSS issue.
+
+### 2. Deferred from P4, with reasons (see "Deliberately NOT done" below)
+- **36 `tx.wait()` calls with no timeout.** Deferred because a too-short timeout turns a
+  slow confirmation into a false failure — worse than the current hang — and `TxTracker`
+  already makes a hung wait recoverable rather than destructive. Best done alongside the
+  service decomposition, which touches the same call sites.
+- **Remaining `catch {}` blocks in `DaoService`.** ~7 of 18 are correct on-chain
+  fallbacks; the rest cover records/budgets/vesting reads.
+
+### 3. The AI-agent integration plan
+`docs/AI_AGENT_INTEGRATION_PLAN.md` is written, audited, and **untouched since**. Its Day-1
+item (fixing the 6-field `governanceConfig` in `daoships-www`, which is fatal to any agent
+following the published guide) is still open. Note the per-chain address table it depends
+on has since shipped as `src/config/deployments.ts`, so that blocker is gone.
+
+### 4. Backlog
+`SU3`/`SU4` service decomposition (~7d, highest risk / lowest visible return — wait for a
+reason beyond tidiness) and testing debt (499 tests, still thin on hooks and indexer
+services; add alongside the next change to each area).
+
+---
 
 ## Decisions
 
