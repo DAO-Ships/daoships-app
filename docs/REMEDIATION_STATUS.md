@@ -2,8 +2,21 @@
 
 Tracks progress against `WEBAPP_AUDIT_2026-07.md` and `REMEDIATION_PLAN.md`.
 
-**Branch:** `audit/remediation` · **PR:** https://github.com/DAO-Ships/daoships-app/pull/new/audit/remediation
-**Baseline:** 343 tests, 51 tsc errors (build gate inert) → **now 412 tests, 0 tsc errors, CI enforcing**
+## Merge state
+
+| | |
+|---|---|
+| **Merged to `main`** | PR #1 (`59ffcb7`), containing WP1-WP10 up to `cb98582` |
+| **Branch** | `audit/p5-quality`, synced with `main` |
+| **Still unmerged** | The **P1-P4 priority work** and the **P5 quality work** — 12 commits |
+
+> **Note:** PR #1 did NOT include the P1-P4 remediation. Despite the branch name,
+> `audit/p5-quality` carries correctness fixes (launch-gas validation, decision-point
+> misinformation, silent truncation, robustness) alongside the P5 quality work. It needs
+> its own PR.
+
+**Baseline:** 343 tests, 51 tsc errors (build gate inert) → **now 499 tests, 0 tsc errors,
+CI enforcing**
 
 ## Decisions
 
@@ -50,7 +63,7 @@ re-audit commit `5ac97cc`).
 | P3 | `45592f1` | Member-profile / budget / vesting pagination, allowlist starvation |
 | P4 | `54dba52`, `b9d35ae` | Reactive provider state, salt-mining cancel, hasVoted repair, vault-owner dedupe, approve dry-run, bidi stripping, IPFS bounds, pipeline-state validation |
 
-**486 tests · 0 type errors · lint clean · build green.**
+**499 tests · 0 type errors · lint clean · build green.**
 
 ## Deliberately NOT done in P4
 
@@ -80,7 +93,10 @@ Measured against the built output rather than inherited from the audit.
 | Item | Commit | Outcome |
 |---|---|---|
 | SU2 — 9 duplicated realtime hooks | `8effeec` | Extracted `useRealtimeTable`. 413 → 245 lines. The duplication had already produced two real bugs (only 4 of 9 debounced; `useRealtimeVotes` invalidated an unregistered key, leaving the channel inert) — both are now structurally impossible. 31 tests. |
-| E3a — duplicate `NotificationContainer` | (this commit) | **Was a visible bug, not render waste.** Mounted in both `Layout` and `App`, each with its own subscription, so every toast rendered twice. Removed the Layout mount; source-level guard added. |
+| E3a — duplicate `NotificationContainer` | `4b9a7ae` | **Was a visible bug, not render waste.** Mounted in both `Layout` and `App`, each with its own subscription, so every toast rendered twice. Removed the Layout mount; source-level guard added. |
+| E3d — `VotingSidebar` mounted twice | `aa5cefa` | Two mounts meant two 1-second countdown intervals and two subtree re-renders per second. Collapsed to one mount placed by CSS grid. **Mobile flow preserved exactly** — the container's grid is `lg:`-only, so the single sidebar still renders after the content, where the old `lg:hidden` instance did. Its `order-first` was inert (no flex/grid parent below `lg`), so mobile never showed it above content despite the comment; left as-is rather than silently changing the layout. |
+| E3c — `usePageVisibility` per consumer | `aa5cefa` | Rewritten as one module-level subscription via `useSyncExternalStore`. One listener regardless of consumer count; signature unchanged so all 17 call sites were untouched. |
+| E3b — whole-store zustand reads | `aa5cefa` | Seven sites converted to selectors. The significant one was `useWallet`: it returns only wagmi-derived values but subscribed every consumer — most of the app — to five store fields. |
 
 ## Closed — measured, not worth doing
 
@@ -100,9 +116,6 @@ weight actually is.
 
 | Item | Est. | Assessment |
 |---|---|---|
-| E3b — 7 whole-store zustand destructures | 0.5d | `Header` re-renders when `sidebarOpen` changes though it only uses `toggleSidebar`. Cheap, imperceptible payoff. |
-| E3c — 17 `usePageVisibility()` call sites | 0.5d | Each registers its own `visibilitychange` listener; 17 where 1 would do. Harmless. |
-| E3d — `VotingSidebar` mounted twice | 1d | **Not a mistake** — legitimate responsive variants (`hidden lg:block` / `lg:hidden`). Both do run hooks and countdown timers, so it is genuine double work, but fixing it means restructuring the layout. |
 | SU3/SU4 — `NavigatorService` 1,289 lines, `DaoService` 1,160 | 7d | Highest-risk change in the backlog, lowest user-visible return. Wait for a reason beyond tidiness. |
 | 36 untimed `tx.wait()` calls | — | Deferred in P4; see rationale above. Best done alongside SU3/SU4, which touches the same call sites. |
 | Remaining `DaoService` `catch {}` blocks | — | Deferred in P4; ~7 of 18 are correct on-chain fallbacks. |
