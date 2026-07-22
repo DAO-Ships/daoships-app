@@ -50,7 +50,7 @@ re-audit commit `5ac97cc`).
 | P3 | `45592f1` | Member-profile / budget / vesting pagination, allowlist starvation |
 | P4 | `54dba52`, `b9d35ae` | Reactive provider state, salt-mining cancel, hasVoted repair, vault-owner dedupe, approve dry-run, bidi stripping, IPFS bounds, pipeline-state validation |
 
-**452 tests · 0 type errors · lint clean · build green.**
+**486 tests · 0 type errors · lint clean · build green.**
 
 ## Deliberately NOT done in P4
 
@@ -71,22 +71,43 @@ Two items from the P4 list were assessed and left:
 
 ---
 
-# P5 — remaining backlog
+# P5 — measured and re-scoped
 
-Unchanged from the re-audit. Ready to revisit.
+Measured against the built output rather than inherited from the audit.
 
-| Item | Est. | Notes |
+## Done
+
+| Item | Commit | Outcome |
 |---|---|---|
-| E2 — 101 KB navigator bytecode in one eagerly-imported chunk | 1d | All 8 blobs statically imported by `NavigatorDeployService`; `/launch` needs 2. Lazy-import refactor, no correctness impact. |
-| E3 — render waste | 1.5d | Duplicate `NotificationContainer`, whole-store zustand selectors, `usePageVisibility` singleton, `VotingSidebar` dual mount. No user-visible impact at current scale. |
-| SU2 — 9 duplicated realtime hooks | 1d | One 40-line body copy-pasted; already drifted once (the `['votes']` key bug). Extract `useRealtimeTable`. |
-| SU3/SU4 — `NavigatorService` 1,289 lines, `DaoService` 1,160 | 7d | Per-type adapters, descriptor-table deploy service, `indexerQuery()` helper. Highest-risk change in the backlog with the lowest user-visible return. |
-| Testing debt | ongoing | 452 tests now, but still zero for most of the 55 hooks and the indexer services. Better added alongside the next change to each area than as a project. |
-| E1 — WalletConnect bundle weight | — | **Closed as accepted.** |
+| SU2 — 9 duplicated realtime hooks | `8effeec` | Extracted `useRealtimeTable`. 413 → 245 lines. The duplication had already produced two real bugs (only 4 of 9 debounced; `useRealtimeVotes` invalidated an unregistered key, leaving the channel inert) — both are now structurally impossible. 31 tests. |
+| E3a — duplicate `NotificationContainer` | (this commit) | **Was a visible bug, not render waste.** Mounted in both `Layout` and `App`, each with its own subscription, so every toast rendered twice. Removed the Layout mount; source-level guard added. |
 
-**Recommendation:** SU2 is the only P5 item with a correctness argument behind it — the
-duplication has already produced one real bug. E2 is cheap and safe. SU3/SU4 should wait
-for a reason beyond tidiness.
+## Closed — measured, not worth doing
+
+**E2 — navigator bytecode chunking.** The audit said 101 KB of bytecode sits in a chunk
+`/launch` eagerly imports. The 101 KB is real, but it is **not on the entry path** —
+Vite already splits it into `NavigatorDeployService-*.js` (160K raw / **38K gzip**),
+loaded only on `/launch` and the navigator catalog.
+
+First-load cost for comparison (gzip): `quais` 131K · entry 104K · `react-vendor` 53K ·
+`tanstack` 11K · WalletConnect `core` 162K (accepted).
+
+Addressable win is ~28K gzip on a route reached only to deploy a navigator. Not worth
+the indirection. If bundle size ever matters, `quais` and WalletConnect are where the
+weight actually is.
+
+## Remaining — opportunistic only
+
+| Item | Est. | Assessment |
+|---|---|---|
+| E3b — 7 whole-store zustand destructures | 0.5d | `Header` re-renders when `sidebarOpen` changes though it only uses `toggleSidebar`. Cheap, imperceptible payoff. |
+| E3c — 17 `usePageVisibility()` call sites | 0.5d | Each registers its own `visibilitychange` listener; 17 where 1 would do. Harmless. |
+| E3d — `VotingSidebar` mounted twice | 1d | **Not a mistake** — legitimate responsive variants (`hidden lg:block` / `lg:hidden`). Both do run hooks and countdown timers, so it is genuine double work, but fixing it means restructuring the layout. |
+| SU3/SU4 — `NavigatorService` 1,289 lines, `DaoService` 1,160 | 7d | Highest-risk change in the backlog, lowest user-visible return. Wait for a reason beyond tidiness. |
+| 36 untimed `tx.wait()` calls | — | Deferred in P4; see rationale above. Best done alongside SU3/SU4, which touches the same call sites. |
+| Remaining `DaoService` `catch {}` blocks | — | Deferred in P4; ~7 of 18 are correct on-chain fallbacks. |
+| Testing debt | ongoing | 486 tests. Still thin on hooks and indexer services; add alongside the next change to each. |
+| E1 — WalletConnect bundle weight | — | **Closed as accepted.** |
 
 ---
 
