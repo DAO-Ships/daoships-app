@@ -36,7 +36,7 @@ export function BottomNav() {
   // Hide where a page renders its own fixed bottom action bar (proposal vote bar),
   // so the two never stack. The top-of-header hamburger still opens nav there.
   const onProposalDetail = useMatch('/dao/:daoId/proposals/:proposalId')
-  const { setSidebarOpen } = useUiStore()
+  const setSidebarOpen = useUiStore((s) => s.setSidebarOpen)
 
   if (onProposalDetail) return null
 

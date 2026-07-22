@@ -14,8 +14,11 @@ import { useDaoStore } from '@/store/daoStore'
 export function Header() {
   const { status, isLoading, isEnabled } = useIndexerConnection()
   const { data: indexerState } = useIndexerState()
-  const { toggleSidebar } = useUiStore()
-  const { currentDaoId, currentDaoName } = useDaoStore()
+  // Selector form: subscribing to the whole store re-rendered the header on every
+  // sidebarOpen and theme change, neither of which it reads.
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+  const currentDaoId = useDaoStore((s) => s.currentDaoId)
+  const currentDaoName = useDaoStore((s) => s.currentDaoName)
 
   const isSyncing = indexerState?.is_syncing === true
   const indexerStatus = isLoading || !isEnabled

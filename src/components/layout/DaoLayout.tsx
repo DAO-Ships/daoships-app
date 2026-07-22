@@ -17,7 +17,8 @@ export function DaoLayout() {
   const { daoId } = useParams<{ daoId: string }>()
   const { data: dao, isLoading, error } = useDao(daoId)
   const { data: profile } = useDaoProfile(daoId)
-  const { setCurrentDao, clearCurrentDao } = useDaoStore()
+  const setCurrentDao = useDaoStore((s) => s.setCurrentDao)
+  const clearCurrentDao = useDaoStore((s) => s.clearCurrentDao)
 
   // Apply the DAO's posted color scheme across the UI while on its routes.
   useDaoTheme(profile)

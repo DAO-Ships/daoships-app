@@ -379,7 +379,7 @@ export function ProposalDetail() {
       <div className={`${isTerminal ? '' : 'lg:grid lg:grid-cols-[1fr,360px] lg:gap-6'}`}>
 
         {/* Left column: proposal content */}
-        <div className="space-y-6 min-w-0">
+        <div className="space-y-6 min-w-0 lg:col-start-1 lg:row-start-1">
           {/* Proposed Actions */}
           {dataHashValid === false && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 mb-3">
@@ -432,10 +432,25 @@ export function ProposalDetail() {
           <ProposalVotes daoId={daoId!} proposalId={proposalIdNum} />
         </div>
 
-        {/* Right column: voting sidebar (desktop) */}
+        {/*
+          ONE VotingSidebar. Previously mounted twice — `hidden lg:block` and
+          `lg:hidden` — so React mounted BOTH (CSS only hides one) and each ran its own
+          1-second countdown setInterval, doubling the tick and the subtree re-render the
+          component's own comment was written to contain.
+
+          Placement is CSS-only so mobile rendering is byte-for-byte unchanged:
+            - mobile: the container is a plain block (grid classes are `lg:` only), so
+              this renders in DOM order — AFTER the content, exactly where the old
+              `lg:hidden` instance rendered. (Its `order-first` was inert: `order` needs
+              a flex/grid parent, and there is none below `lg`.)
+            - desktop: explicit grid placement puts it in column 2 / row 1, which is
+              where the old `hidden lg:block` instance sat, and `lg:sticky` restores the
+              sticky behaviour that previously lived on an inner wrapper.
+          Mobile voting actions come from the fixed bottom bar below, not from here.
+        */}
         {!isTerminal && (
-          <div className="hidden lg:block">
-            <div className="sticky top-4">
+          <div className="mb-6 lg:mb-0 lg:col-start-2 lg:row-start-1">
+            <div className="lg:sticky lg:top-4">
               <VotingSidebar
                 proposal={proposal}
                 dao={dao}
@@ -465,40 +480,6 @@ export function ProposalDetail() {
                 actionErrors={actionErrors}
               />
             </div>
-          </div>
-        )}
-
-        {/* Mobile voting sidebar — shown above content on non-desktop */}
-        {!isTerminal && (
-          <div className="lg:hidden order-first mb-6">
-            <VotingSidebar
-              proposal={proposal}
-              dao={dao}
-              status={status}
-              daoId={daoId!}
-              daoConfig={daoConfig}
-              connected={connected}
-              userAddress={address}
-              userShares={member ? safeBigInt(member.voting_power) : 0n}
-              hasVoted={hasVoted}
-              delegatingTo={delegatingTo}
-              delegateVote={delegateVote}
-              delegateVoteReason={delegateVoteReason}
-              delegateProfile={delegateProfile ?? null}
-                priorVotes={priorVotes}
-              sponsorBelowThreshold={sponsorBelowThreshold}
-              onSponsor={() => actions.sponsor()}
-              onVote={handleVote}
-              onProcess={() => { if (processData !== null) actions.process(processData) }}
-              onCancel={() => setShowCancelConfirm(true)}
-              onConnect={connect}
-              proposalDataMissing={!proposal.proposal_data || processData === null}
-              isSponsorPending={actions.isSponsorPending}
-              isVotePending={isVoting}
-              isProcessPending={actions.isProcessPending}
-              isCancelPending={actions.isCancelPending}
-              actionErrors={actionErrors}
-            />
           </div>
         )}
 

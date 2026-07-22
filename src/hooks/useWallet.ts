@@ -19,12 +19,15 @@ export function useWallet() {
   const { address, isConnected, connector, chainId: wagmiChainId } = useAccount()
   const { connectAsync, connectors } = useConnect()
   const { disconnect: wagmiDisconnect } = useDisconnect()
-  const {
-    setConnected,
-    setProviderReady,
-    setConnectModalOpen,
-    setError,
-  } = useWalletStore()
+  // Selector form, one per action. useWallet returns only wagmi-derived values and uses
+  // the store purely for these setters, but destructuring the whole store subscribed
+  // every consumer to connected/address/connectModalOpen/error/providerReady — so any
+  // of those changing re-rendered every component that calls useWallet, which is most
+  // of them. Each selector returns a stable function identity, so none of them re-render.
+  const setConnected = useWalletStore((s) => s.setConnected)
+  const setProviderReady = useWalletStore((s) => s.setProviderReady)
+  const setConnectModalOpen = useWalletStore((s) => s.setConnectModalOpen)
+  const setError = useWalletStore((s) => s.setError)
 
   const prevAddressRef = useRef<string | null>(null)
   const signerRef = useRef<unknown>(null)
