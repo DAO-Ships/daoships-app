@@ -1,45 +1,21 @@
-import { useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { supabase, INDEXER_CONFIG } from '@/config/supabase'
+import { useRealtimeTable } from './useRealtimeTable'
 
 /**
- * Subscribes to realtime INSERT events on ds_records for a specific DAO.
- * Invalidates vote reasons, member profiles, and announcement queries
- * so Poster-based content appears immediately after on-chain confirmation.
+ * Realtime for a DAO's Poster records — profiles, announcements and vote reasons all
+ * live in ds_records, so one subscription refreshes every derived view.
  */
 export function useRealtimeRecords(daoId: string | undefined) {
-  const queryClient = useQueryClient()
-
-  useEffect(() => {
-    const client = supabase
-    if (!client || !daoId) return
-
-    const invalidate = () => {
-      queryClient.invalidateQueries({ queryKey: ['voteReasons', daoId] })
-      queryClient.invalidateQueries({ queryKey: ['memberProfile', daoId] })
-      queryClient.invalidateQueries({ queryKey: ['memberProfiles', daoId] })
-      queryClient.invalidateQueries({ queryKey: ['announcements', daoId] })
-      queryClient.invalidateQueries({ queryKey: ['daoProfile', daoId] })
-    }
-
-    const channel = client
-      .channel(`records:${daoId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // INSERT | UPDATE | DELETE — DELETE fires on reorg tombstones
-          schema: INDEXER_CONFIG.NETWORK_SCHEMA,
-          table: 'ds_records',
-          filter: `dao_id=eq.${daoId}`,
-        },
-        invalidate,
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') invalidate()
-      })
-
-    return () => {
-      client.removeChannel(channel)
-    }
-  }, [daoId, queryClient])
+  useRealtimeTable({
+    channel: `records:${daoId}`,
+    table: 'ds_records',
+    filter: daoId ? `dao_id=eq.${daoId}` : '',
+    queryKeys: [
+      ['voteReasons', daoId],
+      ['memberProfile', daoId],
+      ['memberProfiles', daoId],
+      ['announcements', daoId],
+      ['daoProfile', daoId],
+    ],
+    enabled: !!daoId,
+  })
 }

@@ -1,42 +1,14 @@
-import { useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { supabase, INDEXER_CONFIG } from '@/config/supabase'
+import { useRealtimeTable } from './useRealtimeTable'
 
 /**
- * Subscribes to realtime INSERT/UPDATE on ds_timelock_changes for a DAO. Invalidates the
- * change list so queue/execute/cancel transitions appear immediately. Also invalidates the
- * bypass-warning query, which is driven by the related ds_governance_config_history.
+ * Realtime for a DAO's queued timelock changes.
  */
 export function useRealtimeTimelockChanges(daoId: string | undefined) {
-  const queryClient = useQueryClient()
-
-  useEffect(() => {
-    const client = supabase
-    if (!client || !daoId) return
-
-    const invalidate = () => {
-      queryClient.invalidateQueries({ queryKey: ['timelockChanges', daoId] })
-      queryClient.invalidateQueries({ queryKey: ['bypassedConfigChanges', daoId] })
-    }
-
-    const channel = client
-      .channel(`timelockChanges:${daoId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: INDEXER_CONFIG.NETWORK_SCHEMA,
-          table: 'ds_timelock_changes',
-          filter: `dao_id=eq.${daoId}`,
-        },
-        invalidate,
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') invalidate()
-      })
-
-    return () => {
-      client.removeChannel(channel)
-    }
-  }, [daoId, queryClient])
+  useRealtimeTable({
+    channel: `timelockChanges:${daoId}`,
+    table: 'ds_timelock_changes',
+    filter: daoId ? `dao_id=eq.${daoId}` : '',
+    queryKeys: [['timelockChanges', daoId], ['bypassedConfigChanges', daoId]],
+    enabled: !!daoId,
+  })
 }

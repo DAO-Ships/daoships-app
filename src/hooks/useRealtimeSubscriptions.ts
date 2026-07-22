@@ -1,47 +1,22 @@
-import { useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { supabase, INDEXER_CONFIG } from '@/config/supabase'
+import { useRealtimeTable } from './useRealtimeTable'
 
 /**
- * Subscribes to realtime INSERT/UPDATE on ds_subscription_members for a DAO. Invalidates
- * the member list (and the per-member/payment/collection queries) so payments, enrollments,
- * and collections appear immediately. All three subscription tables are in the indexer's
- * realtime publication, but every payment/collection also bumps the parent member row
- * (paid_through / total_paid / last_collected_at), so the parent subscription catches the
- * activity; the append-only feeds are re-read on demand.
+ * Realtime for a DAO's subscription roster.
+ *
+ * The unparameterised keys are prefixes on purpose — React Query matches by prefix, so
+ * every per-navigator and per-member variant is caught.
  */
 export function useRealtimeSubscriptions(daoId: string | undefined) {
-  const queryClient = useQueryClient()
-
-  useEffect(() => {
-    const client = supabase
-    if (!client || !daoId) return
-
-    const invalidate = () => {
-      queryClient.invalidateQueries({ queryKey: ['subscriptionMembers', daoId] })
-      queryClient.invalidateQueries({ queryKey: ['subscriptionMember'] })
-      queryClient.invalidateQueries({ queryKey: ['subscriptionPayments'] })
-      queryClient.invalidateQueries({ queryKey: ['subscriptionCollections'] })
-    }
-
-    const channel = client
-      .channel(`subscriptionMembers:${daoId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: INDEXER_CONFIG.NETWORK_SCHEMA,
-          table: 'ds_subscription_members',
-          filter: `dao_id=eq.${daoId}`,
-        },
-        invalidate,
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') invalidate()
-      })
-
-    return () => {
-      client.removeChannel(channel)
-    }
-  }, [daoId, queryClient])
+  useRealtimeTable({
+    channel: `subscriptionMembers:${daoId}`,
+    table: 'ds_subscription_members',
+    filter: daoId ? `dao_id=eq.${daoId}` : '',
+    queryKeys: [
+      ['subscriptionMembers', daoId],
+      ['subscriptionMember'],
+      ['subscriptionPayments'],
+      ['subscriptionCollections'],
+    ],
+    enabled: !!daoId,
+  })
 }

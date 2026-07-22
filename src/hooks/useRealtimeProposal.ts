@@ -1,45 +1,15 @@
-import { useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { supabase, INDEXER_CONFIG } from '@/config/supabase'
+import { useRealtimeTable } from './useRealtimeTable'
 
 /**
- * Subscribes to realtime UPDATE events on a specific proposal row.
- * Invalidates the React Query cache so the UI refreshes immediately
- * when the proposal status, vote tallies, or other fields change.
- *
- * No-op when the Supabase client is null (direct-RPC mode).
+ * Realtime for ONE proposal row — status transitions and vote tallies.
  */
 export function useRealtimeProposal(daoId: string | undefined, proposalId: string | undefined) {
-  const queryClient = useQueryClient()
-
-  useEffect(() => {
-    const client = supabase
-    if (!client || !daoId || !proposalId) return
-
-    const compositeId = `${daoId}-${proposalId}`
-    const invalidate = () => {
-      queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
-      queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
-    }
-
-    const channel = client
-      .channel(`proposal:${compositeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // UPDATE | DELETE — DELETE fires on reorg tombstones
-          schema: INDEXER_CONFIG.NETWORK_SCHEMA,
-          table: 'ds_proposals',
-          filter: `id=eq.${compositeId}`,
-        },
-        invalidate,
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') invalidate()
-      })
-
-    return () => {
-      client.removeChannel(channel)
-    }
-  }, [daoId, proposalId, queryClient])
+  const compositeId = daoId && proposalId ? `${daoId}-${proposalId}` : ''
+  useRealtimeTable({
+    channel: `proposal:${compositeId}`,
+    table: 'ds_proposals',
+    filter: compositeId ? `id=eq.${compositeId}` : '',
+    queryKeys: [['proposal', daoId, proposalId], ['proposals', daoId]],
+    enabled: !!compositeId,
+  })
 }
