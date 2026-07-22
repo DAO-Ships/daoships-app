@@ -238,7 +238,18 @@ export function willProposalPass(
 
   const quorumBps = typeof quorumPercent === 'bigint' ? quorumPercent : BigInt(quorumPercent || '0')
   if (quorumBps > 0n) {
-    const maxShares = BigInt(proposal.max_total_shares_at_sponsor || '0')
+    // The snapshot is REQUIRED to evaluate quorum. Defaulting it to 0 makes the
+    // threshold 0, so every yes>no proposal is predicted to pass — which drives a
+    // wrong-branch processProposal and reverts with HashMismatch. Refuse to guess:
+    // callers must handle this rather than act on a fabricated verdict.
+    const snapshot = proposal.max_total_shares_at_sponsor
+    if (snapshot === undefined || snapshot === null || snapshot === '') {
+      throw new Error(
+        'Cannot evaluate quorum: max_total_shares_at_sponsor is missing for proposal '
+        + `${proposal.id}. Refusing to predict the outcome from an absent snapshot.`,
+      )
+    }
+    const maxShares = BigInt(snapshot)
     const quorumThreshold = (maxShares * quorumBps) / 10000n
     if (yes < quorumThreshold) return false
   }

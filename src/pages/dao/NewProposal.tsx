@@ -169,7 +169,11 @@ export function NewProposal() {
   const { data: member, isLoading: memberLoading } = useMember(daoId, address ?? undefined)
   const isMember = member ? (safeBigInt(member.shares) > 0n || safeBigInt(member.loot) > 0n) : false
   const { data: profileRecord } = useDaoProfile(daoId)
-  const { data: navigators } = useNavigators(daoId)
+  const {
+    data: navigators,
+    isLoading: navigatorsLoading,
+    isError: navigatorsError,
+  } = useNavigators(daoId)
 
   // An active, sanctioned TimelockNavigator that holds GOVERNOR — when present, ALL
   // governance-config changes from the standard form route through its queueChange (no bypass).
@@ -742,7 +746,25 @@ export function NewProposal() {
               />
             )}
 
-            {selectedType === ProposalType.NavigatorSanction && (
+            {selectedType === ProposalType.NavigatorSanction && (navigatorsLoading || navigatorsError) && (
+              <div className={`border rounded-lg px-4 py-3 ${navigatorsError
+                ? 'bg-red-500/10 border-red-500/30'
+                : 'bg-dao-surface/60 border-dao-border'}`}>
+                <p className={`text-sm ${navigatorsError ? 'text-red-400 font-medium' : 'text-dao-text-hint'}`}>
+                  {navigatorsError
+                    ? "Could not load this DAO's navigators."
+                    : "Loading this DAO's navigators…"}
+                </p>
+                {navigatorsError && (
+                  <p className="text-xs text-dao-text-muted mt-0.5">
+                    A sanction proposal replaces the DAO&apos;s entire endorsement set, so it
+                    cannot be built from an incomplete list — it would silently revoke every
+                    existing endorsement.
+                  </p>
+                )}
+              </div>
+            )}
+            {selectedType === ProposalType.NavigatorSanction && !navigatorsLoading && !navigatorsError && (
               <NavigatorSanctionForm
                 readOnlyNavigators={(navigators || []).filter(
                   (n) => n.permission === NavigatorPermission.None && !n.permission_ever_granted,

@@ -28,6 +28,12 @@ interface RagequitModalProps {
   userShares: bigint
   userLoot: bigint
   guildTokens: GuildTokenInfo[]
+  /**
+   * Whether the guild-token list actually loaded. An empty array means very different
+   * things in the two cases, and conflating them let a member burn shares for zero
+   * payout during an indexer outage while the UI asserted the DAO had no guild tokens.
+   */
+  guildTokensStatus: 'ok' | 'loading' | 'error'
   totalSupply: bigint
 }
 
@@ -132,6 +138,7 @@ export function RagequitModal({
   userShares,
   userLoot,
   guildTokens,
+  guildTokensStatus,
   totalSupply,
 }: RagequitModalProps) {
   const [step, setStep] = useState<Step>('configure')
@@ -203,7 +210,10 @@ export function RagequitModal({
   const noTokensSelected = selectedTokens.size === 0
 
   // Can proceed to review?
+  // Hard-blocked while the guild-token list is unknown: ragequit is irreversible and
+  // burns shares even when it transfers nothing.
   const canReview = totalBurn > 0n && !sharesOverflow && !lootOverflow
+    && guildTokensStatus === 'ok'
 
   // Token toggle helpers
   const toggleToken = useCallback((address: string) => {
@@ -443,6 +453,20 @@ export function RagequitModal({
               </p>
             </div>
           )}
+        </div>
+      ) : guildTokensStatus === 'loading' ? (
+        <div className="bg-dao-surface/60 border border-dao-border rounded-lg px-4 py-3">
+          <p className="text-sm text-dao-text-hint">Loading the DAO&apos;s guild tokens…</p>
+        </div>
+      ) : guildTokensStatus === 'error' ? (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
+          <p className="text-sm text-red-400 font-medium">
+            Could not load this DAO&apos;s guild tokens.
+          </p>
+          <p className="text-xs text-dao-text-muted mt-0.5">
+            Ragequit is blocked until the list loads. Burning now could destroy your
+            shares without transferring the treasury assets you are owed.
+          </p>
         </div>
       ) : (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
