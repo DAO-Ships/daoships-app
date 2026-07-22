@@ -9,6 +9,7 @@ import { NETWORK_CONFIG } from '@/config/contracts'
 import { posterService } from '@/services/core/PosterService'
 import { navigatorDeployService } from '@/services/core/NavigatorDeployService'
 import { tokenService } from '@/services/core/TokenService'
+import { hasCodeAt } from '@/services/utils/TxTracker'
 import { parseAllowlistInput, buildAllowlistTree, downloadAllowlistBackup } from '@/utils/allowlist'
 import { MAX_ALLOWLIST_ADDRESSES } from '@/components/common/AllowlistInput'
 import type { LaunchFormValues } from './BasicInfoStep'
@@ -154,6 +155,20 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
     if (pipeline.started && !pipeline.steps.every(s => s.status === 'done')) {
       savePipelineState(pipeline)
     }
+  }, [pipeline])
+
+  // Warn before navigating away mid-pipeline. This is a 3-4 transaction sequence in
+  // which a lost receipt previously stranded a deployed-but-unrecorded DAO.
+  useEffect(() => {
+    const inFlight = pipeline.started && !pipeline.steps.every(s => s.status === 'done')
+    if (!inFlight) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      // Required by some browsers for the prompt to show.
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [pipeline])
 
   const updateStepStatus = useCallback((stepId: string, status: PipelineStepStatus, error?: string) => {
@@ -337,6 +352,28 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
               navAddresses.push(ercAddr)
               navPermissions.push(MANAGER_PERMISSION)
             }
+            // Before re-broadcasting, check whether an earlier attempt already landed.
+            // The DAO address is deterministic (CREATE2), so bytecode at
+            // salts.daoShip.address means the launch succeeded even if we lost the
+            // receipt. Re-sending would reuse the SAME salts and revert on collision,
+            // which is what forced users into "Start Fresh" and a second paid launch.
+            const alreadyDeployed = await hasCodeAt(salts.daoShip.address)
+            if (alreadyDeployed === true) {
+              const recovered = { daoShip: salts.daoShip.address, vault: salts.vault.address }
+              localLaunchResult = recovered
+              updatePipeline(prev => ({ ...prev, launchResult: recovered }))
+              updateStepStatus(step.id, 'done')
+              break
+            }
+            if (alreadyDeployed === null) {
+              // Could not determine — do NOT gamble a colliding re-send.
+              throw new Error(
+                'Could not verify whether the DAO was already deployed (RPC unreachable). '
+                + 'Retry once your connection recovers — re-sending now would reuse the same '
+                + 'CREATE2 salts and revert.',
+              )
+            }
+
             const result = await onSubmit(
               {
                 vault: salts.vault.salt,
