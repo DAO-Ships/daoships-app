@@ -12,8 +12,19 @@ interface WalletStore {
   address: string | null
   connectModalOpen: boolean
   error: string | null
+  /**
+   * Whether baseService has a usable provider/signer installed.
+   *
+   * `connected` (from wagmi) flips BEFORE the quais provider bridge is installed, and
+   * ~19 sites call `baseService.hasProvider()` — an imperative read of a module
+   * singleton with no subscription — to gate queries. Those sites only re-evaluated by
+   * luck, when something unrelated re-rendered. This makes provider readiness a
+   * reactive value so `enabled:` flags actually re-run when it changes.
+   */
+  providerReady: boolean
 
   setConnected: (connected: boolean, address: string | null) => void
+  setProviderReady: (ready: boolean) => void
   setConnectModalOpen: (open: boolean) => void
   setError: (error: string | null) => void
 }
@@ -23,6 +34,7 @@ const initialState = {
   address: null,
   connectModalOpen: false,
   error: null,
+  providerReady: false,
 }
 
 export const useWalletStore = create<WalletStore>()((set) => ({
@@ -30,6 +42,9 @@ export const useWalletStore = create<WalletStore>()((set) => ({
 
   setConnected: (connected, address) =>
     set({ connected, address }),
+
+  setProviderReady: (ready) =>
+    set({ providerReady: ready }),
 
   setConnectModalOpen: (open) =>
     set({ connectModalOpen: open }),

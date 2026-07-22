@@ -508,6 +508,21 @@ class NavigatorService {
         await resetTx.wait()
       }
       if (currentAllowance < totalTribute) {
+        // Dry-run onboard BEFORE broadcasting the approval. Otherwise any onboard
+        // revert — paused navigator, mint cap reached, allowlist proof rejected,
+        // expiry passed — leaves a standing allowance to the navigator with no revoke
+        // path anywhere in the UI.
+        try {
+          await navigator['onboard(uint256,uint256,bytes32[])'].staticCall(
+            sharesToMint, lootToMint, proof,
+          )
+        } catch (err) {
+          // An allowance-related revert is expected here (we have not approved yet);
+          // anything else is a genuine precondition failure worth stopping for.
+          const msg = err instanceof Error ? err.message : String(err)
+          if (!/allowance|insufficient|transferfrom|erc20/i.test(msg)) throw err
+        }
+
         const approveTx = await token.approve(checksummedNavigator, totalTribute)
         await approveTx.wait()
       }

@@ -85,8 +85,19 @@ function getMinimalProxyBytecode(singletonAddress: string): string {
 
 // ── SaltMiner Class ──────────────────────────────────────────────────────
 
+/** Thrown when mining is cancelled, so callers can distinguish it from a real failure. */
+export class SaltMiningCancelledError extends Error {
+  constructor() {
+    super('Salt mining was cancelled')
+    this.name = 'SaltMiningCancelledError'
+  }
+}
+
 class SaltMiner {
   private worker: Worker | null = null
+
+  /** Rejector for the in-flight mineAllSalts promise, so cancel() can settle it. */
+  private rejectActive: ((reason: Error) => void) | null = null
 
   /**
    * Compute initCodeHash for each contract type.
@@ -161,6 +172,20 @@ class SaltMiner {
     onProgress?: ProgressCallback
   ): Promise<SaltMiningResults> {
     return new Promise((resolve, reject) => {
+      // Hold the rejector so cancel() can SETTLE this promise. Previously cancel()
+      // terminated the worker, which fires neither onmessage nor onerror, so the promise
+      // stayed pending forever: `await mineAllSalts(...)` never returned, the caller's
+      // `finally { setMining(false) }` never ran, and ReviewStep's `if (!mineResult)`
+      // cancel branch was unreachable dead code.
+      this.rejectActive = reject
+
+      // Re-entrancy guard: starting a second run used to overwrite this.worker, orphaning
+      // the first and leaking it.
+      if (this.worker) {
+        reject(new Error('Salt mining is already in progress'))
+        return
+      }
+
       // Create worker using Vite's Web Worker import syntax
       this.worker = new Worker(
         new URL('../../workers/saltMiner.worker.ts', import.meta.url),
@@ -290,11 +315,15 @@ class SaltMiner {
    * Sends a cancel message to the worker and terminates it after a short delay.
    */
   cancel(): void {
-    if (this.worker) {
-      this.worker.postMessage({ type: 'cancel' })
-      // Terminate immediately — the worker's cancel handler is best-effort
-      this.cleanup()
-    }
+    if (!this.worker) return
+    this.worker.postMessage({ type: 'cancel' })
+    // The worker runs a synchronous 100k-iteration loop, so it cannot dequeue the
+    // cancel message mid-batch — terminate is the only reliable stop. Terminate fires
+    // no handler, so the pending promise MUST be settled here or it hangs forever.
+    this.cleanup()
+    const reject = this.rejectActive
+    this.rejectActive = null
+    reject?.(new SaltMiningCancelledError())
   }
 
   /**

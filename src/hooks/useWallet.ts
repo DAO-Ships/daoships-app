@@ -21,6 +21,7 @@ export function useWallet() {
   const { disconnect: wagmiDisconnect } = useDisconnect()
   const {
     setConnected,
+    setProviderReady,
     setConnectModalOpen,
     setError,
   } = useWalletStore()
@@ -38,6 +39,7 @@ export function useWallet() {
       if (prevAddressRef.current && prevAddressRef.current !== address) {
         signerRef.current = null
         baseService.setSigner(null)
+        setProviderReady(false)
       }
       prevAddressRef.current = address
       setConnected(true, address)
@@ -45,9 +47,10 @@ export function useWallet() {
       prevAddressRef.current = null
       signerRef.current = null
       baseService.setSigner(null)
+      setProviderReady(false)
       setConnected(false, null)
     }
-  }, [isConnected, address, setConnected])
+  }, [isConnected, address, setConnected, setProviderReady])
 
   // ── Keep BaseService's chain in sync so write paths hard-block wrong-network state ──
   useEffect(() => {
@@ -71,6 +74,9 @@ export function useWallet() {
 
         signerRef.current = signer
         baseService.setSigner(signer)
+        // Reactive counterpart to baseService.hasProvider(), which ~19 sites read
+        // imperatively with no subscription.
+        setProviderReady(true)
 
         // Bytecode verification of configured contracts (via wallet's EIP-1193 provider
         // directly — quais.BrowserProvider.getCode silently returns '0x' for every lookup
@@ -97,7 +103,7 @@ export function useWallet() {
       })
 
     return () => { isActive = false }
-  }, [connector, isConnected, address, wagmiChainId])
+  }, [connector, isConnected, address, wagmiChainId, setProviderReady])
 
   // ── Actions ──────────────────────────────────────────────────────────
   const connect = useCallback(() => {

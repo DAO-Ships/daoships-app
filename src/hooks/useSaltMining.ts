@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { saltMiner } from '@/services/utils/SaltMiner'
+import { SaltMiningCancelledError } from '@/services/utils/SaltMiner'
 import type { SaltMiningParams } from '@/services/utils/SaltMiner'
 
 /**
@@ -49,6 +50,10 @@ export function useSaltMining() {
       setResults(result)
       return result
     } catch (e: unknown) {
+      // A user-initiated cancel is not a failure. cancel() now rejects the promise
+      // (terminating the worker fires no handler, so it previously hung forever and
+      // this `finally` never ran) — surface it as "no result", not an error banner.
+      if (e instanceof SaltMiningCancelledError) return null
       const message = e instanceof Error ? e.message : 'Salt mining failed'
       setError(message)
       throw e

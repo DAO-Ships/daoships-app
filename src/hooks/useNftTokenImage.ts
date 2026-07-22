@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import { useProviderReady } from './useProviderReady'
 import { navigatorService } from '@/services/core/NavigatorService'
-import { baseService } from '@/services/core/BaseService'
 import { resolveIpfsMedia } from '@/utils/url'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -61,6 +61,7 @@ async function fetchNftImageUrl(tokenUri: string): Promise<string | null> {
  * the gallery is expanded. Cached for 10 minutes; never retries (a missing image is a stable no).
  */
 export function useNftTokenImage(gateToken: string | undefined, tokenId: string) {
+  const providerReady = useProviderReady()
   return useQuery({
     queryKey: ['nftTokenImage', gateToken?.toLowerCase(), tokenId],
     queryFn: async (): Promise<string | null> => {
@@ -68,7 +69,7 @@ export function useNftTokenImage(gateToken: string | undefined, tokenId: string)
       if (!uri) return null
       return fetchNftImageUrl(uri)
     },
-    enabled: !!gateToken && !!tokenId && baseService.hasProvider(),
+    enabled: !!gateToken && !!tokenId && providerReady,
     staleTime: 10 * 60_000,
     retry: false,
   })

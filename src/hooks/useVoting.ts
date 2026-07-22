@@ -18,6 +18,13 @@ export function useVoting(daoId: string, proposalId: string) {
         queryClient.invalidateQueries({ queryKey: ['hasVoted', daoId] })
         // Matches useProposalVotes' key; ['votes', ...] matched no registered query.
         queryClient.invalidateQueries({ queryKey: ['proposalVotes', `${daoId}-${proposalId}`] })
+        // The vote is confirmed on-chain at this point, but the indexer may lag. Set
+        // hasVoted optimistically so the Vote buttons do not flicker back to enabled
+        // and invite a duplicate vote that would revert.
+        queryClient.setQueriesData(
+          { queryKey: ['hasVoted', daoId, Number(proposalId)] },
+          true,
+        )
       }
       run()
       setTimeout(run, 4000)

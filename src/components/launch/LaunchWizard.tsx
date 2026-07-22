@@ -190,6 +190,12 @@ export function clearLaunchState() {
   } catch { /* ignore */ }
 }
 
+/**
+ * QuaiVault.MAX_OWNERS. In the ABI and previously never read, so a large member list
+ * could auto-populate more owners than the vault accepts.
+ */
+const MAX_VAULT_OWNERS = 20
+
 export function LaunchWizard() {
   // Restore saved form state if returning to an interrupted launch
   const [savedState] = useState(() => loadFormState())
@@ -327,7 +333,19 @@ export function LaunchWizard() {
       if (currentStep === 4) {
         const members = getValues().members.filter(m => m.address.trim())
         if (members.length > 0) {
-          setValue('vaultOwners', members.map(m => ({ address: m.address.trim() })))
+          // QuaiVault reverts DuplicateOwner, and the same address can legitimately
+          // appear twice in the member list (e.g. separate shares and loot rows), so
+          // auto-populating vault owners from it could produce a guaranteed revert.
+          const seen = new Set<string>()
+          const uniqueOwners: { address: string }[] = []
+          for (const m of members) {
+            const addr = m.address.trim()
+            const key = addr.toLowerCase()
+            if (seen.has(key)) continue
+            seen.add(key)
+            uniqueOwners.push({ address: addr })
+          }
+          setValue('vaultOwners', uniqueOwners.slice(0, MAX_VAULT_OWNERS))
         }
       }
       setCurrentStep((prev) => prev + 1)

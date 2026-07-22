@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useProviderReady } from './useProviderReady'
 import { quais } from 'quais'
 import { baseService } from '@/services/core/BaseService'
 import { usePageVisibility } from './usePageVisibility'
@@ -41,8 +42,9 @@ export function useTreasuryBalances(
   vaultAddress: string | undefined,
   guildTokens: GuildToken[] | undefined,
 ) {
+  const providerReady = useProviderReady()
   const isVisible = usePageVisibility()
-  const hasWalletProvider = baseService.hasProvider()
+  const hasWalletProvider = providerReady
 
   // Key on the actual token-address set (sorted), not just the count — otherwise swapping one
   // token for another (same length) would silently serve stale balances from a colliding key.

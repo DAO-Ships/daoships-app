@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import { useProviderReady } from './useProviderReady'
 import { daoService } from '@/services/DaoService'
-import { baseService } from '@/services/core/BaseService'
 
 /**
  * Voting power a member held at a proposal's `votingStarts` snapshot.
@@ -19,13 +19,14 @@ export function usePriorVotes(
   memberAddress: string | undefined,
   votingStarts: string | null | undefined,
 ) {
+  const providerReady = useProviderReady()
   const timepoint = votingStarts ? Math.floor(new Date(votingStarts).getTime() / 1000) : undefined
 
   return useQuery<bigint>({
     queryKey: ['priorVotes', daoId, memberAddress, timepoint],
     queryFn: () => daoService.getPriorVotes(daoId!, memberAddress!, BigInt(timepoint!)),
     // Needs the wallet provider — all RPC goes through it (direct RPC is CORS-blocked).
-    enabled: Boolean(daoId && memberAddress && timepoint && baseService.hasProvider()),
+    enabled: Boolean(daoId && memberAddress && timepoint && providerReady),
     staleTime: 5 * 60_000,
     retry: 1,
   })
