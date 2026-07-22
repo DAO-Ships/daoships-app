@@ -510,9 +510,15 @@ function DeployConfigPanel({
         if (!isValidCyprus1Address(ercToken)) {
           throw new Error('Enter a valid tribute token address on this network')
         }
-        if (!(await tokenService.verifyERC20(ercToken))) {
+        const ercTokenMeta = await tokenService.verifyERC20(ercToken)
+        if (!ercTokenMeta) {
           throw new Error('No ERC-20 token found at the tribute token address on this network.')
         }
+        // pricePerShare/pricePerLoot are denominated in the TRIBUTE TOKEN, not in
+        // shares — the contract's own example is `pricePerShare = 100e6` for 100 USDC.
+        // These are immutable constructor args, so a wrong scale is unrecoverable
+        // without a governance redeploy. Never fall back to 18.
+        const ercDecimals = ercTokenMeta.decimals
 
         const ercAllowlist = parseAllowlistInput(erc20Form.allowlistAddresses)
         if (ercAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) {
@@ -523,8 +529,8 @@ function DeployConfigPanel({
         address = await navigatorDeployService.deployERC20TributeNavigator({
           daoShipAddress: daoAddress,
           tributeToken: erc20Form.tributeToken,
-          pricePerShare: parseTokenAmount(erc20Form.pricePerShare || '0'),
-          pricePerLoot: parseTokenAmount(erc20Form.pricePerLoot || '0'),
+          pricePerShare: parseTokenAmount(erc20Form.pricePerShare || '0', ercDecimals),
+          pricePerLoot: parseTokenAmount(erc20Form.pricePerLoot || '0', ercDecimals),
           expiry: erc20Form.expiry ? BigInt(erc20Form.expiry) : 0n,
           mintCap: erc20Form.mintCap ? parseTokenAmount(erc20Form.mintCap) : 0n,
           perAddressCap: erc20Form.perAddressCap

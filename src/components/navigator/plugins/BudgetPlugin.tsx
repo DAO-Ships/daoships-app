@@ -378,6 +378,17 @@ function CreateBudgetForm({
   const [periodDays, setPeriodDays] = useState('30')
   const [error, setError] = useState<string | null>(null)
 
+  // Allowance and ceiling are denominated in the budget's token, so they must be
+  // parsed with that token's decimals. Resolve them for a well-formed ERC-20 address;
+  // native QUAI is 18.
+  const trimmedToken = token.trim()
+  const isNativeToken = trimmedToken === '' || addressesEqual(trimmedToken, ZERO_ADDRESS)
+  const looksLikeAddress = trimmedToken.startsWith('0x') && trimmedToken.length === 42
+  const { data: createTokenMeta, isLoading: createTokenMetaLoading } = useTokenMetadata(
+    !isNativeToken && looksLikeAddress ? trimmedToken : undefined,
+  )
+  const createDecimals: number | null = isNativeToken ? 18 : createTokenMeta?.decimals ?? null
+
   const minPeriodDays = config ? Number(config.minPeriod) / DAY : 1 / 24 // MIN_PERIOD fallback ~1h
   const maxPeriodDays = config ? Number(config.maxPeriod) / DAY : 3650
 
@@ -392,11 +403,19 @@ function CreateBudgetForm({
       setError('Enter a valid token address, or leave blank for native QUAI.')
       return null
     }
+    if (createDecimals === null) {
+      setError(
+        createTokenMetaLoading
+          ? 'Still reading the token\u2019s decimals \u2014 try again in a moment.'
+          : 'Could not read that token\u2019s decimals. Check the address is a valid ERC-20.',
+      )
+      return null
+    }
     let allowanceWei: bigint
     let ceilingWei: bigint
     try {
-      allowanceWei = parseTokenAmount(allowance)
-      ceilingWei = parseTokenAmount(ceiling)
+      allowanceWei = parseTokenAmount(allowance, createDecimals)
+      ceilingWei = parseTokenAmount(ceiling, createDecimals)
     } catch {
       setError('Enter valid amounts.')
       return null
@@ -418,7 +437,8 @@ function CreateBudgetForm({
       endTime: 0n, // perpetual
     }
     return buildBudgetProposalHref(daoId, buildCreateBudgetAction(navigatorAddress, params))
-  }, [manager, token, allowance, ceiling, periodDays, config, daoId, navigatorAddress, minPeriodDays, maxPeriodDays])
+  }, [manager, token, allowance, ceiling, periodDays, config, daoId, navigatorAddress,
+    minPeriodDays, maxPeriodDays, createDecimals, createTokenMetaLoading])
 
   return (
     <div className="space-y-3">
@@ -565,6 +585,7 @@ function BudgetCard({
           navigatorAddress={navigatorAddress}
           budgetId={budget.budget_id}
           tokenLabel={tokenLabel}
+          tokenDecimals={isNative ? 18 : tokenMeta?.decimals ?? null}
           remainingThisPeriod={remaining?.thisPeriod ?? null}
           onDisbursed={refetchRemaining}
         />
@@ -616,12 +637,19 @@ function DisburseForm({
   navigatorAddress,
   budgetId,
   tokenLabel,
+  tokenDecimals,
   remainingThisPeriod,
   onDisbursed,
 }: {
   navigatorAddress: string
   budgetId: string
   tokenLabel: string
+  /**
+   * Decimals of the budget's token. null while still resolving for an ERC-20 —
+   * disbursement is blocked until it is known. Never assume 18: a 6-decimal token
+   * parsed at 18 encodes 10^12x the intended amount.
+   */
+  tokenDecimals: number | null
   remainingThisPeriod: bigint | null
   onDisbursed: () => void
 }) {
@@ -633,9 +661,18 @@ function DisburseForm({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  const amountWei = (() => { try { return amount ? parseTokenAmount(amount) : 0n } catch { return 0n } })()
+  const amountWei = (() => {
+    if (tokenDecimals === null) return 0n
+    try {
+      return amount ? parseTokenAmount(amount, tokenDecimals) : 0n
+    } catch (err) {
+      if (err instanceof ReferenceError || err instanceof TypeError) throw err
+      return 0n
+    }
+  })()
   const overAllowance = remainingThisPeriod !== null && amountWei > remainingThisPeriod
-  const singleValid = to.startsWith('0x') && to.length === 42 && amountWei > 0n && !overAllowance
+  const singleValid = tokenDecimals !== null
+    && to.startsWith('0x') && to.length === 42 && amountWei > 0n && !overAllowance
 
   // Parse "address, amount" lines (one payee per line) → aligned arrays. Validates each
   // address + amount and the total against the remaining period allowance.
@@ -649,7 +686,7 @@ function DisburseForm({
       const [addr, amt] = line.split(/[,\s]+/)
       if (!addr || !addr.startsWith('0x') || addr.length !== 42) { err = `Invalid address: "${line}"`; break }
       let wei: bigint
-      try { wei = parseTokenAmount(amt ?? '') } catch { err = `Invalid amount: "${line}"`; break }
+      try { wei = parseTokenAmount(amt ?? '', tokenDecimals ?? 18) } catch { err = `Invalid amount: "${line}"`; break }
       if (wei <= 0n) { err = `Amount must be > 0: "${line}"`; break }
       recipients.push(addr)
       amounts.push(wei)
@@ -657,9 +694,9 @@ function DisburseForm({
     }
     const over = remainingThisPeriod !== null && total > remainingThisPeriod
     return { recipients, amounts, total, err, over, count: recipients.length }
-  }, [batchText, remainingThisPeriod])
+  }, [batchText, remainingThisPeriod, tokenDecimals])
 
-  const batchValid = batch.count > 0 && !batch.err && !batch.over
+  const batchValid = tokenDecimals !== null && batch.count > 0 && !batch.err && !batch.over
 
   const handleDisburse = useCallback(async () => {
     setError(null)

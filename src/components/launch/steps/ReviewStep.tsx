@@ -8,6 +8,7 @@ import { formatNumber, formatTokenAmount, parseTokenAmount } from '@/utils/forma
 import { NETWORK_CONFIG } from '@/config/contracts'
 import { posterService } from '@/services/core/PosterService'
 import { navigatorDeployService } from '@/services/core/NavigatorDeployService'
+import { tokenService } from '@/services/core/TokenService'
 import { parseAllowlistInput, buildAllowlistTree, downloadAllowlistBackup } from '@/utils/allowlist'
 import { MAX_ALLOWLIST_ADDRESSES } from '@/components/common/AllowlistInput'
 import type { LaunchFormValues } from './BasicInfoStep'
@@ -269,11 +270,26 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
             }
             const ercTree = buildAllowlistTree(ercAllowlist.addresses)
 
+            // pricePerShare/pricePerLoot are denominated in the TRIBUTE TOKEN (the
+            // contract's own example is pricePerShare = 100e6 for 100 USDC), and they
+            // are immutable constructor args — a wrong scale cannot be fixed without a
+            // governance redeploy + re-sanction. Resolve the real decimals and refuse to
+            // deploy if the token cannot be read. NavigatorCatalog already verified the
+            // token on its path; this one did not, which is how the two drifted.
+            const ercTokenMeta = await tokenService.verifyERC20(erc.tributeToken)
+            if (!ercTokenMeta) {
+              throw new Error(
+                'No ERC-20 token found at the tribute token address on this network. '
+                + 'Cannot determine decimals, and tribute prices are immutable once deployed.',
+              )
+            }
+            const ercDecimals = ercTokenMeta.decimals
+
             const address = await navigatorDeployService.deployERC20TributeNavigator({
               daoShipAddress: salts.daoShip.address,
               tributeToken: erc.tributeToken,
-              pricePerShare: parseTokenAmount(erc.pricePerShare || '0'),
-              pricePerLoot: parseTokenAmount(erc.pricePerLoot || '0'),
+              pricePerShare: parseTokenAmount(erc.pricePerShare || '0', ercDecimals),
+              pricePerLoot: parseTokenAmount(erc.pricePerLoot || '0', ercDecimals),
               expiry: BigInt(erc.expiry || '0'),
               mintCap: parseTokenAmount(erc.mintCap || '0'),
               perAddressCap: parseTokenAmount(erc.perAddressCap || '0'),
