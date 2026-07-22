@@ -4,6 +4,7 @@
 
 import { supabase } from '@/config/supabase'
 import { indexerError } from './indexerError'
+import { fetchAllPages, MAX_ROWS } from './paginate'
 import type { Member } from '@/types'
 
 class MemberIndexerService {
@@ -15,16 +16,22 @@ class MemberIndexerService {
   async listMembers(daoId: string): Promise<Member[]> {
     if (!supabase) return []
 
-    const { data, error } = await supabase
-      .from('ds_members')
-      .select('*')
-      .eq('dao_id', daoId)
-      .or('shares.gt.0,loot.gt.0')
-      .order('created_at', { ascending: false })
-
-    if (error) indexerError('[MemberIndexerService] listMembers', error)
-
-    return (data as Member[]) ?? []
+    const { rows, truncated } = await fetchAllPages<Member>(
+      () => supabase!
+        .from('ds_members')
+        .select('*')
+        .eq('dao_id', daoId)
+        .or('shares.gt.0,loot.gt.0')
+        .order('created_at', { ascending: false }) as never,
+      (error) => indexerError('[MemberIndexerService] listMembers', error),
+    )
+    if (truncated) {
+      console.warn(
+        `[MemberIndexerService] listMembers hit the ${MAX_ROWS}-row ceiling for ${daoId}; `
+        + 'the roster is incomplete.',
+      )
+    }
+    return rows
   }
 
   /**

@@ -4,6 +4,7 @@
 
 import { supabase } from '@/config/supabase'
 import { indexerError } from './indexerError'
+import { fetchAllPages, MAX_ROWS } from './paginate'
 import type { Dao, GuildToken } from '@/types'
 
 class DaoIndexerService {
@@ -14,22 +15,27 @@ class DaoIndexerService {
   async listDaos(search?: string): Promise<Dao[]> {
     if (!supabase) return []
 
-    let query = supabase
-      .from('ds_daos')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(200)
-
-    if (search?.trim()) {
-      const escaped = search.trim().replace(/[%_\\]/g, '\\$&')
-      query = query.ilike('name', `%${escaped}%`)
+    // Fresh builder per page — PostgREST builders are single-use.
+    const build = () => {
+      let q = supabase!
+        .from('ds_daos')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (search?.trim()) {
+        const escaped = search.trim().replace(/[%_\\]/g, '\\$&')
+        q = q.ilike('name', `%${escaped}%`)
+      }
+      return q
     }
 
-    const { data, error } = await query
-
-    if (error) indexerError('[DaoIndexerService] listDaos', error)
-
-    return (data as Dao[]) ?? []
+    const { rows, truncated } = await fetchAllPages<Dao>(
+      build as never,
+      (error) => indexerError('[DaoIndexerService] listDaos', error),
+    )
+    if (truncated) {
+      console.warn(`[DaoIndexerService] listDaos hit the ${MAX_ROWS}-row ceiling; list is incomplete.`)
+    }
+    return rows
   }
 
   /**
