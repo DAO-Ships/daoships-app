@@ -10,6 +10,7 @@ import { posterService } from '@/services/core/PosterService'
 import { navigatorDeployService } from '@/services/core/NavigatorDeployService'
 import { tokenService } from '@/services/core/TokenService'
 import { hasCodeAt } from '@/services/utils/TxTracker'
+import { isValidCyprus1Address } from '@/services/utils/AddressUtils'
 import { parseAllowlistInput, buildAllowlistTree, downloadAllowlistBackup } from '@/utils/allowlist'
 import { MAX_ALLOWLIST_ADDRESSES } from '@/components/common/AllowlistInput'
 import type { LaunchFormValues } from './BasicInfoStep'
@@ -94,11 +95,52 @@ function savePipelineState(state: PipelineState) {
   }
 }
 
+/**
+ * Restore persisted pipeline state, validating its shape.
+ *
+ * This was a bare `JSON.parse(raw) as PipelineState` from a GLOBAL localStorage key —
+ * no account or chain binding and no structural check — and the restored value feeds
+ * navigator addresses that later receive MANAGER_PERMISSION. LaunchWizard zod-validates
+ * its own persisted blob; this one did not.
+ *
+ * Anything malformed is discarded rather than partially trusted: a fresh launch is the
+ * safe failure mode.
+ */
 function loadPipelineState(): PipelineState | null {
   try {
     const raw = localStorage.getItem(PIPELINE_STORAGE_KEY)
     if (!raw) return null
-    return JSON.parse(raw) as PipelineState
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+
+    const p = parsed as Record<string, unknown>
+    if (typeof p.started !== 'boolean') return null
+    if (!Array.isArray(p.steps)) return null
+
+    const stepsValid = p.steps.every((step) => {
+      if (!step || typeof step !== 'object') return false
+      const st = step as Record<string, unknown>
+      return typeof st.id === 'string'
+        && typeof st.label === 'string'
+        && ['pending', 'active', 'done', 'failed'].includes(st.status as string)
+    })
+    if (!stepsValid) return null
+
+    // Addresses restored here are later granted MANAGER_PERMISSION — accept only
+    // well-formed ones, and only from this network.
+    const addressOrNull = (v: unknown): boolean =>
+      v === null || v === undefined || (typeof v === 'string' && isValidCyprus1Address(v))
+    if (!addressOrNull(p.onboarderAddress) || !addressOrNull(p.erc20TributeAddress)) return null
+
+    if (p.launchResult !== null && p.launchResult !== undefined) {
+      const lr = p.launchResult as Record<string, unknown>
+      if (typeof lr !== 'object') return null
+      if (!isValidCyprus1Address(String(lr.daoShip)) || !isValidCyprus1Address(String(lr.vault))) {
+        return null
+      }
+    }
+
+    return parsed as PipelineState
   } catch {
     return null
   }

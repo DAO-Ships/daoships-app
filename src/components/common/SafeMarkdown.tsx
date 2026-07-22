@@ -1,4 +1,5 @@
 import { safeHref } from '@/utils/url'
+import { stripBidiControls } from '@/utils/sanitize'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SafeMarkdown - Safe rendering of untrusted user text with link auto-detection
@@ -18,12 +19,17 @@ interface SafeMarkdownProps {
  * NOT a full Markdown parser — this is a lightweight, safer alternative that
  * covers the common case of user-authored plain text with occasional links.
  */
+
+
 export function SafeMarkdown({ children, className = '' }: SafeMarkdownProps) {
   if (!children) return null
 
+  // Neutralise bidi/zero-width control characters before anything else parses this.
+  const safeText = stripBidiControls(children)
+
   // Split by URL pattern. Using a capturing group keeps the URL tokens in the result.
   const urlRe = /(https?:\/\/[^\s]+)/g
-  const parts = children.split(urlRe)
+  const parts = safeText.split(urlRe)
 
   return (
     <span className={`whitespace-pre-wrap break-words ${className}`}>

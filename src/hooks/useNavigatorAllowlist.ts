@@ -32,12 +32,15 @@ async function fetchIpfsAllowlist(cid: string): Promise<AllowlistTreeDump | null
     })
     if (!response.ok) return null
 
-    // Enforce size limit
+    // Enforce the size limit BEFORE buffering. The content-length check is only a
+    // fast path — a gateway may omit the header entirely, and the old fallback ran
+    // `body.length > MAX` only AFTER response.text() had already buffered the whole
+    // response into memory, which is exactly the case the limit exists to prevent.
     const contentLength = response.headers.get('content-length')
     if (contentLength && parseInt(contentLength) > MAX_IPFS_ALLOWLIST_BYTES) return null
 
-    const body = await response.text()
-    if (body.length > MAX_IPFS_ALLOWLIST_BYTES) return null
+    const body = await readCapped(response, MAX_IPFS_ALLOWLIST_BYTES)
+    if (body === null) return null
 
     const parsed = JSON.parse(body)
     // The IPFS document should have the treeDump shape directly, or wrap it
@@ -62,6 +65,48 @@ async function fetchIpfsAllowlist(cid: string): Promise<AllowlistTreeDump | null
  * Returns null helpers when the navigator has no allowlist (open access)
  * or when the allowlist data is unavailable.
  */
+
+/**
+ * Read a response body, aborting once `maxBytes` have been received.
+ *
+ * Returns null if the cap is exceeded — the caller treats that as "unusable", the same
+ * as a malformed document. Falls back to text() only when the body is not streamable.
+ */
+async function readCapped(response: Response, maxBytes: number): Promise<string | null> {
+  const reader = response.body?.getReader()
+  if (!reader) {
+    const text = await response.text()
+    return text.length > maxBytes ? null : text
+  }
+
+  const chunks: Uint8Array[] = []
+  let received = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value) continue
+      received += value.byteLength
+      if (received > maxBytes) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const merged = new Uint8Array(received)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(merged)
+}
+
+
 export function useNavigatorAllowlist(
   daoId: string | undefined,
   navigatorAddress: string | undefined,
