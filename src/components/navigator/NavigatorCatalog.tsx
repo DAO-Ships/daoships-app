@@ -467,6 +467,15 @@ function DeployConfigPanel({
         if (obAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) {
           throw new Error(`Allowlist exceeds ${MAX_ALLOWLIST_ADDRESSES} addresses`)
         }
+        // LaunchWizard gates on this; these branches did not, so invalid lines were
+        // silently dropped before committing an immutable allowlistRoot.
+        if (obAllowlist.invalid.length > 0) {
+          throw new Error(
+            `${obAllowlist.invalid.length} allowlist entr${obAllowlist.invalid.length === 1 ? 'y is' : 'ies are'} not a valid `
+            + `Cyprus-1 address: ${obAllowlist.invalid.slice(0, 3).join(', ')}. `
+            + 'The allowlist root is immutable once deployed — fix or remove them first.',
+          )
+        }
         const obTree = buildAllowlistTree(obAllowlist.addresses)
 
         address = await navigatorDeployService.deployOnboarderNavigator({
@@ -523,6 +532,15 @@ function DeployConfigPanel({
         const ercAllowlist = parseAllowlistInput(erc20Form.allowlistAddresses)
         if (ercAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) {
           throw new Error(`Allowlist exceeds ${MAX_ALLOWLIST_ADDRESSES} addresses`)
+        }
+        // LaunchWizard gates on this; these branches did not, so invalid lines were
+        // silently dropped before committing an immutable allowlistRoot.
+        if (ercAllowlist.invalid.length > 0) {
+          throw new Error(
+            `${ercAllowlist.invalid.length} allowlist entr${ercAllowlist.invalid.length === 1 ? 'y is' : 'ies are'} not a valid `
+            + `Cyprus-1 address: ${ercAllowlist.invalid.slice(0, 3).join(', ')}. `
+            + 'The allowlist root is immutable once deployed — fix or remove them first.',
+          )
         }
         const ercTree = buildAllowlistTree(ercAllowlist.addresses)
 
@@ -600,6 +618,15 @@ function DeployConfigPanel({
         const nftAllowlist = parseAllowlistInput(nftForm.allowlistAddresses)
         if (nftAllowlist.addresses.length > MAX_ALLOWLIST_ADDRESSES) {
           throw new Error(`Allowlist exceeds ${MAX_ALLOWLIST_ADDRESSES} addresses`)
+        }
+        // LaunchWizard gates on this; these branches did not, so invalid lines were
+        // silently dropped before committing an immutable allowlistRoot.
+        if (nftAllowlist.invalid.length > 0) {
+          throw new Error(
+            `${nftAllowlist.invalid.length} allowlist entr${nftAllowlist.invalid.length === 1 ? 'y is' : 'ies are'} not a valid `
+            + `Cyprus-1 address: ${nftAllowlist.invalid.slice(0, 3).join(', ')}. `
+            + 'The allowlist root is immutable once deployed — fix or remove them first.',
+          )
         }
         const nftTree = buildAllowlistTree(nftAllowlist.addresses)
 

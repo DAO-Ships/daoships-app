@@ -519,13 +519,20 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
   const lastEmitted = useRef('')
   useEffect(() => {
     if (!isValidTarget) return
+    // A selected function whose arguments failed to encode must NOT be emitted.
+    // finalData falls back to '0x', so the action would go out as
+    // {to, value: valueWei, data: '0x'} while still being labelled `Call fn()` —
+    // i.e. a bare value transfer to the contract's fallback, presented as a
+    // function call. For a payable function with a mistyped argument that is a
+    // silent loss of funds.
+    if (selectedFn && encodedData === null) return
     const key = `${target}|${valueWei}|${finalData}`
     if (key === lastEmitted.current) return
     lastEmitted.current = key
     const fnName = selectedFn?.name
     const summary = fnName ? `Call ${fnName}()` : 'Contract call'
     onChange(index, { to: target, value: valueWei, data: finalData, summary })
-  }, [target, valueWei, finalData, selectedFn, index, onChange, isValidTarget])
+  }, [target, valueWei, finalData, selectedFn, encodedData, index, onChange, isValidTarget])
 
   const handlePasteAbi = useCallback(() => {
     setPasteAbiError(null)
