@@ -1,34 +1,42 @@
-import { createConfig, http } from 'wagmi'
+import { createConfig, http, type CreateConnectorFn } from 'wagmi'
 import { injected, walletConnect } from 'wagmi/connectors'
 import { custom, defineChain, type EIP1193Provider } from 'viem'
+import { DEPLOYMENTS, QUAI_MAINNET_CHAIN_ID, QUAI_ORCHARD_CHAIN_ID } from './deployments'
 
 const projectId = import.meta.env.VITE_WC_PROJECT_ID || ''
 
+const MAINNET = DEPLOYMENTS[QUAI_MAINNET_CHAIN_ID]
+const ORCHARD = DEPLOYMENTS[QUAI_ORCHARD_CHAIN_ID]
+
+// RPC URLs come from deployments.ts and INCLUDE the /cyprus1 shard path. The bare
+// host (https://rpc.quai.network) returns 404 — the previous mainnet value. This is
+// mostly masked because reads route through the injected provider (getTransport), but
+// it made the http() fallback dead.
 export const quaiMainnet = defineChain({
-  id: 9,
-  name: 'Quai Network',
+  id: QUAI_MAINNET_CHAIN_ID,
+  name: MAINNET.chainName,
   nativeCurrency: { decimals: 18, name: 'Quai', symbol: 'QUAI' },
   rpcUrls: {
-    default: { http: ['https://rpc.quai.network'] },
+    default: { http: [MAINNET.rpcUrl] },
   },
   blockExplorers: {
-    default: { name: 'Quaiscan', url: 'https://quaiscan.io' },
+    default: { name: 'Quaiscan', url: MAINNET.blockExplorerUrl },
   },
 })
 
 export const quaiOrchardTestnet = defineChain({
-  id: 15000,
+  id: QUAI_ORCHARD_CHAIN_ID,
   name: 'Quai Network Orchard Testnet',
   nativeCurrency: { decimals: 18, name: 'Quai', symbol: 'QUAI' },
   rpcUrls: {
     default: {
-      http: [import.meta.env.VITE_RPC_URL || 'https://rpc.orchard.quai.network'],
+      http: [import.meta.env.VITE_RPC_URL || ORCHARD.rpcUrl],
     },
   },
   blockExplorers: {
     default: {
       name: 'Quaiscan',
-      url: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://orchard.quaiscan.io',
+      url: import.meta.env.VITE_BLOCK_EXPLORER_URL || ORCHARD.blockExplorerUrl,
     },
   },
 })
@@ -51,7 +59,9 @@ function getTransport() {
     : http()
 }
 
-const connectors = [injected({ shimDisconnect: true })]
+// Explicitly typed: injected() and walletConnect() have different provider generics,
+// so an inferred array type from the first element rejects the second.
+const connectors: CreateConnectorFn[] = [injected({ shimDisconnect: true })]
 
 if (projectId) {
   connectors.push(
@@ -72,12 +82,18 @@ if (projectId) {
   console.warn('[DAOShips] Missing VITE_WC_PROJECT_ID. Only Pelagus (injected) will be available.')
 }
 
+// A computed key off a union (`9 | 15000`) widens to `{ [x: number]: Transport }`,
+// which does not satisfy wagmi's `Record<9 | 15000, Transport>`. Exactly one chain is
+// ever active, so state the record type explicitly.
+const transports = { [activeNetwork.id]: getTransport() } as Record<
+  (typeof activeNetwork)['id'],
+  ReturnType<typeof getTransport>
+>
+
 export const wagmiConfig = createConfig({
   chains: [activeNetwork],
   connectors,
-  transports: {
-    [activeNetwork.id]: getTransport(),
-  },
+  transports,
 })
 
 export const CONNECTOR_IDS = {

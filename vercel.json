@@ -11,7 +11,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.quai.network https://ipfs.qu.ai https://gateway.pinata.cloud https://*.walletconnect.com wss://*.walletconnect.com https://*.daoships.org; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; frame-ancestors 'none'; worker-src 'self' blob:;"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.quai.network https://ipfs.qu.ai https://ipfs.io https://gateway.pinata.cloud https://quaiscan.io https://*.quaiscan.io https://*.walletconnect.com wss://*.walletconnect.com https://*.walletconnect.org wss://*.walletconnect.org https://api.web3modal.org https://*.daoships.org; img-src 'self' data: https://ipfs.qu.ai https://ipfs.io https://gateway.pinata.cloud https://*.daoships.org https://fonts.reown.com; font-src 'self' https://fonts.gstatic.com https://fonts.reown.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; frame-ancestors 'none'; worker-src 'self' blob:;"
         },
         {
           "key": "X-Content-Type-Options",

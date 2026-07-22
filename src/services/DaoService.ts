@@ -64,6 +64,12 @@ let indexerCheckPromise: Promise<boolean> | null = null
 async function isIndexerAvailable(): Promise<boolean> {
   if (!INDEXER_CONFIG.ENABLED) return false
 
+  // No health endpoint configured (the PROD default is ''): we cannot know, so do NOT
+  // assume dead. Previously getStatus() cached healthy:false permanently in that case,
+  // so every gated read skipped Supabase even though PostgREST was perfectly fine.
+  // Supabase queries fail fast on their own; let them be the signal.
+  if (!INDEXER_CONFIG.HEALTH_URL) return true
+
   const now = Date.now()
   if (indexerAvailableCache !== null && now - indexerCheckTimestamp < INDEXER_CONFIG.HEALTH_CACHE_MS) {
     return indexerAvailableCache
@@ -186,31 +192,20 @@ class DaoService {
    * List all DAOs, newest first.
    */
   async getDaos(): Promise<Dao[]> {
-    if (await isIndexerAvailable()) {
-      try {
-        const daos = await daoIndexerService.listDaos()
-        if (daos.length > 0) return daos
-      } catch {
-        // Fall back to empty — no on-chain equivalent for listing all DAOs
-      }
-    }
-
-    // No on-chain equivalent for "all DAOs" — return empty
-    return []
+    if (!(await isIndexerAvailable())) return []
+    // There is NO on-chain equivalent for "list all DAOs", so a failure here cannot be
+    // recovered — it must surface. Swallowing it rendered Home's "Calm waters ahead —
+    // No DAOs have launched yet" and made Explore's `) : error ? (` branch unreachable.
+    return daoIndexerService.listDaos()
   }
 
   /**
    * Get all DAOs that a given address is a member of.
    */
   async getDaosByMember(address: string): Promise<Dao[]> {
-    if (await isIndexerAvailable()) {
-      try {
-        return await daoIndexerService.getDaosByMember(address)
-      } catch {
-        // No on-chain equivalent
-      }
-    }
-    return []
+    if (!(await isIndexerAvailable())) return []
+    // No on-chain equivalent — surface the failure rather than claiming zero memberships.
+    return daoIndexerService.getDaosByMember(address)
   }
 
   /**
@@ -221,11 +216,29 @@ class DaoService {
       try {
         return await daoIndexerService.getGuildTokens(daoId)
       } catch {
-        // Fall through to empty
+        // Fall through to the on-chain read below.
       }
     }
-    // No on-chain list enumeration available
-    return []
+
+    // On-chain enumeration IS available — getGuildTokens() is in the ABI. This used
+    // to `return []`, and RagequitModal rendered that empty list as a positive
+    // assertion ("This DAO has no guild tokens configured"), letting a member burn
+    // their shares for zero payout during an indexer outage. The failure was
+    // reachable because getMember/getDao DO fall back on-chain, so balances rendered
+    // fine while the treasury read empty.
+    //
+    // If this read also fails we THROW rather than returning [] — the caller must be
+    // able to tell "no tokens" from "could not load".
+    const addresses = await this.getOnChainGuildTokens(daoId)
+    const now = new Date().toISOString()
+    return addresses.map((address) => ({
+      id: `${daoId}-${address}`,
+      dao_id: daoId,
+      token_address: address,
+      enabled: true,
+      created_at: now,
+      tx_hash: '',
+    }))
   }
 
   /**
@@ -376,15 +389,13 @@ class DaoService {
    * List all navigators for a DAO.
    */
   async getNavigators(daoId: string): Promise<Navigator[]> {
-    if (await isIndexerAvailable()) {
-      try {
-        return await navigatorIndexerService.listNavigators(daoId)
-      } catch {
-        // Fall through
-      }
-    }
-    // No on-chain enumeration
-    return []
+    if (!(await isIndexerAvailable())) return []
+    // No on-chain enumeration exists, so a silent [] here is indistinguishable from
+    // "this DAO has no navigators". NavigatorSanctionForm posts the DAO's COMPLETE
+    // endorsement set with last-write-wins semantics and seeds itself from this list,
+    // so an empty-on-failure result would wipe every existing endorsement while the
+    // form promised "Your DAO's other endorsements are preserved."
+    return navigatorIndexerService.listNavigators(daoId)
   }
 
   /**
@@ -979,21 +990,24 @@ class DaoService {
 
       if (proposalCount === 0) return []
 
-      // Fetch proposals in parallel (batch of up to 20 to avoid RPC overload)
+      // Walk the whole range in batches. Previously `start`/`end` were computed once
+      // and the single newest-20 batch WAS the complete result, so on a 60-proposal
+      // DAO during an indexer outage proposal #7 simply vanished with no indication.
       const batchSize = 20
       const proposals: Proposal[] = []
-      const start = proposalCount
-      const end = Math.max(1, proposalCount - batchSize + 1)
 
-      const promises = []
-      for (let i = start; i >= end; i--) {
-        promises.push(this.getProposalFromChainById(daoShip, daoId, i))
-      }
+      for (let hi = proposalCount; hi >= 1; hi -= batchSize) {
+        const lo = Math.max(1, hi - batchSize + 1)
+        const promises = []
+        for (let i = hi; i >= lo; i--) {
+          promises.push(this.getProposalFromChainById(daoShip, daoId, i))
+        }
 
-      const results = await Promise.allSettled(promises)
-      for (const result of results) {
-        if (result.status === 'fulfilled' && result.value) {
-          proposals.push(result.value)
+        const results = await Promise.allSettled(promises)
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value) {
+            proposals.push(result.value)
+          }
         }
       }
 
@@ -1081,7 +1095,12 @@ class DaoService {
         no_votes: Number(p.noVotes),
         yes_balance: p.yesBalance.toString(),
         no_balance: p.noBalance.toString(),
-        max_total_shares_and_loot_at_vote: p.maxTotalSharesAtSponsor?.toString() ?? '0',
+        // These are DISTINCT fields. Writing the sponsor snapshot into the
+        // at-vote high-water mark left max_total_shares_at_sponsor undefined, and
+        // willProposalPass reads `BigInt(max_total_shares_at_sponsor || '0')` — so
+        // the quorum threshold silently collapsed to zero.
+        max_total_shares_at_sponsor: p.maxTotalSharesAtSponsor?.toString() ?? '0',
+        max_total_shares_and_loot_at_vote: p.maxTotalSharesAndLootAtVote?.toString() ?? '0',
         proposal_offering: '0',
         block_number: 0,
       }
@@ -1122,7 +1141,9 @@ class DaoService {
         shares: shares.toString(),
         loot: loot.toString(),
         delegating_to: null,
-        voting_power: '0',
+        // Was hardcoded '0' despite _currentVotes being fetched above, so during an
+        // indexer outage a member holding 100% of shares could not sponsor.
+        voting_power: _currentVotes.toString(),
         votes: 0,
         last_activity_at: null,
         updated_at: now,

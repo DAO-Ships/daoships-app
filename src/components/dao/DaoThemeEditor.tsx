@@ -10,7 +10,14 @@ import type { DaoTheme } from '@/utils/daoTheme'
 // six). Output is a DaoTheme containing only the enabled keys (+ optional mode).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const COLOR_FIELDS: Array<{ key: keyof DaoTheme; label: string; fallback: string }> = [
+/**
+ * Colour-valued theme keys. Excludes `mode`, which is a 'light' | 'dark' union
+ * handled by setMode() — without this, generic key assignment in toggle()/setColor()
+ * is unsound for that field.
+ */
+type DaoThemeColorKey = Exclude<keyof DaoTheme, 'mode'>
+
+const COLOR_FIELDS: Array<{ key: DaoThemeColorKey; label: string; fallback: string }> = [
   { key: 'primary', label: 'Primary', fallback: '#6257c9' },
   { key: 'accent', label: 'Accent', fallback: '#06b6d4' },
   { key: 'background', label: 'Background', fallback: '#0a0a12' },
@@ -34,13 +41,13 @@ interface DaoThemeEditorProps {
 }
 
 export function DaoThemeEditor({ value, onChange, disabled = false }: DaoThemeEditorProps) {
-  const toggle = (key: keyof DaoTheme, fallback: string, on: boolean) => {
+  const toggle = (key: DaoThemeColorKey, fallback: string, on: boolean) => {
     const next = { ...value }
-    if (on) next[key] = (next[key] as string | undefined) ?? fallback
+    if (on) next[key] = next[key] ?? fallback
     else delete next[key]
     onChange(next)
   }
-  const setColor = (key: keyof DaoTheme, hex: string) => onChange({ ...value, [key]: hex })
+  const setColor = (key: DaoThemeColorKey, hex: string) => onChange({ ...value, [key]: hex })
   const setMode = (m: string) => {
     const next = { ...value }
     if (m === 'light' || m === 'dark') next.mode = m

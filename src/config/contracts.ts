@@ -9,6 +9,7 @@
 
 import { quais } from 'quais'
 import { isAddress } from '@/services/utils/AddressUtils'
+import { getDeployment, SUPPORTED_CHAIN_IDS } from './deployments'
 
 // ── Protocol Constants ────────────────────────────────────────────────────
 
@@ -35,12 +36,20 @@ const CHAIN_ID = parseInt(import.meta.env.VITE_CHAIN_ID || '15000', 10)
 /** Quai mainnet is chain 9; anything else (15000 = Orchard) is a test network. */
 export const IS_MAINNET = CHAIN_ID === 9
 
+/**
+ * Verified deployment for the configured chain. Undefined for an unrecognised
+ * VITE_CHAIN_ID — validateContractConfig() turns that into a hard failure in PROD.
+ */
+const DEPLOYMENT = getDeployment(CHAIN_ID)
+
 export const NETWORK_CONFIG: NetworkConfig = {
   chainId: CHAIN_ID,
-  chainName: import.meta.env.VITE_CHAIN_NAME || (IS_MAINNET ? 'Quai Network' : 'Orchard Testnet'),
-  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://rpc.cyprus1.colosseum.quai.network',
-  blockExplorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://cyprus1.colosseum.quaiscan.io',
-  quaiVaultUrl: (import.meta.env.VITE_QUAIVAULT_URL as string) || 'https://testnet.quaivault.org',
+  chainName: import.meta.env.VITE_CHAIN_NAME || DEPLOYMENT?.chainName || `Chain ${CHAIN_ID}`,
+  // Shard path is mandatory on Quai — the bare host 404s.
+  rpcUrl: import.meta.env.VITE_RPC_URL || DEPLOYMENT?.rpcUrl || '',
+  blockExplorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || DEPLOYMENT?.blockExplorerUrl || '',
+  quaiVaultUrl: (import.meta.env.VITE_QUAIVAULT_URL as string)
+    || (IS_MAINNET ? 'https://quaivault.org' : 'https://testnet.quaivault.org'),
   nativeCurrency: {
     name: 'Quai',
     symbol: 'QUAI',
@@ -85,30 +94,38 @@ export interface ContractAddresses {
  * Contract addresses from deployment-addresses.json.
  * Environment variables override the defaults.
  */
+/**
+ * Addresses for the configured chain.
+ *
+ * Previously every entry fell back to a hardcoded Orchard-testnet literal. Those
+ * literals were correct *for Orchard*, but they meant a mainnet build with a missing
+ * VITE_* var silently ran against testnet addresses that have no bytecode on chain 9 —
+ * and validateContractConfig()'s PROD throw could never fire, because the fallback had
+ * already substituted a checksum-valid address.
+ *
+ * Now the per-chain table in deployments.ts supplies the default, keyed on CHAIN_ID,
+ * so a missing var yields the right address for the right network. An env override is
+ * still honoured for local development against a custom deployment.
+ */
+const DEPLOYED = DEPLOYMENT?.contracts
+
 export const CONTRACT_ADDRESSES: ContractAddresses = {
   // Singletons
-  DAOSHIP_SINGLETON:
-    import.meta.env.VITE_DAOSHIP_SINGLETON || '0x0034B574bDC240d37b6F08248Ae069727164002C',
-  SHARES_SINGLETON:
-    import.meta.env.VITE_SHARES_SINGLETON || '0x00366CedcB0B99A9E5Dfb9B7dE1484A895118235',
-  LOOT_SINGLETON:
-    import.meta.env.VITE_LOOT_SINGLETON || '0x00521258bBD3B23Bc10c3Fc77d360Df4379dE054',
-  VAULT_SINGLETON:
-    import.meta.env.VITE_VAULT_SINGLETON || '0x004E539Cf477A5Cb456A56023f083cD91Bc4934e',
+  DAOSHIP_SINGLETON: import.meta.env.VITE_DAOSHIP_SINGLETON || DEPLOYED?.DAOSHIP_SINGLETON || '',
+  SHARES_SINGLETON: import.meta.env.VITE_SHARES_SINGLETON || DEPLOYED?.SHARES_SINGLETON || '',
+  LOOT_SINGLETON: import.meta.env.VITE_LOOT_SINGLETON || DEPLOYED?.LOOT_SINGLETON || '',
+  VAULT_SINGLETON: import.meta.env.VITE_VAULT_SINGLETON || DEPLOYED?.VAULT_SINGLETON || '',
 
   // Factories
-  DAOSHIP_LAUNCHER:
-    import.meta.env.VITE_DAOSHIP_LAUNCHER || '0x00487182EA7a7881d84C63099001B0195a41BFB3',
+  DAOSHIP_LAUNCHER: import.meta.env.VITE_DAOSHIP_LAUNCHER || DEPLOYED?.DAOSHIP_LAUNCHER || '',
   DAOSHIP_AND_VAULT_LAUNCHER:
-    import.meta.env.VITE_DAOSHIP_AND_VAULT_LAUNCHER || '0x0036B11eEC6aa17407b0e157fA9caa32b7EFC9D1',
-  QUAIVAULT_FACTORY:
-    import.meta.env.VITE_QUAIVAULT_FACTORY || '0x002d1305D597c157bB975967FA2e5337674b0E5F',
+    import.meta.env.VITE_DAOSHIP_AND_VAULT_LAUNCHER || DEPLOYED?.DAOSHIP_AND_VAULT_LAUNCHER || '',
+  QUAIVAULT_FACTORY: import.meta.env.VITE_QUAIVAULT_FACTORY || DEPLOYED?.QUAIVAULT_FACTORY || '',
 
   // Infrastructure
-  POSTER:
-    import.meta.env.VITE_POSTER || '0x005C3957b8f612BBcdCFCbeDb8C53C3d3b3FEEdc',
+  POSTER: import.meta.env.VITE_POSTER || DEPLOYED?.POSTER || '',
   MULTISEND_CALL_ONLY:
-    import.meta.env.VITE_MULTISEND_CALL_ONLY || '0x002ae8A47C2da497fe569AfCF0486410aA1093E0',
+    import.meta.env.VITE_MULTISEND_CALL_ONLY || DEPLOYED?.MULTISEND_CALL_ONLY || '',
 }
 
 // ── Validation ────────────────────────────────────────────────────────────
@@ -120,6 +137,16 @@ export const CONTRACT_ADDRESSES: ContractAddresses = {
 export function validateContractConfig(): boolean {
   let valid = true
   const entries = Object.entries(CONTRACT_ADDRESSES) as [keyof ContractAddresses, string][]
+
+  // An unrecognised chain has no verified deployment to fall back on, so every
+  // address below will be empty unless fully specified by env.
+  if (!DEPLOYMENT) {
+    console.warn(
+      `[contracts] No deployment for chain ${CHAIN_ID}. Known chains: ${SUPPORTED_CHAIN_IDS.join(', ')}. `
+      + 'Set VITE_CHAIN_ID, or supply every VITE_* contract address explicitly.',
+    )
+    valid = false
+  }
 
   for (const [name, address] of entries) {
     if (!address) {
@@ -133,6 +160,23 @@ export function validateContractConfig(): boolean {
 
   if (!NETWORK_CONFIG.rpcUrl) {
     console.warn('[contracts] Missing RPC URL. Set VITE_RPC_URL in .env')
+    valid = false
+  }
+
+  if (!NETWORK_CONFIG.blockExplorerUrl) {
+    console.warn('[contracts] Missing block explorer URL — ABI-assisted calldata decoding will degrade.')
+    valid = false
+  }
+
+  // A network/schema mismatch reads real rows off the wrong chain, which is worse
+  // than reading none: the UI looks healthy and is entirely wrong.
+  const expectedSchema = DEPLOYMENT?.supabaseSchema
+  const actualSchema = import.meta.env.VITE_NETWORK_SCHEMA
+  if (expectedSchema && actualSchema && actualSchema !== expectedSchema) {
+    console.warn(
+      `[contracts] VITE_NETWORK_SCHEMA="${actualSchema}" does not match chain ${CHAIN_ID} `
+      + `(expected "${expectedSchema}"). Indexer reads would target the wrong network.`,
+    )
     valid = false
   }
 

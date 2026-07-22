@@ -22,8 +22,8 @@ export interface Member {
 
   votes?: number
 
-  last_activity_at?: string
-  updated_at?: string
+  last_activity_at?: string | null
+  updated_at?: string | null
 }
 
 /**

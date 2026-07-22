@@ -102,7 +102,7 @@ export interface ParsedProposalDetails {
  * Parse the proposal `details` field.
  * Details may be JSON `{"title":"...","description":"...","type":"...","discussionUrl":"..."}` or plain text.
  */
-export function parseProposalDetails(details: string | null): ParsedProposalDetails {
+export function parseProposalDetails(details: string | null | undefined): ParsedProposalDetails {
   if (!details) return { title: 'Untitled Proposal', description: '' }
 
   try {

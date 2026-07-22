@@ -16,7 +16,8 @@ export function useVoting(daoId: string, proposalId: string) {
         queryClient.invalidateQueries({ queryKey: ['proposal', daoId, proposalId] })
         queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
         queryClient.invalidateQueries({ queryKey: ['hasVoted', daoId] })
-        queryClient.invalidateQueries({ queryKey: ['votes', daoId] })
+        // Matches useProposalVotes' key; ['votes', ...] matched no registered query.
+        queryClient.invalidateQueries({ queryKey: ['proposalVotes', `${daoId}-${proposalId}`] })
       }
       run()
       setTimeout(run, 4000)

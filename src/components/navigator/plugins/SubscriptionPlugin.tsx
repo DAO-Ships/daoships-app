@@ -5,6 +5,7 @@ import type { NavigatorPluginProps } from './index'
 import { mapContractError } from './pluginErrors'
 import { useNavigatorConfig } from '@/hooks/useNavigatorConfig'
 import { useMember } from '@/hooks/useMember'
+import { useTokenMetadata } from '@/hooks/useTokenMetadata'
 import {
   useSubscriptionMembers,
   useSubscriptionPayments,
@@ -20,7 +21,7 @@ import { Button } from '@/components/common/Button'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { MemberIdentity } from '@/components/member/MemberIdentity'
 import { useMemberProfiles, type MemberProfile } from '@/hooks/useMemberProfile'
-import { formatTokenAmount } from '@/utils/format'
+import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
 import { formatDuration, formatCountdown } from '@/utils/time'
 import { safeBigInt } from '@/utils/bigint'
 import { addressesEqual } from '@/services/utils/AddressUtils'
@@ -586,8 +587,24 @@ function WithdrawStuckTokensButton({ daoId, navigatorAddress }: { daoId: string;
 
   const tokenValid = token.startsWith('0x') && token.length === 42
   const toValid = to.startsWith('0x') && to.length === 42
-  const amountWei = (() => { try { return amount ? parseTokenAmount(amount) : 0n } catch { return 0n } })()
-  const valid = tokenValid && toValid && amountWei > 0n
+  // The recovered token is arbitrary, so its decimals must be read on-chain rather
+  // than assumed to be 18.
+  const { data: recoverTokenMeta, isLoading: recoverDecimalsLoading } = useTokenMetadata(
+    tokenValid ? token : undefined,
+  )
+  const recoverDecimals = recoverTokenMeta?.decimals ?? null
+  const amountWei = (() => {
+    if (recoverDecimals === null) return 0n
+    try {
+      return amount ? parseTokenAmount(amount, recoverDecimals) : 0n
+    } catch (err) {
+      // Malformed user input parses to 0n (button stays disabled). A ReferenceError
+      // or TypeError is a programmer bug, not bad input — never swallow it.
+      if (err instanceof ReferenceError || err instanceof TypeError) throw err
+      return 0n
+    }
+  })()
+  const valid = tokenValid && toValid && recoverDecimals !== null && amountWei > 0n
 
   if (!open) {
     return <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>Recover Mis-sent Tokens</Button>
@@ -600,6 +617,11 @@ function WithdrawStuckTokensButton({ daoId, navigatorAddress }: { daoId: string;
       <div className="flex gap-2">
         <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="Recipient 0x…" className="input flex-1 font-mono text-sm" />
         <input value={amount} onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setAmount(e.target.value) }} placeholder="Amount" className="input w-28 font-mono text-sm" inputMode="decimal" />
+        {tokenValid && recoverDecimals === null && (
+          <span className="text-2xs text-dao-text-hint self-center">
+            {recoverDecimalsLoading ? 'Reading token decimals…' : 'Could not read token decimals'}
+          </span>
+        )}
       </div>
       <div className="flex items-center justify-end gap-3">
         <button type="button" onClick={() => setOpen(false)} className="text-xs text-dao-text-hint hover:text-dao-text">Cancel</button>

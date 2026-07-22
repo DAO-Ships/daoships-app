@@ -12,6 +12,7 @@ import { useMember } from '@/hooks/useMember'
 import { useMemberProfile, useMemberProfiles } from '@/hooks/useMemberProfile'
 import { useWallet } from '@/hooks/useWallet'
 import { useHasVoted } from '@/hooks/useHasVoted'
+import { usePriorVotes } from '@/hooks/usePriorVotes'
 import { useVoteReasons } from '@/hooks/useVoteReasons'
 import { useRealtimeProposal } from '@/hooks/useRealtimeProposal'
 import { useRealtimeVotes } from '@/hooks/useRealtimeVotes'
@@ -63,15 +64,18 @@ export function ProposalDetail() {
   // config isn't live until a second `executeChange` after the delay. Detect it so we can guide
   // the user to that step (decoded from the actions, not the details tag, so it's authoritative).
   const timelockQueue = useMemo(() => {
-    const action = decodeProposalActions(proposal?.proposal_data).find((a) => a.type === 'queueGovernanceConfig')
+    const action = decodeProposalActions(proposal?.proposal_data, daoId)
+      .find((a) => a.type === 'queueGovernanceConfig')
     return action ? { timelockAddress: action.details.timelock as string | undefined } : null
-  }, [proposal?.proposal_data])
+  }, [proposal?.proposal_data, daoId])
   const { connected, address, connect } = useWallet()
   const { vote, isVoting, error: voteError } = useVoting(daoId!, proposalId!)
   const actions = useProposalActions(daoId!, proposalId!)
   const { data: member } = useMember(daoId, address ?? undefined)
   const { data: hasVoted = false } = useHasVoted(daoId, proposalId ? Number(proposalId) : undefined, address ?? undefined)
   const { data: proposalVotes } = useProposalVotes(daoId, proposalId ? Number(proposalId) : undefined)
+  // Contract gate: getPriorVotes(voter, votingStarts) must be non-zero to vote.
+  const { data: priorVotes } = usePriorVotes(daoId, address ?? undefined, proposal?.voting_starts)
   const { data: voteReasonsList } = useVoteReasons(daoId, proposalId ? Number(proposalId) : undefined)
 
   // Sponsor threshold check
@@ -178,9 +182,49 @@ export function ProposalDetail() {
   // A Ready (passing) proposal must be processed with its original action bytes; a
   // defeated one must be closed with '0x'. willProposalPass mirrors the contract's
   // quorum+majority Ready decision so we send the data the contract expects.
-  const processData = willProposalPass(proposal, dao.quorum_percent) ? (proposal.proposal_data ?? '0x') : '0x'
+  // A Ready (passing) proposal must be processed with its ORIGINAL action bytes; a
+  // defeated one must be closed with '0x'. The contract checks
+  // keccak256(abi.encode(data)) against the stored hash, so the wrong branch reverts
+  // with HashMismatch and burns the caller's gas.
+  //
+  // Two ways this used to go wrong, both silent:
+  //   - `proposal.proposal_data ?? '0x'` sent '0x' on the PASSING branch whenever the
+  //     data was unavailable — a guaranteed HashMismatch.
+  //   - willProposalPass now throws rather than evaluating quorum against an absent
+  //     snapshot, which would white-screen this render body.
+  // Both now resolve to a blocked Process button with a stated reason.
+  const processPlan: { data: string | null; blockedReason: string | null } = (() => {
+    let willPass: boolean
+    try {
+      willPass = willProposalPass(proposal, dao.quorum_percent)
+    } catch (err) {
+      return {
+        data: null,
+        blockedReason: err instanceof Error
+          ? err.message
+          : 'Cannot determine whether this proposal passed.',
+      }
+    }
+    if (!willPass) return { data: '0x', blockedReason: null }
+    if (proposal.proposal_data == null) {
+      return {
+        data: null,
+        blockedReason: 'This proposal passed, but its action data is unavailable — '
+          + 'processing now would revert with HashMismatch. Retry once the indexer catches up.',
+      }
+    }
+    return { data: proposal.proposal_data, blockedReason: null }
+  })()
+  const processData = processPlan.data
 
-  const actionErrors = [voteError, actions.sponsorError, actions.processError, actions.cancelError].filter(Boolean)
+  const actionErrors = [
+    voteError,
+    actions.sponsorError,
+    actions.processError,
+    actions.cancelError,
+    // Surface WHY Process is unavailable rather than leaving a silently inert button.
+    processPlan.blockedReason,
+  ].filter(Boolean)
 
   // Can the user vote? (for mobile action bar)
   const canVote = status === ProposalStatus.Voting && !hasVoted && connected && address
@@ -327,7 +371,14 @@ export function ProposalDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-dao-text-hint mb-1">Created by</p>
-                <MemberIdentity address={proposal.submitter} profile={profiles?.get(proposal.submitter.toLowerCase())} />
+                {proposal.submitter ? (
+                  <MemberIdentity
+                    address={proposal.submitter}
+                    profile={profiles?.get(proposal.submitter.toLowerCase())}
+                  />
+                ) : (
+                  <p className="text-dao-text-secondary">Unknown</p>
+                )}
               </div>
               <div>
                 <p className="text-dao-text-hint mb-1">Submitted</p>
@@ -369,14 +420,15 @@ export function ProposalDetail() {
                 delegatingTo={delegatingTo}
                 delegateVote={delegateVote}
                 delegateVoteReason={delegateVoteReason}
-                delegateProfile={delegateProfile}
+                delegateProfile={delegateProfile ?? null}
+                priorVotes={priorVotes}
                 sponsorBelowThreshold={sponsorBelowThreshold}
                 onSponsor={() => actions.sponsor()}
                 onVote={handleVote}
-                onProcess={() => actions.process(processData)}
+                onProcess={() => { if (processData !== null) actions.process(processData) }}
                 onCancel={() => actions.cancel()}
                 onConnect={connect}
-                proposalDataMissing={!proposal.proposal_data}
+                proposalDataMissing={!proposal.proposal_data || processData === null}
                 isSponsorPending={actions.isSponsorPending}
                 isVotePending={isVoting}
                 isProcessPending={actions.isProcessPending}
@@ -403,14 +455,15 @@ export function ProposalDetail() {
               delegatingTo={delegatingTo}
               delegateVote={delegateVote}
               delegateVoteReason={delegateVoteReason}
-              delegateProfile={delegateProfile}
+              delegateProfile={delegateProfile ?? null}
+                priorVotes={priorVotes}
               sponsorBelowThreshold={sponsorBelowThreshold}
               onSponsor={() => actions.sponsor()}
               onVote={handleVote}
-              onProcess={() => actions.process(processData)}
+              onProcess={() => { if (processData !== null) actions.process(processData) }}
               onCancel={() => actions.cancel()}
               onConnect={connect}
-              proposalDataMissing={!proposal.proposal_data}
+              proposalDataMissing={!proposal.proposal_data || processData === null}
               isSponsorPending={actions.isSponsorPending}
               isVotePending={isVoting}
               isProcessPending={actions.isProcessPending}

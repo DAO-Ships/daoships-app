@@ -342,12 +342,15 @@ function TransferTokenFields({ index, onChange, disabled, vaultAddress, knownTok
     staleTime: 30_000,
   })
 
-  const decimals = tokenMeta?.decimals ?? 18
+  // Never guess 18: a 6-decimal token encoded at 18 sends 10^12x the intended amount.
+  // null until the on-chain read resolves; encoding and emit are both blocked until then.
+  const decimals: number | null = tokenMeta?.decimals ?? null
   const symbol = tokenMeta?.symbol ?? knownTokens.find((t) => t.address.toLowerCase() === effectiveToken.toLowerCase())?.symbol ?? '???'
 
   // Encode the transfer(address, uint256) calldata
   const encodedData = useMemo(() => {
     if (!isAddress(recipient) || !amount || !isValidToken) return null
+    if (decimals === null) return null
     try {
       const iface = new quais.Interface(['function transfer(address to, uint256 amount)'])
       const rawAmount = quais.parseUnits(amount, decimals).toString()
@@ -357,12 +360,12 @@ function TransferTokenFields({ index, onChange, disabled, vaultAddress, knownTok
 
   const lastEmitted = useRef('')
   useEffect(() => {
-    if (!isValidToken || !encodedData) return
+    if (!isValidToken || !encodedData || decimals === null) return
     const key = `${effectiveToken}|${encodedData}`
     if (key === lastEmitted.current) return
     lastEmitted.current = key
     onChange(index, { to: effectiveToken, value: '0', data: encodedData, summary: `Transfer ${amount || '0'} ${symbol}` })
-  }, [effectiveToken, encodedData, amount, symbol, index, onChange, isValidToken])
+  }, [effectiveToken, encodedData, amount, symbol, index, onChange, isValidToken, decimals])
 
   return (
     <div className="space-y-3">
@@ -398,7 +401,7 @@ function TransferTokenFields({ index, onChange, disabled, vaultAddress, knownTok
         <div className="flex items-center gap-2 bg-dao-dark-3/50 rounded px-3 py-1.5">
           <span className="text-2xs text-dao-text-hint">Vault balance:</span>
           <span className="text-xs font-mono text-primary-400">
-            {formatTokenAmount(vaultTokenBal, decimals)} {symbol}
+            {decimals === null ? '…' : formatTokenAmount(vaultTokenBal, decimals)} {symbol}
           </span>
         </div>
       )}
@@ -421,7 +424,10 @@ function TransferTokenFields({ index, onChange, disabled, vaultAddress, knownTok
         </div>
         {amount && (
           <p className="text-2xs text-dao-text-hint mt-0.5 font-mono">
-            {(() => { try { return quais.parseUnits(amount, decimals).toString() } catch { return '—' } })()} raw units
+            {(() => {
+              if (decimals === null) return '—'
+              try { return quais.parseUnits(amount, decimals).toString() } catch { return '—' }
+            })()} raw units
           </p>
         )}
       </div>
@@ -513,13 +519,20 @@ function ContractCallFields({ index, onChange, disabled, vaultAddress, knownToke
   const lastEmitted = useRef('')
   useEffect(() => {
     if (!isValidTarget) return
+    // A selected function whose arguments failed to encode must NOT be emitted.
+    // finalData falls back to '0x', so the action would go out as
+    // {to, value: valueWei, data: '0x'} while still being labelled `Call fn()` —
+    // i.e. a bare value transfer to the contract's fallback, presented as a
+    // function call. For a payable function with a mistyped argument that is a
+    // silent loss of funds.
+    if (selectedFn && encodedData === null) return
     const key = `${target}|${valueWei}|${finalData}`
     if (key === lastEmitted.current) return
     lastEmitted.current = key
     const fnName = selectedFn?.name
     const summary = fnName ? `Call ${fnName}()` : 'Contract call'
     onChange(index, { to: target, value: valueWei, data: finalData, summary })
-  }, [target, valueWei, finalData, selectedFn, index, onChange, isValidTarget])
+  }, [target, valueWei, finalData, selectedFn, encodedData, index, onChange, isValidTarget])
 
   const handlePasteAbi = useCallback(() => {
     setPasteAbiError(null)

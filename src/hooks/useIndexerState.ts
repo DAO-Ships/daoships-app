@@ -33,11 +33,12 @@ export function useIndexerState() {
 
   // Realtime subscription — update cache when the indexer writes a new state row
   useEffect(() => {
-    if (!supabase) return
+    const client = supabase
+    if (!client) return
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: ['indexerState'] })
     }
-    const channel = supabase
+    const channel = client
       .channel('indexer-state')
       .on(
         'postgres_changes',
@@ -54,7 +55,7 @@ export function useIndexerState() {
       })
 
     return () => {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     }
   }, [queryClient])
 

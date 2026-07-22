@@ -8,6 +8,8 @@ export interface MemberProfile {
   name?: string
   bio?: string
   avatar?: string
+  /** Social links, label -> URL. Written by profileUpdate.ts; rendered by DelegateCard. */
+  links?: Record<string, string>
 }
 
 /**
@@ -20,7 +22,24 @@ function extractMemberProfile(json: unknown): MemberProfile {
     name: typeof obj.name === 'string' ? obj.name : undefined,
     bio: typeof obj.bio === 'string' ? obj.bio : undefined,
     avatar: typeof obj.avatar === 'string' ? obj.avatar : undefined,
+    links: extractLinks(obj.links),
   }
+}
+
+/**
+ * Extract a label -> URL map, keeping only own string-valued entries.
+ * Mirrors the write shape in profileUpdate.ts. Skips inherited/prototype keys and
+ * non-string values so attacker-authored Poster content cannot smuggle objects
+ * into the render path. Returns undefined when there is nothing usable.
+ */
+function extractLinks(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+    if (typeof value === 'string' && value !== '') out[key] = value
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 /**

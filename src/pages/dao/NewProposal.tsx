@@ -39,6 +39,19 @@ import { CONTRACT_ADDRESSES } from '@/config/contracts'
 import { POSTER_TAGS } from '@/types/poster'
 import { posterService } from '@/services/core/PosterService'
 import { NavigatorPermission } from '@/types/navigator'
+import { isAddress } from '@/services/utils/AddressUtils'
+
+/** The permission values the manual dropdown can produce (NavigatorForm PERMISSION_OPTIONS). */
+const VALID_NAVIGATOR_PERMISSIONS = new Set<number>([
+  NavigatorPermission.None,
+  NavigatorPermission.ManagerOnly,
+  NavigatorPermission.GovernorOnly,
+  NavigatorPermission.AdminOnly,
+  NavigatorPermission.ManagerAndGovernor,
+  NavigatorPermission.AdminAndManager,
+  NavigatorPermission.AdminAndGovernor,
+  NavigatorPermission.All,
+])
 import { navigatorService } from '@/services/core/NavigatorService'
 import { buildQueueChangeAction } from '@/utils/timelockProposals'
 
@@ -140,9 +153,19 @@ export function NewProposal() {
   const [submittedProposalId, setSubmittedProposalId] = useState<number | null>(null)
 
   // Navigator pre-fill from query params
-  const prefillNavigator = searchParams.get('addAddress') && searchParams.get('addPermission') !== null
-    ? { address: searchParams.get('addAddress')!, permission: Number(searchParams.get('addPermission')) }
-    : null
+  // Deep-link prefills are attacker-supplyable, so they get the same validation the
+  // manual path applies (NavigatorForm.tsx:108-112) — previously `addAddress` was taken
+  // raw and `addPermission` was a bare Number(), accepting NaN, negatives and
+  // out-of-enum values that the dropdown cannot produce.
+  const prefillNavigator = (() => {
+    const address = searchParams.get('addAddress')
+    const rawPermission = searchParams.get('addPermission')
+    if (!address || rawPermission === null) return null
+    if (!isAddress(address)) return null
+    const permission = Number(rawPermission)
+    if (!Number.isInteger(permission) || !VALID_NAVIGATOR_PERMISSIONS.has(permission)) return null
+    return { address, permission }
+  })()
   const prefillNavigatorName = searchParams.get('addName') || undefined
 
   // Sanction prefill (from the navigator page's sanction/unsanction CTA, or NavigatorCatalog
@@ -153,14 +176,25 @@ export function NewProposal() {
   // Custom-action prefill (e.g. from BudgetPlugin: enable module / create / cancel budget).
   // A single pre-encoded action targeting a navigator or the vault.
   const customTo = searchParams.get('customTo')
-  const prefillCustomActions = customTo
-    ? [{
-        to: customTo,
-        value: searchParams.get('customValue') || '0',
-        data: searchParams.get('customData') || '0x',
-        summary: searchParams.get('customSummary') || undefined,
-      }]
-    : undefined
+  const prefillCustomActions = (() => {
+    if (!customTo) return undefined
+    // Reject the whole prefill on a malformed target rather than seeding a form with it.
+    if (!isAddress(customTo)) return undefined
+    const data = searchParams.get('customData') || '0x'
+    if (!/^0x([0-9a-fA-F]{2})*$/.test(data)) return undefined
+    return [{
+      to: customTo,
+      // buildCustomActionHref hardcodes '0' with the comment "governance calls never
+      // send native value". Honour the producer's own contract instead of trusting the
+      // URL — otherwise any link could attach native value to a governance action.
+      value: '0',
+      data,
+      // `customSummary` was an attacker-chosen label rendered as the action's
+      // description. Dropped: ProposalActionSummary decodes the calldata itself and
+      // shows the real target/value/selector.
+      summary: undefined,
+    }]
+  })()
   const prefillCustomTitle = searchParams.get('customTitle') || undefined
   const prefillCustomDescription = searchParams.get('customDescription') || undefined
 
@@ -169,7 +203,11 @@ export function NewProposal() {
   const { data: member, isLoading: memberLoading } = useMember(daoId, address ?? undefined)
   const isMember = member ? (safeBigInt(member.shares) > 0n || safeBigInt(member.loot) > 0n) : false
   const { data: profileRecord } = useDaoProfile(daoId)
-  const { data: navigators } = useNavigators(daoId)
+  const {
+    data: navigators,
+    isLoading: navigatorsLoading,
+    isError: navigatorsError,
+  } = useNavigators(daoId)
 
   // An active, sanctioned TimelockNavigator that holds GOVERNOR — when present, ALL
   // governance-config changes from the standard form route through its queueChange (no bypass).
@@ -742,7 +780,25 @@ export function NewProposal() {
               />
             )}
 
-            {selectedType === ProposalType.NavigatorSanction && (
+            {selectedType === ProposalType.NavigatorSanction && (navigatorsLoading || navigatorsError) && (
+              <div className={`border rounded-lg px-4 py-3 ${navigatorsError
+                ? 'bg-red-500/10 border-red-500/30'
+                : 'bg-dao-surface/60 border-dao-border'}`}>
+                <p className={`text-sm ${navigatorsError ? 'text-red-400 font-medium' : 'text-dao-text-hint'}`}>
+                  {navigatorsError
+                    ? "Could not load this DAO's navigators."
+                    : "Loading this DAO's navigators…"}
+                </p>
+                {navigatorsError && (
+                  <p className="text-xs text-dao-text-muted mt-0.5">
+                    A sanction proposal replaces the DAO&apos;s entire endorsement set, so it
+                    cannot be built from an incomplete list — it would silently revoke every
+                    existing endorsement.
+                  </p>
+                )}
+              </div>
+            )}
+            {selectedType === ProposalType.NavigatorSanction && !navigatorsLoading && !navigatorsError && (
               <NavigatorSanctionForm
                 readOnlyNavigators={(navigators || []).filter(
                   (n) => n.permission === NavigatorPermission.None && !n.permission_ever_granted,

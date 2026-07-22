@@ -1,6 +1,7 @@
 import type { Control, FieldErrors } from 'react-hook-form'
 import { useController } from 'react-hook-form'
 import { formatDuration, parseDurationToSeconds } from '@/utils/time'
+import { MAX_VOTING_PERIOD, MAX_GRACE_PERIOD } from '@/services/utils/GovernanceEncoder'
 import type { LaunchFormValues } from './BasicInfoStep'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -22,6 +23,7 @@ export function GovernanceStep({ control, errors }: GovernanceStepProps) {
         const secs = parseDurationToSeconds(value)
         if (secs === null) return 'Enter a valid duration (e.g. "3 days", "12 hours", or seconds)'
         if (secs < 60) return 'Voting period must be at least 60 seconds (contract minimum)'
+        if (secs > MAX_VOTING_PERIOD) return 'Voting period cannot exceed 365 days (contract maximum)'
         return true
       },
     },
@@ -35,6 +37,7 @@ export function GovernanceStep({ control, errors }: GovernanceStepProps) {
         const secs = parseDurationToSeconds(value)
         if (secs === null) return 'Enter a valid duration (e.g. "1 day", "12 hours", or seconds)'
         if (secs < 0) return 'Grace period cannot be negative'
+        if (secs > MAX_GRACE_PERIOD) return 'Grace period cannot exceed 365 days (contract maximum)'
         return true
       },
     },

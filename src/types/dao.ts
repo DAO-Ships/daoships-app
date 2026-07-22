@@ -81,6 +81,13 @@ export interface DaoExpiryConfig {
   voting_period: number
   grace_period: number
   default_expiry_window: number
+  /**
+   * Quorum in basis points. Needed to mirror the contract's auto-DEFEAT branch,
+   * which runs before the auto-expiry branch in state(). Optional so existing
+   * callers keep working; when absent, deriveProposalStatus cannot distinguish
+   * Defeated from Ready past the grace period.
+   */
+  quorum_percent?: string
 }
 
 /**
@@ -137,6 +144,7 @@ export function extractDaoExpiryConfig(dao: Dao): DaoExpiryConfig {
     voting_period: dao.voting_period,
     grace_period: dao.grace_period,
     default_expiry_window: dao.default_expiry_window,
+    quorum_percent: dao.quorum_percent,
   }
 }
 

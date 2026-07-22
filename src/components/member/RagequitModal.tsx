@@ -28,7 +28,20 @@ interface RagequitModalProps {
   userShares: bigint
   userLoot: bigint
   guildTokens: GuildTokenInfo[]
+  /**
+   * Whether the guild-token list actually loaded. An empty array means very different
+   * things in the two cases, and conflating them let a member burn shares for zero
+   * payout during an indexer outage while the UI asserted the DAO had no guild tokens.
+   */
+  guildTokensStatus: 'ok' | 'loading' | 'error'
   totalSupply: bigint
+  /**
+   * DAO's minimum-retention requirement in basis points (dao.min_retention_percent).
+   * The contract reverts InsufficientRetention when
+   * `totalSupply - totalBurn < (totalSupply * minRetentionBps) / 10000`
+   * (DAOShip.sol:1572-1574). Default 0 = no retention requirement.
+   */
+  minRetentionBps?: bigint
 }
 
 type Step = 'configure' | 'confirm' | 'success'
@@ -132,6 +145,8 @@ export function RagequitModal({
   userShares,
   userLoot,
   guildTokens,
+  guildTokensStatus,
+  minRetentionBps = 0n,
   totalSupply,
 }: RagequitModalProps) {
   const [step, setStep] = useState<Step>('configure')
@@ -182,6 +197,13 @@ export function RagequitModal({
   const sharesOverflow = sharesToBurnBigInt > userShares
   const lootOverflow = lootToBurnBigInt > userLoot
 
+  // Retention cap, mirroring DAOShip.sol:1572-1574. min_retention_percent appeared
+  // NOWHERE in this file, so "Burn All" simply reverted InsufficientRetention for a
+  // large holder in a retention-configured DAO with no discoverable cap.
+  const minRetention = totalSupply > 0n ? (totalSupply * minRetentionBps) / 10000n : 0n
+  const maxBurnable = totalSupply > minRetention ? totalSupply - minRetention : 0n
+  const retentionBreached = minRetentionBps > 0n && totalBurn > maxBurnable
+
   // Calculate fair share returns for each guild token
   const tokenReturns = useMemo(() => {
     return guildTokens.map((token) => {
@@ -202,8 +224,17 @@ export function RagequitModal({
 
   const noTokensSelected = selectedTokens.size === 0
 
+  const retentionMessage = retentionBreached
+    ? `This DAO requires ${Number(minRetentionBps) / 100}% of total supply to remain outstanding. `
+      + `You can burn at most ${formatTokenAmount(maxBurnable, 18, 4, 0)} in total.`
+    : null
+
   // Can proceed to review?
+  // Hard-blocked while the guild-token list is unknown: ragequit is irreversible and
+  // burns shares even when it transfers nothing.
   const canReview = totalBurn > 0n && !sharesOverflow && !lootOverflow
+    && !retentionBreached
+    && guildTokensStatus === 'ok'
 
   // Token toggle helpers
   const toggleToken = useCallback((address: string) => {
@@ -224,9 +255,20 @@ export function RagequitModal({
   }, [])
 
   const burnAll = useCallback(() => {
-    setSharesToBurn(formatTokenAmount(userShares))
-    setLootToBurn(formatTokenAmount(userLoot))
-  }, [userShares, userLoot])
+    // Full precision (18dp), not the 4dp default: formatTokenAmount TRUNCATES, and the
+    // truncated display string is what gets re-parsed on submit. A member with
+    // 1.23456789 shares burned 1.2345 and kept dust they could never clear, while the
+    // confirm screen rendered the residual as "0.000".
+    //
+    // Also clamped to the DAO's retention cap so "Burn All" cannot produce a
+    // guaranteed InsufficientRetention revert. Shares are filled first, then loot.
+    const holdings = userShares + userLoot
+    const budget = minRetentionBps > 0n && maxBurnable < holdings ? maxBurnable : holdings
+    const shares = userShares < budget ? userShares : budget
+    const loot = budget - shares
+    setSharesToBurn(formatTokenAmount(shares, 18, 18, 0))
+    setLootToBurn(formatTokenAmount(loot, 18, 18, 0))
+  }, [userShares, userLoot, minRetentionBps, maxBurnable])
 
   // Submit ragequit
   const handleRagequit = async () => {
@@ -302,7 +344,7 @@ export function RagequitModal({
             <button
               type="button"
               className="text-xs text-accent-400 hover:text-accent-300"
-              onClick={() => setSharesToBurn(formatTokenAmount(userShares))}
+              onClick={() => setSharesToBurn(formatTokenAmount(userShares, 18, 18, 0))}
             >
               Max
             </button>
@@ -344,7 +386,7 @@ export function RagequitModal({
             <button
               type="button"
               className="text-xs text-accent-400 hover:text-accent-300"
-              onClick={() => setLootToBurn(formatTokenAmount(userLoot))}
+              onClick={() => setLootToBurn(formatTokenAmount(userLoot, 18, 18, 0))}
             >
               Max
             </button>
@@ -373,6 +415,13 @@ export function RagequitModal({
                 : `Remaining after burn: ${formatTokenAmount(userLoot - lootToBurnBigInt)}`}
             </p>
           )}
+        </div>
+      )}
+
+      {retentionMessage && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
+          <p className="text-sm text-red-400 font-medium">Burn exceeds the DAO&apos;s retention floor</p>
+          <p className="text-xs text-dao-text-muted mt-0.5">{retentionMessage}</p>
         </div>
       )}
 
@@ -443,6 +492,20 @@ export function RagequitModal({
               </p>
             </div>
           )}
+        </div>
+      ) : guildTokensStatus === 'loading' ? (
+        <div className="bg-dao-surface/60 border border-dao-border rounded-lg px-4 py-3">
+          <p className="text-sm text-dao-text-hint">Loading the DAO&apos;s guild tokens…</p>
+        </div>
+      ) : guildTokensStatus === 'error' ? (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
+          <p className="text-sm text-red-400 font-medium">
+            Could not load this DAO&apos;s guild tokens.
+          </p>
+          <p className="text-xs text-dao-text-muted mt-0.5">
+            Ragequit is blocked until the list loads. Burning now could destroy your
+            shares without transferring the treasury assets you are owed.
+          </p>
         </div>
       ) : (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">

@@ -366,8 +366,8 @@ export function LaunchWizard() {
         shareTokenSymbol: data.shareTokenSymbol || 'SHARES',
         lootTokenName: data.lootTokenName || `${data.name} Loot`,
         lootTokenSymbol: data.lootTokenSymbol || 'LOOT',
-        sharePaused: data.pauseSharesOnLaunch,
-        lootPaused: data.pauseLootOnLaunch,
+        pauseSharesOnLaunch: data.pauseSharesOnLaunch,
+        pauseLootOnLaunch: data.pauseLootOnLaunch,
       },
       members: data.members
         .filter((m) => m.address.trim())

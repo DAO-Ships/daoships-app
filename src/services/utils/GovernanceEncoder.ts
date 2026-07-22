@@ -37,13 +37,25 @@ export interface GovernanceConfig {
  * @returns ABI-encoded hex string
  * @throws Error if parameters are out of range
  */
+/**
+ * Contract-enforced upper bounds, mirroring DAOShip.sol:73,76
+ *   uint32 public constant MAX_VOTING_PERIOD = 31_536_000;  // 365 days
+ *   uint32 public constant MAX_GRACE_PERIOD  = 31_536_000;  // 365 days
+ *
+ * Both are in the ABI and were referenced NOWHERE in the client, so a proposal could
+ * pass a full voting+grace cycle and only then revert at processProposal — burning the
+ * offering and landing as ActionFailed.
+ */
+export const MAX_VOTING_PERIOD = 31_536_000
+export const MAX_GRACE_PERIOD = 31_536_000
+
 export function encodeGovernanceConfig(config: GovernanceConfig): string {
   // Validate uint32 fields
-  if (config.votingPeriod < 60 || config.votingPeriod > UINT32_MAX) {
-    throw new Error(`votingPeriod must be between 60 and ${UINT32_MAX}`)
+  if (config.votingPeriod < 60 || config.votingPeriod > MAX_VOTING_PERIOD) {
+    throw new Error(`votingPeriod must be between 60 and ${MAX_VOTING_PERIOD} seconds (365 days)`)
   }
-  if (config.gracePeriod < 0 || config.gracePeriod > UINT32_MAX) {
-    throw new Error(`gracePeriod must be between 0 and ${UINT32_MAX}`)
+  if (config.gracePeriod < 0 || config.gracePeriod > MAX_GRACE_PERIOD) {
+    throw new Error(`gracePeriod must be between 0 and ${MAX_GRACE_PERIOD} seconds (365 days)`)
   }
   if (config.defaultExpiryWindow < 0 || config.defaultExpiryWindow > UINT32_MAX) {
     throw new Error(`defaultExpiryWindow must be between 0 and ${UINT32_MAX}`)

@@ -8,6 +8,8 @@ import { formatNumber, formatTokenAmount, parseTokenAmount } from '@/utils/forma
 import { NETWORK_CONFIG } from '@/config/contracts'
 import { posterService } from '@/services/core/PosterService'
 import { navigatorDeployService } from '@/services/core/NavigatorDeployService'
+import { tokenService } from '@/services/core/TokenService'
+import { hasCodeAt } from '@/services/utils/TxTracker'
 import { parseAllowlistInput, buildAllowlistTree, downloadAllowlistBackup } from '@/utils/allowlist'
 import { MAX_ALLOWLIST_ADDRESSES } from '@/components/common/AllowlistInput'
 import type { LaunchFormValues } from './BasicInfoStep'
@@ -155,6 +157,20 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
     }
   }, [pipeline])
 
+  // Warn before navigating away mid-pipeline. This is a 3-4 transaction sequence in
+  // which a lost receipt previously stranded a deployed-but-unrecorded DAO.
+  useEffect(() => {
+    const inFlight = pipeline.started && !pipeline.steps.every(s => s.status === 'done')
+    if (!inFlight) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      // Required by some browsers for the prompt to show.
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [pipeline])
+
   const updateStepStatus = useCallback((stepId: string, status: PipelineStepStatus, error?: string) => {
     updatePipeline(prev => ({
       ...prev,
@@ -269,11 +285,26 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
             }
             const ercTree = buildAllowlistTree(ercAllowlist.addresses)
 
+            // pricePerShare/pricePerLoot are denominated in the TRIBUTE TOKEN (the
+            // contract's own example is pricePerShare = 100e6 for 100 USDC), and they
+            // are immutable constructor args — a wrong scale cannot be fixed without a
+            // governance redeploy + re-sanction. Resolve the real decimals and refuse to
+            // deploy if the token cannot be read. NavigatorCatalog already verified the
+            // token on its path; this one did not, which is how the two drifted.
+            const ercTokenMeta = await tokenService.verifyERC20(erc.tributeToken)
+            if (!ercTokenMeta) {
+              throw new Error(
+                'No ERC-20 token found at the tribute token address on this network. '
+                + 'Cannot determine decimals, and tribute prices are immutable once deployed.',
+              )
+            }
+            const ercDecimals = ercTokenMeta.decimals
+
             const address = await navigatorDeployService.deployERC20TributeNavigator({
               daoShipAddress: salts.daoShip.address,
               tributeToken: erc.tributeToken,
-              pricePerShare: parseTokenAmount(erc.pricePerShare || '0'),
-              pricePerLoot: parseTokenAmount(erc.pricePerLoot || '0'),
+              pricePerShare: parseTokenAmount(erc.pricePerShare || '0', ercDecimals),
+              pricePerLoot: parseTokenAmount(erc.pricePerLoot || '0', ercDecimals),
               expiry: BigInt(erc.expiry || '0'),
               mintCap: parseTokenAmount(erc.mintCap || '0'),
               perAddressCap: parseTokenAmount(erc.perAddressCap || '0'),
@@ -321,6 +352,28 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
               navAddresses.push(ercAddr)
               navPermissions.push(MANAGER_PERMISSION)
             }
+            // Before re-broadcasting, check whether an earlier attempt already landed.
+            // The DAO address is deterministic (CREATE2), so bytecode at
+            // salts.daoShip.address means the launch succeeded even if we lost the
+            // receipt. Re-sending would reuse the SAME salts and revert on collision,
+            // which is what forced users into "Start Fresh" and a second paid launch.
+            const alreadyDeployed = await hasCodeAt(salts.daoShip.address)
+            if (alreadyDeployed === true) {
+              const recovered = { daoShip: salts.daoShip.address, vault: salts.vault.address }
+              localLaunchResult = recovered
+              updatePipeline(prev => ({ ...prev, launchResult: recovered }))
+              updateStepStatus(step.id, 'done')
+              break
+            }
+            if (alreadyDeployed === null) {
+              // Could not determine — do NOT gamble a colliding re-send.
+              throw new Error(
+                'Could not verify whether the DAO was already deployed (RPC unreachable). '
+                + 'Retry once your connection recovers — re-sending now would reuse the same '
+                + 'CREATE2 salts and revert.',
+              )
+            }
+
             const result = await onSubmit(
               {
                 vault: salts.vault.salt,
@@ -346,7 +399,10 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
             await posterService.postDaoProfileInitial({
               daoAddress: result.daoShip.toLowerCase(),
               name: formData.name,
-              description: formData.description || undefined,
+              // `description` is required by POSTER_SCHEMAS[DAO_PROFILE_INITIAL];
+              // '' and undefined both fail that check identically, so pass the raw
+              // string rather than widening the service signature.
+              description: formData.description,
               avatar: formData.avatarUrl || undefined,
               banner: formData.bannerUrl || undefined,
               theme: formData.theme && Object.keys(formData.theme).length > 0 ? formData.theme : undefined,

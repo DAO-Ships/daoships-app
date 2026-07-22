@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { quais } from 'quais'
+import { useTokenMetadata } from '@/hooks/useTokenMetadata'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
 import { parseTokenAmount } from '@/utils/format'
@@ -98,8 +99,22 @@ function RecoverForm({
 
   const tokenValid = kind === 'eth' || (token.startsWith('0x') && token.length === 42)
   const toValid = to.startsWith('0x') && to.length === 42
-  const amountWei = (() => { try { return amount ? parseTokenAmount(amount) : 0n } catch { return 0n } })()
-  const valid = tokenValid && toValid && amountWei > 0n
+  // 'eth' recovers native QUAI (18). 'tokens' recovers an arbitrary ERC-20, whose
+  // decimals must be read on-chain — assuming 18 would encode the wrong amount.
+  const { data: recoverTokenMeta, isLoading: recoverDecimalsLoading } = useTokenMetadata(
+    kind === 'tokens' && tokenValid ? token : undefined,
+  )
+  const recoverDecimals: number | null = kind === 'eth' ? 18 : recoverTokenMeta?.decimals ?? null
+  const amountWei = (() => {
+    if (recoverDecimals === null) return 0n
+    try {
+      return amount ? parseTokenAmount(amount, recoverDecimals) : 0n
+    } catch (err) {
+      if (err instanceof ReferenceError || err instanceof TypeError) throw err
+      return 0n
+    }
+  })()
+  const valid = tokenValid && toValid && recoverDecimals !== null && amountWei > 0n
 
   const href = valid
     ? buildNavigatorAdminHref(
@@ -123,6 +138,11 @@ function RecoverForm({
       <div className="flex gap-2">
         <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="Recipient 0x…" className="input flex-1 font-mono text-sm" />
         <input value={amount} onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setAmount(e.target.value) }} placeholder="Amount" className="input w-28 font-mono text-sm" inputMode="decimal" />
+        {kind === 'tokens' && tokenValid && recoverDecimals === null && (
+          <span className="text-2xs text-dao-text-hint self-center">
+            {recoverDecimalsLoading ? 'Reading token decimals…' : 'Could not read token decimals'}
+          </span>
+        )}
       </div>
       <div className="flex justify-end">
         <Link to={href} className={`btn-primary text-sm ${valid ? '' : 'pointer-events-none opacity-50'}`}>

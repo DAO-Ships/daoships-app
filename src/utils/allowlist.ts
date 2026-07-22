@@ -17,6 +17,7 @@
 
 import { StandardMerkleTree } from '@openzeppelin/merkle-tree'
 import { quais } from 'quais'
+import { isValidCyprus1Address } from '@/services/utils/AddressUtils'
 
 export const ZERO_BYTES32 = '0x' + '00'.repeat(32)
 
@@ -42,6 +43,14 @@ export function parseAllowlistInput(raw: string): { addresses: string[]; invalid
   for (const line of lines) {
     try {
       const checksummed = quais.getAddress(line)
+      // This was the only address entry point in the app using bare getAddress
+      // instead of the Cyprus-1 shard check every neighbouring field applies. An
+      // address on the wrong shard would be baked into an IMMUTABLE allowlistRoot —
+      // the navigator ABIs expose no setter — so the holder could never claim.
+      if (!isValidCyprus1Address(checksummed)) {
+        invalid.push(line)
+        continue
+      }
       const lower = checksummed.toLowerCase()
       if (!seen.has(lower)) {
         seen.add(lower)

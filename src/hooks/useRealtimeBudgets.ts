@@ -14,14 +14,15 @@ export function useRealtimeBudgets(daoId: string | undefined) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    if (!supabase || !daoId) return
+    const client = supabase
+    if (!client || !daoId) return
 
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: ['budgets', daoId] })
       queryClient.invalidateQueries({ queryKey: ['vaultModuleEvents', daoId] })
     }
 
-    const channel = supabase
+    const channel = client
       .channel(`budgets:${daoId}`)
       .on(
         'postgres_changes',
@@ -38,7 +39,7 @@ export function useRealtimeBudgets(daoId: string | undefined) {
       })
 
     return () => {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     }
   }, [daoId, queryClient])
 }

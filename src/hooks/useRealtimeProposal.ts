@@ -13,7 +13,8 @@ export function useRealtimeProposal(daoId: string | undefined, proposalId: strin
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    if (!supabase || !daoId || !proposalId) return
+    const client = supabase
+    if (!client || !daoId || !proposalId) return
 
     const compositeId = `${daoId}-${proposalId}`
     const invalidate = () => {
@@ -21,7 +22,7 @@ export function useRealtimeProposal(daoId: string | undefined, proposalId: strin
       queryClient.invalidateQueries({ queryKey: ['proposals', daoId] })
     }
 
-    const channel = supabase
+    const channel = client
       .channel(`proposal:${compositeId}`)
       .on(
         'postgres_changes',
@@ -38,7 +39,7 @@ export function useRealtimeProposal(daoId: string | undefined, proposalId: strin
       })
 
     return () => {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     }
   }, [daoId, proposalId, queryClient])
 }

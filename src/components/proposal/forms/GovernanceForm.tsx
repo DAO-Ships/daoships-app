@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/common/Button'
 import { OfferingField } from './OfferingField'
 import { ProposalSettingsFields } from './ProposalSettingsFields'
@@ -6,6 +6,7 @@ import { ProposalActionSection } from './ProposalActionSection'
 import { formatDuration, parseDurationToSeconds, formatDurationInput } from '@/utils/time'
 import { formatTokenAmount, parseTokenAmount, bpsToPercent } from '@/utils/format'
 import { daoService } from '@/services/DaoService'
+import { MAX_VOTING_PERIOD, MAX_GRACE_PERIOD } from '@/services/utils/GovernanceEncoder'
 import type { DaoConfig } from '@/types'
 
 /** An active, sanctioned TimelockNavigator that config changes should route through. */
@@ -69,6 +70,14 @@ export function GovernanceForm({
   const [defaultExpiryWindowInput, setDefaultExpiryWindowInput] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  // Exact on-chain values as prefilled. Submitted verbatim for any field the user did
+  // not edit, so a governance change can never silently rewrite an untouched parameter
+  // through a display round-trip. null until the config loads.
+  const pristineOfferingRef = useRef<bigint | null>(null)
+  const pristineThresholdRef = useRef<bigint | null>(null)
+  const [offeringEdited, setOfferingEdited] = useState(false)
+  const [thresholdEdited, setThresholdEdited] = useState(false)
+
   // Pre-fill from current config — use shorthand duration format (3d, 1h) so
   // users see the same input style they used in the launch wizard.
   useEffect(() => {
@@ -76,8 +85,19 @@ export function GovernanceForm({
       setVotingPeriodInput(formatDurationInput(currentConfig.voting_period))
       setGracePeriodInput(formatDurationInput(currentConfig.grace_period))
       setQuorumPercent(String(bpsToPercent(currentConfig.quorum_percent)))
-      setProposalOffering(formatTokenAmount(BigInt(currentConfig.proposal_offering || '0'), 18, 4, 0))
-      setSponsorThreshold(formatTokenAmount(BigInt(currentConfig.sponsor_threshold || '0'), 18, 4, 0))
+      // FULL precision (maxDecimals 18), not 4. formatTokenAmount truncates, and the
+      // truncated DISPLAY STRING is what gets re-encoded on submit — while
+      // setGovernanceConfig rewrites all seven fields whether or not they were touched.
+      // At 4dp, an offering of 5e13 wei rendered as the literal string "0.", which
+      // parseTokenAmount maps to 0n: a member extending the voting period silently
+      // zeroed the DAO's anti-spam proposal offering. Trailing zeros are still trimmed,
+      // so 1e18 still displays as "1".
+      const offeringWei = BigInt(currentConfig.proposal_offering || '0')
+      const thresholdWei = BigInt(currentConfig.sponsor_threshold || '0')
+      pristineOfferingRef.current = offeringWei
+      pristineThresholdRef.current = thresholdWei
+      setProposalOffering(formatTokenAmount(offeringWei, 18, 18, 0))
+      setSponsorThreshold(formatTokenAmount(thresholdWei, 18, 18, 0))
       setMinRetentionPercent(String(bpsToPercent(currentConfig.min_retention_percent)))
       setDefaultExpiryWindowInput(formatDurationInput(currentConfig.default_expiry_window || 0))
     }
@@ -110,10 +130,16 @@ export function GovernanceForm({
 
     if (!title.trim()) newErrors.title = 'Title is required'
 
-    if (votingPeriodSeconds === null || votingPeriodSeconds < 60) {
+    if (votingPeriodSeconds !== null && votingPeriodSeconds > MAX_VOTING_PERIOD) {
+      // Contract-enforced ceiling; exceeding it reverts at processProposal AFTER a full
+      // voting+grace cycle, burning the offering.
+      newErrors.votingPeriod = 'Voting period cannot exceed 365 days (contract maximum)'
+    } else if (votingPeriodSeconds === null || votingPeriodSeconds < 60) {
       newErrors.votingPeriod = 'Voting period must be at least 60 seconds (contract minimum)'
     }
-    if (gracePeriodSeconds === null || gracePeriodSeconds < 0) {
+    if (gracePeriodSeconds !== null && gracePeriodSeconds > MAX_GRACE_PERIOD) {
+      newErrors.gracePeriod = 'Grace period cannot exceed 365 days (contract maximum)'
+    } else if (gracePeriodSeconds === null || gracePeriodSeconds < 0) {
       newErrors.gracePeriod = 'Grace period cannot be negative'
     }
 
@@ -149,8 +175,12 @@ export function GovernanceForm({
         votingPeriod: votingPeriodSeconds!,
         gracePeriod: gracePeriodSeconds!,
         quorumPercent: Math.round(parseFloat(quorumPercent) * 100),
-        proposalOffering: parseTokenAmount(proposalOffering || '0').toString(),
-        sponsorThreshold: parseTokenAmount(sponsorThreshold || '1').toString(),
+        proposalOffering: (!offeringEdited && pristineOfferingRef.current !== null
+          ? pristineOfferingRef.current
+          : parseTokenAmount(proposalOffering || '0')).toString(),
+        sponsorThreshold: (!thresholdEdited && pristineThresholdRef.current !== null
+          ? pristineThresholdRef.current
+          : parseTokenAmount(sponsorThreshold || '1')).toString(),
         minRetentionPercent: Math.round(parseFloat(minRetentionPercent) * 100),
         defaultExpiryWindow: defaultExpiryWindowSeconds || 0,
       })
@@ -323,6 +353,7 @@ export function GovernanceForm({
               onChange={(e) => {
                 if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) {
                   setProposalOffering(e.target.value)
+                  setOfferingEdited(true)
                 }
               }}
               placeholder="0"
@@ -347,6 +378,7 @@ export function GovernanceForm({
               onChange={(e) => {
                 if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) {
                   setSponsorThreshold(e.target.value)
+                  setThresholdEdited(true)
                 }
               }}
               placeholder="1"

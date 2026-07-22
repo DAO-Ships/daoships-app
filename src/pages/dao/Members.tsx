@@ -127,8 +127,24 @@ export function Members() {
   const [showRagequitModal, setShowRagequitModal] = useState(false)
   // Defer treasury fetches until ragequit modal is first opened
   const [ragequitOpened, setRagequitOpened] = useState(false)
-  const { data: guildTokens } = useTreasury(ragequitOpened ? dao.id : undefined)
-  const { data: treasuryBalances } = useTreasuryBalances(ragequitOpened ? dao.avatar : undefined, guildTokens)
+  const {
+    data: guildTokens,
+    isError: guildTokensError,
+    isLoading: guildTokensLoading,
+  } = useTreasury(ragequitOpened ? dao.id : undefined)
+  const {
+    data: treasuryBalances,
+    isError: treasuryBalancesError,
+    isLoading: treasuryBalancesLoading,
+  } = useTreasuryBalances(ragequitOpened ? dao.avatar : undefined, guildTokens)
+
+  // "No tokens" and "could not load" must not look the same to the ragequit flow.
+  const guildTokensStatus: 'ok' | 'loading' | 'error' =
+    guildTokensError || treasuryBalancesError
+      ? 'error'
+      : guildTokensLoading || treasuryBalancesLoading
+        ? 'loading'
+        : 'ok'
   const [showProfileModal, setShowProfileModal] = useState(false)
 
   // Refetch treasury and DAO data when ragequit modal opens for fresh previews
@@ -644,6 +660,8 @@ export function Members() {
             balance: tb.balance.toString(),
             decimals: tb.decimals,
           }))}
+          guildTokensStatus={guildTokensStatus}
+          minRetentionBps={safeBigInt(dao.min_retention_percent)}
           totalSupply={safeBigInt(dao.total_shares) + safeBigInt(dao.total_loot)}
         />
       )}

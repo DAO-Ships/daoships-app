@@ -519,7 +519,9 @@ class NavigatorService {
    */
   private async tryPermitOnboard(
     signer: quais.Signer,
-    provider: quais.JsonRpcProvider,
+    // Only used as a ContractRunner for read-only quais.Contract instances —
+    // quais.Provider is the accurate (and actual) type from baseService.getProvider().
+    provider: quais.Provider,
     navigatorContract: quais.Contract,
     tokenAddress: string,
     owner: string,
