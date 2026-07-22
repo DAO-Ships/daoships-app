@@ -4,6 +4,7 @@
 
 import { supabase } from '@/config/supabase'
 import { indexerError } from './indexerError'
+import { fetchAllPages, MAX_ROWS } from './paginate'
 import type { DaoRecord } from '@/types'
 import { POSTER_TAGS } from '@/types/poster'
 
@@ -109,19 +110,30 @@ class RecordIndexerService {
   async getMemberProfiles(daoId: string): Promise<Map<string, Record<string, unknown>>> {
     if (!supabase) return new Map()
 
-    const { data, error } = await supabase
-      .from('ds_records')
-      .select('user_address, content_json')
-      .eq('dao_id', daoId)
-      .eq('tag', POSTER_TAGS.MEMBER_PROFILE)
-      .order('created_at', { ascending: false })
-      .limit(200)
-
-    if (error) indexerError('[RecordIndexerService] getMemberProfiles', error)
+    // Paginated: this map drives every member identity in the app, so a 200-row cap
+    // silently dropped names and avatars for everyone past it in a large DAO.
+    const { rows, truncated } = await fetchAllPages<{
+      user_address: string | null
+      content_json: Record<string, unknown> | null
+    }>(
+      () => supabase!
+        .from('ds_records')
+        .select('user_address, content_json')
+        .eq('dao_id', daoId)
+        .eq('tag', POSTER_TAGS.MEMBER_PROFILE)
+        .order('created_at', { ascending: false }) as never,
+      (error) => indexerError('[RecordIndexerService] getMemberProfiles', error),
+    )
+    if (truncated) {
+      console.warn(
+        `[RecordIndexerService] getMemberProfiles hit the ${MAX_ROWS}-row ceiling for ${daoId}; `
+        + 'some member profiles will render without a name or avatar.',
+      )
+    }
 
     // Keep only the most recent profile per member
     const profiles = new Map<string, Record<string, unknown>>()
-    for (const row of data ?? []) {
+    for (const row of rows) {
       const addr = row.user_address?.toLowerCase()
       if (addr && row.content_json && !profiles.has(addr)) {
         profiles.set(addr, row.content_json as Record<string, unknown>)
@@ -203,17 +215,23 @@ class RecordIndexerService {
     // Include pre-DAO orphaned records (dao_id IS NULL) — these get reparented
     // by the indexer once the navigator is registered, but during the window
     // before reparenting the frontend still needs to resolve them.
+    // Filter on navigatorAddress SERVER-side. Previously this took the newest 20 rows
+    // and filtered client-side afterwards, so 20+ allowlist posts for this DAO evicted
+    // the real record before it was ever examined — and staleTime: Infinity made the
+    // miss permanent for the session. Poster tags are permissionless, so that was
+    // trivially induced.
     const { data, error } = await supabase
       .from('ds_records')
       .select('*')
       .or(`dao_id.eq.${daoId.toLowerCase()},dao_id.is.null`)
       .eq('tag', POSTER_TAGS.NAVIGATOR_ALLOWLIST)
+      .eq('content_json->>navigatorAddress', normalizedNav)
       .order('created_at', { ascending: false })
-      .limit(20)
+      .limit(1)
 
     if (error) indexerError('[RecordIndexerService] getNavigatorAllowlist', error)
 
-    // Filter by navigatorAddress in content_json (Supabase JSONB filtering)
+    // Defence in depth: re-check client-side in case the stored casing differs.
     const match = (data ?? []).find((r) => {
       const json = r.content_json as Record<string, unknown> | null
       return json?.navigatorAddress?.toString().toLowerCase() === normalizedNav

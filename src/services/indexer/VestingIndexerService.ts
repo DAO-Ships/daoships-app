@@ -10,6 +10,7 @@
 
 import { supabase } from '@/config/supabase'
 import { indexerError } from './indexerError'
+import { fetchAllPages, MAX_ROWS } from './paginate'
 import type { VestingScheduleRow, VestingClaimRow } from '@/types'
 
 class VestingIndexerService {
@@ -76,16 +77,22 @@ class VestingIndexerService {
   async listClaimsByNavigator(navigatorAddress: string): Promise<VestingClaimRow[]> {
     if (!supabase) return []
 
-    const { data, error } = await supabase
+    const { rows, truncated } = await fetchAllPages<VestingClaimRow>(
+      () => supabase!
       .from('ds_vesting_claims')
       .select('*')
       .eq('navigator_address', navigatorAddress.toLowerCase())
-      .order('block_number', { ascending: false })
-      .limit(200)
+      .order('block_number', { ascending: false }) as never,
+      (error) => indexerError('[VestingIndexerService] listClaimsByNavigator', error),
+    )
+    if (truncated) {
+      console.warn(
+        `[listClaimsByNavigator] hit the ${MAX_ROWS}-row ceiling — this feed is incomplete, `
+        + 'and the per-item history grouped from it client-side will be missing entries.',
+      )
+    }
 
-    if (error) indexerError('[VestingIndexerService] listClaimsByNavigator', error)
-
-    return (data as VestingClaimRow[]) ?? []
+    return rows
   }
 
   /**
