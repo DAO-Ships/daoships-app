@@ -2,6 +2,7 @@ import type { Control, FieldErrors } from 'react-hook-form'
 import { useFieldArray } from 'react-hook-form'
 import { isValidCyprus1Address } from '@/services/utils/AddressUtils'
 import type { LaunchFormValues } from './BasicInfoStep'
+import { validateTokenAmount } from '@/utils/validation'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MembersStep - Step 2: Dynamic member rows (address, shares, loot)
@@ -70,7 +71,12 @@ export function MembersStep({ control, errors }: MembersStepProps) {
                 <label className="sm:hidden text-xs text-dao-text-hint mb-1 block">Shares</label>
                 <input
                   type="text"
-                  {...control.register(`members.${index}.shares`)}
+                  {...control.register(`members.${index}.shares`, {
+                    // Registered with no rules previously, so trigger('members') never
+                    // checked these — "1,000" threw mid-pipeline and "0.0000000000000000001"
+                    // silently minted a founding member zero shares.
+                    validate: (v) => validateTokenAmount(v, { label: 'Shares' }),
+                  })}
                   aria-label={`Member ${index + 1} shares`}
                   placeholder="0"
                   className="input w-full text-sm"
@@ -87,7 +93,9 @@ export function MembersStep({ control, errors }: MembersStepProps) {
                 <label className="sm:hidden text-xs text-dao-text-hint mb-1 block">Loot</label>
                 <input
                   type="text"
-                  {...control.register(`members.${index}.loot`)}
+                  {...control.register(`members.${index}.loot`, {
+                    validate: (v) => validateTokenAmount(v, { label: 'Loot' }),
+                  })}
                   aria-label={`Member ${index + 1} loot`}
                   placeholder="0"
                   className="input w-full text-sm"

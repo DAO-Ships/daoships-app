@@ -1034,7 +1034,11 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
 
       {/* Submit Button */}
       <div className="flex flex-col items-end gap-2">
-        {cost.insufficient && (
+        {cost.costUnknown ? (
+          <p className="text-sm text-dao-text-hint text-right">
+            Checking gas price and your balance…
+          </p>
+        ) : cost.insufficient && (
           <p className="text-sm text-red-400 text-right">
             Add at least {formatTokenAmount(cost.shortfall, 18, 3, 2)} {nativeSymbol} to your wallet to launch.
           </p>
@@ -1108,7 +1112,7 @@ function LaunchCostCard({ cost }: { cost: LaunchCostEstimate }) {
             Your wallet will show the cost of each transaction before you sign it.
           </p>
         )}
-        {cost.insufficient && (
+        {cost.insufficient && !cost.costUnknown && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2.5 mt-2">
             <p className="text-xs text-red-400">
               Your wallet is short about {formatTokenAmount(cost.shortfall, 18, 3, 2)} {symbol}.
