@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { BottomNav } from './BottomNav'
-import { NotificationContainer } from '@/components/common/NotificationContainer'
 import { ReindexRequiredBanner } from '@/components/common/ReindexRequiredBanner'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -33,7 +32,12 @@ export function Layout({ children }: LayoutProps) {
         </main>
       </div>
       <BottomNav />
-      <NotificationContainer />
+      {/*
+        NotificationContainer is deliberately NOT rendered here. It is mounted once in
+        App.tsx, inside its own ErrorBoundary so toasts survive a crash in this shell.
+        Mounting it in both places gave every toast two independent subscriptions to
+        notificationManager and rendered two stacked copies of every message.
+      */}
     </div>
   )
 }
