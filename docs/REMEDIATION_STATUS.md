@@ -29,7 +29,7 @@ sidebar sits where it always did and the countdown ticks. If it is wrong it is a
 trivially-revertable CSS issue.
 
 ### 2. Deferred from P4, with reasons (see "Deliberately NOT done" below)
-- **36 `tx.wait()` calls with no timeout.** Deferred because a too-short timeout turns a
+- **35 `tx.wait()` calls with no timeout.** Deferred because a too-short timeout turns a
   slow confirmation into a false failure — worse than the current hang — and `TxTracker`
   already makes a hung wait recoverable rather than destructive. Best done alongside the
   service decomposition, which touches the same call sites.
@@ -100,7 +100,7 @@ re-audit commit `5ac97cc`).
 
 Two items from the P4 list were assessed and left:
 
-- **36 `tx.wait()` calls without a timeout.** Wiring a timeout through every call site is
+- **35 `tx.wait()` calls without a timeout.** Wiring a timeout through every call site is
   a wide, mechanical change with real regression risk (a too-short timeout turns a slow
   confirmation into a false failure, which is worse than the current hang). `TxTracker`
   already records the hash before the await, so a hung wait is now *recoverable* rather
@@ -147,10 +147,10 @@ weight actually is.
 
 | Item | Est. | Assessment |
 |---|---|---|
-| SU3/SU4 — `NavigatorService` 1,289 lines, `DaoService` 1,160 | 7d | Highest-risk change in the backlog, lowest user-visible return. Wait for a reason beyond tidiness. |
-| 36 untimed `tx.wait()` calls | — | Deferred in P4; see rationale above. Best done alongside SU3/SU4, which touches the same call sites. |
+| SU3/SU4 — `NavigatorService` 1,313 lines, `DaoService` 1,160 | 7d | Highest-risk change in the backlog, lowest user-visible return. Wait for a reason beyond tidiness. |
+| 35 untimed `tx.wait()` calls | — | Deferred in P4; see rationale above. Best done alongside SU3/SU4, which touches the same call sites. |
 | Remaining `DaoService` `catch {}` blocks | — | Deferred in P4; ~7 of 18 are correct on-chain fallbacks. |
-| Testing debt | ongoing | 486 tests. Still thin on hooks and indexer services; add alongside the next change to each. |
+| Testing debt | in progress | 499 tests on `main`, but inverted vs. consequence: 57 hooks → 2 test files, 13 indexer services → 1, 12 pages → 2, while pure utils are well covered. A dedicated coverage pass on indexer services and hooks is underway (branch `test/indexer-hook-coverage`), since the material work that would have carried tests alongside it is now done. |
 | E1 — WalletConnect bundle weight | — | **Closed as accepted.** |
 
 ---
