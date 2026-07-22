@@ -274,10 +274,19 @@ class NavigatorService {
           return { type: 'SubscriptionNavigator', config }
         }
         default:
+          // A genuinely unrecognised navigator type — this IS a legitimate result.
           return { type: 'unknown', config: null }
       }
-    } catch {
-      return { type: 'unknown', config: null }
+    } catch (err) {
+      // A read failure is NOT 'unknown'. Returning a resolved value here made React
+      // Query cache it as a success for the full 5-minute staleTime, and
+      // NavigatorDetail's `configResult?.type || navigator.navigator_type` then shadowed
+      // the correct indexer type — rendering UnknownPlugin ("not yet supported") above a
+      // Type field that read BudgetNavigator. The dominant trigger is simply a
+      // disconnected wallet.
+      throw err instanceof Error
+        ? err
+        : new Error(`Failed to load navigator config for ${navigatorAddress}`)
     }
   }
 

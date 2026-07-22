@@ -130,16 +130,23 @@ export function parseDurationToSeconds(input: string): number | null {
   // Plain number = seconds
   if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10)
 
+  // `weeks` is included because the expiration field's own placeholder advertises
+  // "2 weeks". Without it the parser returned null, which NewProposal maps to 0 — the
+  // contract's USE-DEFAULT sentinel — so the user silently got the DAO default instead
+  // of the window they asked for, with no error shown.
   const match = trimmed.match(
-    /^(\d+)\s*(days?|hours?|hrs?|minutes?|mins?|seconds?|secs?|s|m|h|d)$/,
+    /^(\d+)\s*(weeks?|w|days?|hours?|hrs?|minutes?|mins?|seconds?|secs?|s|m|h|d)$/,
   )
   if (!match) return null
 
   const value = parseInt(match[1], 10)
   const unit = match[2]
 
+  // Order matters: check 'w' before 'd'/'h'/'m' prefixes so "weeks" is not mis-bucketed.
+  if (unit.startsWith('w')) return value * 604800
   if (unit.startsWith('d')) return value * 86400
   if (unit.startsWith('h')) return value * 3600
+  // 'm' is minutes here; 'mins'/'minutes' and bare 'm' all land on the same branch.
   if (unit.startsWith('m')) return value * 60
   return value
 }

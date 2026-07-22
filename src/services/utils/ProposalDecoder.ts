@@ -345,6 +345,42 @@ function decodeSingleTx(tx: RawTx, daoId?: string): DecodedAction {
   }, tx)
 }
 
+
+/**
+ * Recompute a proposal's data hash exactly as the contract does.
+ *
+ * DAOShip.hashOperation: `keccak256(abi.encode(_transactions))` — NOT
+ * `keccak256(_transactions)`. The extra abi.encode layer is the single most common way
+ * to compute this wrongly.
+ */
+export function hashProposalData(proposalData: string): string {
+  const encoded = quais.AbiCoder.defaultAbiCoder().encode(['bytes'], [proposalData])
+  return quais.keccak256(encoded)
+}
+
+/**
+ * Does `proposalData` match the on-chain `proposal_data_hash` commitment?
+ *
+ * The action bytes arrive from the indexer while the hash is committed on-chain at
+ * submit time, so they come from different trust domains and were never cross-checked.
+ * A mismatch means the bytes about to be shown to voters — or passed to
+ * processProposal — are not the ones the DAO committed to.
+ *
+ * Returns null when either input is missing (nothing to verify), so callers can
+ * distinguish "unverifiable" from "verified mismatch".
+ */
+export function verifyProposalDataHash(
+  proposalData: string | null | undefined,
+  proposalDataHash: string | null | undefined,
+): boolean | null {
+  if (!proposalData || !proposalDataHash) return null
+  try {
+    return hashProposalData(proposalData).toLowerCase() === proposalDataHash.toLowerCase()
+  } catch {
+    return null
+  }
+}
+
 /**
  * Decode a full proposal_data hex string into an array of human-readable actions.
  *
