@@ -46,6 +46,7 @@ import type {
 } from '@/types'
 
 import { estimateGasOrThrow } from '@/services/utils/GasEstimator'
+import { executeWrite, confirmTx } from '@/services/utils/TxExecutor'
 import { assertAffordable, FALLBACK_LAUNCH_GAS } from '@/services/utils/LaunchGasEstimator'
 import DAOShipAbi from '@/config/abi/DAOShip.json'
 import DAOShipAndVaultLauncherAbi from '@/config/abi/DAOShipAndVaultLauncher.json'
@@ -93,6 +94,20 @@ async function isIndexerAvailable(): Promise<boolean> {
   })()
 
   return indexerCheckPromise
+}
+
+/**
+ * Make a swallowed indexer read visible. These catches deliberately fall through to an
+ * on-chain read — the fallback IS the legitimate answer — but logging nothing meant a
+ * degraded/down indexer was completely invisible (every read silently paid the slower,
+ * wallet-dependent on-chain path). The thrown error already carries the failing
+ * indexer method/table via indexerError, so its message is enough context.
+ */
+function logIndexerFallback(err: unknown): void {
+  console.warn(
+    '[DaoService] indexer read failed, using on-chain fallback:',
+    err instanceof Error ? err.message : err,
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -180,7 +195,8 @@ class DaoService {
     try {
       const dao = await daoIndexerService.getDao(daoId)
       if (dao) return dao
-    } catch {
+    } catch (err) {
+      logIndexerFallback(err)
       // Indexer unreachable — fall through to on-chain (e.g. a freshly-deployed DAO, or
       // Supabase momentarily down).
     }
@@ -215,7 +231,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await daoIndexerService.getGuildTokens(daoId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to the on-chain read below.
       }
     }
@@ -260,7 +277,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await proposalIndexerService.listProposals(daoId, filters)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -285,7 +303,8 @@ class DaoService {
           }
           return proposal
         }
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -301,7 +320,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await proposalIndexerService.getActiveProposals(daoId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
@@ -321,7 +341,8 @@ class DaoService {
       try {
         const members = await memberIndexerService.listMembers(daoId)
         if (members.length > 0) return members
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
@@ -337,7 +358,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await memberIndexerService.getMember(daoId, memberAddress)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -355,7 +377,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await voteIndexerService.getProposalVotes(proposalCompositeId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
@@ -373,7 +396,8 @@ class DaoService {
         const votes = await voteIndexerService.getProposalVotes(`${daoId}-${proposalId}`)
         const normalizedAddress = memberAddress.toLowerCase()
         return votes.some((v) => v.voter.toLowerCase() === normalizedAddress)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -409,7 +433,8 @@ class DaoService {
           (s) => s.navigator_address.toLowerCase() === navigatorAddress.toLowerCase()
         )
         if (navigator) return navigator.permission
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -426,7 +451,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await navigatorIndexerService.listNavigatorEvents(daoId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
@@ -442,7 +468,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await recordIndexerService.getRecords(daoId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
@@ -596,22 +623,20 @@ class DaoService {
     const effectiveOffering = canSelfSponsor ? 0n : contractOffering
 
     const overrides = effectiveOffering > 0n ? { value: effectiveOffering } : undefined
-    await estimateGasOrThrow(
-      daoShip, 'submitProposal',
-      [proposalData, expiration, details],
-      'Submit Proposal',
+    const receipt = await executeWrite({
+      contract: daoShip,
+      method: 'submitProposal',
+      args: [proposalData, expiration, details],
+      label: 'Submit Proposal',
       overrides,
-    )
-    const tx = await daoShip.submitProposal(proposalData, expiration, details, {
-      value: effectiveOffering,
+      step: `proposal:submit:${daoId.toLowerCase()}`,
     })
-    const receipt = await tx.wait()
 
     // Parse the SubmitProposal event to extract the proposal ID
     const iface = new quais.Interface(DAOShipAbi)
     for (const log of receipt.logs) {
       try {
-        const parsed = iface.parseLog({ topics: log.topics, data: log.data })
+        const parsed = iface.parseLog({ topics: [...log.topics], data: log.data })
         if (parsed?.name === 'SubmitProposal') {
           return parsed.args.proposal as bigint
         }
@@ -631,9 +656,12 @@ class DaoService {
    */
   async sponsorProposal(daoId: string, proposalId: number): Promise<void> {
     const daoShip = getDAOShipContractWithSigner(daoId)
-    await estimateGasOrThrow(daoShip, 'sponsorProposal', [proposalId], 'Sponsor Proposal')
-    const tx = await daoShip.sponsorProposal(proposalId)
-    await tx.wait()
+    await executeWrite({
+      contract: daoShip,
+      method: 'sponsorProposal',
+      args: [proposalId],
+      label: 'Sponsor Proposal',
+    })
   }
 
   /**
@@ -645,9 +673,12 @@ class DaoService {
    */
   async submitVote(daoId: string, proposalId: number, approved: boolean): Promise<void> {
     const daoShip = getDAOShipContractWithSigner(daoId)
-    await estimateGasOrThrow(daoShip, 'submitVote', [proposalId, approved], 'Vote on Proposal')
-    const tx = await daoShip.submitVote(proposalId, approved)
-    await tx.wait()
+    await executeWrite({
+      contract: daoShip,
+      method: 'submitVote',
+      args: [proposalId, approved],
+      label: 'Vote on Proposal',
+    })
   }
 
   /**
@@ -667,17 +698,18 @@ class DaoService {
   async processProposal(daoId: string, proposalId: number, proposalData: string): Promise<void> {
     const daoShip = getDAOShipContractWithSigner(daoId)
     // Workaround: Quai gas estimation follows the try/catch failure path in processProposal,
-    // underestimating gas for the inner DelegateCall chain. Add 50% headroom.
+    // underestimating gas for the inner DelegateCall chain. Add 50% headroom via the
+    // gasMultiplier (executeWrite only appends the computed gasLimit when an estimate came
+    // back — quais alpha rejects a trailing undefined override).
     // See: daoships-contracts/docs/GAS_ESTIMATION_BUG_REPORT.md
-    const gasEstimate = await estimateGasOrThrow(daoShip, 'processProposal', [proposalId, proposalData], 'Process Proposal')
-    const gasLimit = gasEstimate ? (gasEstimate * 150n) / 100n : undefined
-    // Pass overrides only when we have a gas limit. quais alpha can't match a
-    // function fragment when a trailing `undefined`/`null` overrides arg is present
-    // (throws UNSUPPORTED_OPERATION "no matching fragment"), so omit it entirely.
-    const tx = gasLimit
-      ? await daoShip.processProposal(proposalId, proposalData, { gasLimit })
-      : await daoShip.processProposal(proposalId, proposalData)
-    await tx.wait()
+    await executeWrite({
+      contract: daoShip,
+      method: 'processProposal',
+      args: [proposalId, proposalData],
+      label: 'Process Proposal',
+      gasMultiplier: 150n,
+      step: `proposal:process:${daoId.toLowerCase()}:${proposalId}`,
+    })
   }
 
   /**
@@ -688,9 +720,12 @@ class DaoService {
    */
   async cancelProposal(daoId: string, proposalId: number): Promise<void> {
     const daoShip = getDAOShipContractWithSigner(daoId)
-    await estimateGasOrThrow(daoShip, 'cancelProposal', [proposalId], 'Cancel Proposal')
-    const tx = await daoShip.cancelProposal(proposalId)
-    await tx.wait()
+    await executeWrite({
+      contract: daoShip,
+      method: 'cancelProposal',
+      args: [proposalId],
+      label: 'Cancel Proposal',
+    })
   }
 
   // ── Ragequit ───────────────────────────────────────────────────────────
@@ -712,9 +747,13 @@ class DaoService {
     tokens: string[],
   ): Promise<void> {
     const daoShip = getDAOShipContractWithSigner(daoId)
-    await estimateGasOrThrow(daoShip, 'ragequit', [to, sharesToBurn, lootToBurn, tokens], 'Ragequit')
-    const tx = await daoShip.ragequit(to, sharesToBurn, lootToBurn, tokens)
-    await tx.wait()
+    await executeWrite({
+      contract: daoShip,
+      method: 'ragequit',
+      args: [to, sharesToBurn, lootToBurn, tokens],
+      label: 'Ragequit',
+      step: `ragequit:${daoId.toLowerCase()}`,
+    })
   }
 
   // ── Launcher ───────────────────────────────────────────────────────────
@@ -784,13 +823,16 @@ class DaoService {
       lootSalt,
       daoShipSalt,
     )
-    const receipt = await tx.wait()
+    // Launch is a large, multi-deploy transaction — give it a longer ceiling than the
+    // default. The record survives a timeout so a slow confirmation stays recoverable
+    // (complementing the CREATE2 hasCodeAt probe the launch flow already uses).
+    const receipt = await confirmTx(tx, { step: 'launch', label: 'Launch DAO', timeoutMs: 180_000 })
 
     // Parse the LaunchDAOShipAndVault event
     const iface = new quais.Interface(DAOShipAndVaultLauncherAbi)
     for (const log of receipt.logs) {
       try {
-        const parsed = iface.parseLog({ topics: log.topics, data: log.data })
+        const parsed = iface.parseLog({ topics: [...log.topics], data: log.data })
         if (parsed?.name === 'LaunchDAOShipAndVault') {
           return {
             daoShip: parsed.args.daoShip as string,
@@ -816,7 +858,7 @@ class DaoService {
   async delegate(sharesAddress: string, delegatee: string): Promise<void> {
     const shares = getSharesContractWithSigner(sharesAddress)
     const tx = await shares.delegate(delegatee)
-    await tx.wait()
+    await confirmTx(tx, { label: 'Delegate' })
   }
 
   // ── Onboard (navigator) ────────────────────────────────────────────────
@@ -830,7 +872,7 @@ class DaoService {
   async onboardEth(navigatorAddress: string, value: bigint): Promise<void> {
     const navigator = getERC20TributeNavigatorContractWithSigner(navigatorAddress)
     const tx = await navigator.onboard({ value })
-    await tx.wait()
+    await confirmTx(tx, { label: 'Onboard' })
   }
 
   /**
@@ -842,7 +884,7 @@ class DaoService {
   async onboard(navigatorAddress: string, value: bigint): Promise<void> {
     const navigator = getOnboarderNavigatorContractWithSigner(navigatorAddress)
     const tx = await navigator.onboard({ value })
-    await tx.wait()
+    await confirmTx(tx, { label: 'Onboard' })
   }
 
   // ── Poster (metadata) ─────────────────────────────────────────────────
@@ -856,7 +898,7 @@ class DaoService {
   async post(content: string, tag: string): Promise<void> {
     const poster = getPosterContractWithSigner()
     const tx = await poster['post(string,string)'](content, tag)
-    await tx.wait()
+    await confirmTx(tx, { label: 'Post metadata' })
   }
 
   // ═════════════════════════════════════════════════════════════════════════

@@ -1,5 +1,6 @@
 import { quais } from 'quais'
 import { baseService } from './BaseService.ts'
+import { confirmTx } from '@/services/utils/TxExecutor'
 import SharesERC20ABI from '@/config/abi/SharesERC20.json'
 import LootERC20ABI from '@/config/abi/LootERC20.json'
 
@@ -35,10 +36,7 @@ class TokenService {
   async delegate(sharesAddress: string, to: string): Promise<void> {
     const contract = this.getSharesWriteContract(sharesAddress)
     const tx = await contract.delegate(to)
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('delegate transaction reverted')
-    }
+    await confirmTx(tx, { label: 'Delegate' })
   }
 
   // ─── SharesERC20 Read operations (voting/delegation) ─────────────────
