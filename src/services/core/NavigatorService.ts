@@ -6,9 +6,7 @@ import OnboarderNavigatorABI from '@/config/abi/OnboarderNavigator.json'
 import ERC20TributeNavigatorABI from '@/config/abi/ERC20TributeNavigator.json'
 import NFTGatedNavigatorABI from '@/config/abi/NFTGatedNavigator.json'
 import SignalNavigatorABI from '@/config/abi/SignalNavigator.json'
-import BudgetNavigatorABI from '@/config/abi/BudgetNavigator.json'
 import SubscriptionNavigatorABI from '@/config/abi/SubscriptionNavigator.json'
-import QuaiVaultJson from '@/config/abi/QuaiVault.json'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NavigatorService - Navigator contract interactions
@@ -17,6 +15,7 @@ import QuaiVaultJson from '@/config/abi/QuaiVault.json'
 import { ERC20_MINIMAL_ABI, ERC20_PERMIT_PROBE_ABI } from './navigators/shared'
 import { timelockNavService } from './navigators/TimelockNavService'
 import { vestingNavService } from './navigators/VestingNavService'
+import { budgetNavService } from './navigators/BudgetNavService'
 
 // Config types live in a neutral module (avoids a circular dep with the future
 // per-type sub-services); re-exported here so existing `@/services/core/NavigatorService`
@@ -749,92 +748,59 @@ class NavigatorService {
   // ═══════════════════════════════════════════════════════════════════════
 
   /** Read the BudgetNavigator's immutable config + current budget count + pause flag. */
-  async getBudgetConfig(navigatorAddress: string): Promise<BudgetNavigatorConfig> {
-    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.getProvider())
-
-    const [budgetCount, paused, minPeriod, maxPeriod, daoShip, navigatorType] = await Promise.all([
-      contract.budgetCount(),
-      contract.paused(),
-      contract.MIN_PERIOD(),
-      contract.MAX_PERIOD(),
-      contract.daoShip(),
-      contract.navigatorType(),
-    ])
-
-    return {
-      budgetCount: BigInt(budgetCount),
-      paused: Boolean(paused),
-      minPeriod: BigInt(minPeriod),
-      maxPeriod: BigInt(maxPeriod),
-      daoShip: String(daoShip),
-      navigatorType: String(navigatorType),
-    }
+  getBudgetConfig(navigatorAddress: string): Promise<BudgetNavigatorConfig> {
+    return budgetNavService.getBudgetConfig(navigatorAddress)
   }
 
   /**
    * Live remaining figures for one budget — both reset/accrue lazily on-chain, so
    * read them fresh before a disburse to disable a too-large amount before it reverts.
    */
-  async getBudgetRemaining(navigatorAddress: string, budgetId: bigint): Promise<BudgetRemaining> {
-    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.getProvider())
-    const [thisPeriod, total] = await Promise.all([
-      contract.remainingThisPeriod(budgetId),
-      contract.remainingTotal(budgetId),
-    ])
-    return { thisPeriod: BigInt(thisPeriod), total: BigInt(total) }
+  getBudgetRemaining(navigatorAddress: string, budgetId: bigint): Promise<BudgetRemaining> {
+    return budgetNavService.getBudgetRemaining(navigatorAddress, budgetId)
   }
 
   /** Authoritative pause flag (freezes ALL disbursement). */
-  async getBudgetPaused(navigatorAddress: string): Promise<boolean> {
-    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.getProvider())
-    return Boolean(await contract.paused())
+  getBudgetPaused(navigatorAddress: string): Promise<boolean> {
+    return budgetNavService.getBudgetPaused(navigatorAddress)
   }
 
   /**
    * Is this navigator currently an enabled module on the given vault? The
    * unforgeable source of truth behind trust_status — confirm before disbursing.
    */
-  async isModuleEnabled(vaultAddress: string, navigatorAddress: string): Promise<boolean> {
-    const vault = new quais.Contract(vaultAddress, QuaiVaultJson.abi, baseService.getProvider())
-    return Boolean(await vault.isModuleEnabled(quais.getAddress(navigatorAddress)))
+  isModuleEnabled(vaultAddress: string, navigatorAddress: string): Promise<boolean> {
+    return budgetNavService.isModuleEnabled(vaultAddress, navigatorAddress)
   }
 
   /** Disburse a single payout from a budget. Manager-only (reverts otherwise). */
-  async budgetDisburse(
+  budgetDisburse(
     navigatorAddress: string,
     budgetId: bigint,
     to: string,
     amount: bigint,
   ): Promise<void> {
-    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
-    const tx = await contract.disburse(budgetId, quais.getAddress(to), amount)
-    await confirmTx(tx, { label: 'BudgetNavigator.disburse' })
+    return budgetNavService.budgetDisburse(navigatorAddress, budgetId, to, amount)
   }
 
   /** Batch payroll disbursement (atomic). Manager-only; `to` and `amounts` must align. */
-  async budgetDisburseBatch(
+  budgetDisburseBatch(
     navigatorAddress: string,
     budgetId: bigint,
     to: string[],
     amounts: bigint[],
   ): Promise<void> {
-    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
-    const tx = await contract.disburseBatch(budgetId, to.map((a) => quais.getAddress(a)), amounts)
-    await confirmTx(tx, { label: 'BudgetNavigator.disburseBatch' })
+    return budgetNavService.budgetDisburseBatch(navigatorAddress, budgetId, to, amounts)
   }
 
   /** Freeze ALL disbursement (the fast brake). GOVERNOR navigator or avatar only. */
-  async budgetPause(navigatorAddress: string): Promise<void> {
-    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
-    const tx = await contract.pause()
-    await confirmTx(tx, { label: 'BudgetNavigator.pause' })
+  budgetPause(navigatorAddress: string): Promise<void> {
+    return budgetNavService.budgetPause(navigatorAddress)
   }
 
   /** Resume disbursement. GOVERNOR navigator or avatar only. */
-  async budgetUnpause(navigatorAddress: string): Promise<void> {
-    const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
-    const tx = await contract.unpause()
-    await confirmTx(tx, { label: 'BudgetNavigator.unpause' })
+  budgetUnpause(navigatorAddress: string): Promise<void> {
+    return budgetNavService.budgetUnpause(navigatorAddress)
   }
 
   // ═══════════════════════════════════════════════════════════════════════
