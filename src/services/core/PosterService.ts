@@ -1,5 +1,6 @@
 import { quais } from 'quais'
 import { baseService } from './BaseService.ts'
+import { confirmTx } from '@/services/utils/TxExecutor'
 import PosterABI from '@/config/abi/Poster.json'
 import { CONTRACT_ADDRESSES } from '@/config/contracts'
 import { POSTER_TAGS } from '@/types/poster'
@@ -60,10 +61,7 @@ class PosterService {
     await assertAffordable(modelPostGas(contentBytes), 'Post to Poster')
 
     const tx = await contract['post(string,string)'](content, tag)
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('Poster.post transaction reverted')
-    }
+    await confirmTx(tx, { label: 'Poster.post' })
   }
 
   /**

@@ -1,5 +1,6 @@
 import { quais } from 'quais'
 import { baseService } from './BaseService.ts'
+import { confirmTx } from '@/services/utils/TxExecutor'
 import { NETWORK_CONFIG } from '@/config/contracts'
 import OnboarderNavigatorABI from '@/config/abi/OnboarderNavigator.json'
 import ERC20TributeNavigatorABI from '@/config/abi/ERC20TributeNavigator.json'
@@ -370,10 +371,7 @@ class NavigatorService {
       baseService.requireSigner(),
     )
     const tx = await contract['onboard(bytes32[])'](proof, { value })
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('OnboarderNavigator.onboard transaction reverted')
-    }
+    await confirmTx(tx, { label: 'OnboarderNavigator.onboard' })
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -505,7 +503,7 @@ class NavigatorService {
 
       if (currentAllowance > 0n && currentAllowance < totalTribute) {
         const resetTx = await token.approve(checksummedNavigator, 0n)
-        await resetTx.wait()
+        await confirmTx(resetTx, { label: 'Reset token allowance' })
       }
       if (currentAllowance < totalTribute) {
         // Dry-run onboard BEFORE broadcasting the approval. Otherwise any onboard
@@ -524,15 +522,12 @@ class NavigatorService {
         }
 
         const approveTx = await token.approve(checksummedNavigator, totalTribute)
-        await approveTx.wait()
+        await confirmTx(approveTx, { label: 'Approve tribute token' })
       }
 
       // Onboard
       const tx = await navigator['onboard(uint256,uint256,bytes32[])'](sharesToMint, lootToMint, proof)
-      const receipt = await tx.wait()
-      if (!receipt || receipt.status !== 1) {
-        throw new Error('ERC20TributeNavigator.onboard transaction reverted')
-      }
+      await confirmTx(tx, { label: 'ERC20TributeNavigator.onboard' })
     }
   }
 
@@ -646,10 +641,7 @@ class NavigatorService {
     const tx = await navigatorContract.onboardWithPermit(
       sharesToMint, lootToMint, proof, deadline, sig.v, sig.r, sig.s,
     )
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('ERC20TributeNavigator.onboardWithPermit transaction reverted')
-    }
+    await confirmTx(tx, { label: 'ERC20TributeNavigator.onboardWithPermit' })
 
     return true
   }
@@ -823,10 +815,7 @@ class NavigatorService {
     const tx = proof === null
       ? await contract['onboard(uint256)'](tokenId, { value: tributeValue })
       : await contract['onboard(uint256,bytes32[])'](tokenId, proof, { value: tributeValue })
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('NFTGatedNavigator.onboard transaction reverted')
-    }
+    await confirmTx(tx, { label: 'NFTGatedNavigator.onboard' })
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -883,17 +872,14 @@ class NavigatorService {
   ): Promise<bigint> {
     const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.requireSigner())
     const tx = await contract.createPoll(question, optionCount, startTime, duration)
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('SignalNavigator.createPoll transaction reverted')
-    }
+    const receipt = await confirmTx(tx, { label: 'SignalNavigator.createPoll' })
 
     // Recover the assigned pollId (per-navigator, starts at 0) from PollCreated so the caller
     // can post the daoships.signal.poll option labels in the required second transaction.
     const iface = new quais.Interface(SignalNavigatorABI)
     for (const log of receipt.logs) {
       try {
-        const parsed = iface.parseLog({ topics: log.topics, data: log.data })
+        const parsed = iface.parseLog({ topics: [...log.topics], data: log.data })
         if (parsed?.name === 'PollCreated') {
           return parsed.args.pollId as bigint
         }
@@ -908,20 +894,14 @@ class NavigatorService {
   async signalVote(navigatorAddress: string, pollId: bigint, option: number): Promise<void> {
     const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.requireSigner())
     const tx = await contract.vote(pollId, option)
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('SignalNavigator.vote transaction reverted')
-    }
+    await confirmTx(tx, { label: 'SignalNavigator.vote' })
   }
 
   /** Cancel a poll (creator before start; avatar before end). */
   async signalCancelPoll(navigatorAddress: string, pollId: bigint): Promise<void> {
     const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.requireSigner())
     const tx = await contract.cancelPoll(pollId)
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('SignalNavigator.cancelPoll transaction reverted')
-    }
+    await confirmTx(tx, { label: 'SignalNavigator.cancelPoll' })
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -992,10 +972,7 @@ class NavigatorService {
   ): Promise<void> {
     const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
     const tx = await contract.disburse(budgetId, quais.getAddress(to), amount)
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('BudgetNavigator.disburse transaction reverted')
-    }
+    await confirmTx(tx, { label: 'BudgetNavigator.disburse' })
   }
 
   /** Batch payroll disbursement (atomic). Manager-only; `to` and `amounts` must align. */
@@ -1007,30 +984,21 @@ class NavigatorService {
   ): Promise<void> {
     const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
     const tx = await contract.disburseBatch(budgetId, to.map((a) => quais.getAddress(a)), amounts)
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('BudgetNavigator.disburseBatch transaction reverted')
-    }
+    await confirmTx(tx, { label: 'BudgetNavigator.disburseBatch' })
   }
 
   /** Freeze ALL disbursement (the fast brake). GOVERNOR navigator or avatar only. */
   async budgetPause(navigatorAddress: string): Promise<void> {
     const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
     const tx = await contract.pause()
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('BudgetNavigator.pause transaction reverted')
-    }
+    await confirmTx(tx, { label: 'BudgetNavigator.pause' })
   }
 
   /** Resume disbursement. GOVERNOR navigator or avatar only. */
   async budgetUnpause(navigatorAddress: string): Promise<void> {
     const contract = new quais.Contract(navigatorAddress, BudgetNavigatorABI, baseService.requireSigner())
     const tx = await contract.unpause()
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('BudgetNavigator.unpause transaction reverted')
-    }
+    await confirmTx(tx, { label: 'BudgetNavigator.unpause' })
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1091,10 +1059,7 @@ class NavigatorService {
   async vestingClaim(navigatorAddress: string, scheduleId: bigint): Promise<void> {
     const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.requireSigner())
     const tx = await contract.claim(scheduleId)
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('VestingNavigator.claim transaction reverted')
-    }
+    await confirmTx(tx, { label: 'VestingNavigator.claim' })
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1146,10 +1111,7 @@ class NavigatorService {
   ): Promise<void> {
     const contract = new quais.Contract(navigatorAddress, TimelockNavigatorABI, baseService.requireSigner())
     const tx = await contract.executeChange(changeId, governanceConfig)
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('TimelockNavigator.executeChange transaction reverted')
-    }
+    await confirmTx(tx, { label: 'TimelockNavigator.executeChange' })
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1276,11 +1238,11 @@ class NavigatorService {
       const current = BigInt(await erc20.allowance(owner, checksummedNav))
       if (current > 0n && current < cost) {
         const reset = await erc20.approve(checksummedNav, 0n)
-        await reset.wait()
+        await confirmTx(reset, { label: 'Reset token allowance' })
       }
       if (current < cost) {
         const approve = await erc20.approve(checksummedNav, cost)
-        await approve.wait()
+        await confirmTx(approve, { label: 'Approve subscription token' })
       }
     }
 
@@ -1288,10 +1250,7 @@ class NavigatorService {
     const tx = member === null
       ? await navigator.payFee(periods, token, { value })
       : await navigator.payFeeFor(quais.getAddress(member), periods, token, { value })
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('SubscriptionNavigator.payFee transaction reverted')
-    }
+    await confirmTx(tx, { label: 'SubscriptionNavigator.payFee' })
   }
 
   /**
@@ -1302,10 +1261,7 @@ class NavigatorService {
   async subscriptionCollectFee(navigatorAddress: string, member: string): Promise<void> {
     const contract = new quais.Contract(navigatorAddress, SubscriptionNavigatorABI, baseService.requireSigner())
     const tx = await contract.collectFee(quais.getAddress(member))
-    const receipt = await tx.wait()
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('SubscriptionNavigator.collectFee transaction reverted')
-    }
+    await confirmTx(tx, { label: 'SubscriptionNavigator.collectFee' })
   }
 
 }
