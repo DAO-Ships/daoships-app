@@ -4,7 +4,6 @@ import { confirmTx } from '@/services/utils/TxExecutor'
 import { NETWORK_CONFIG } from '@/config/contracts'
 import OnboarderNavigatorABI from '@/config/abi/OnboarderNavigator.json'
 import ERC20TributeNavigatorABI from '@/config/abi/ERC20TributeNavigator.json'
-import NFTGatedNavigatorABI from '@/config/abi/NFTGatedNavigator.json'
 import SubscriptionNavigatorABI from '@/config/abi/SubscriptionNavigator.json'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -17,6 +16,7 @@ import { vestingNavService } from './navigators/VestingNavService'
 import { budgetNavService } from './navigators/BudgetNavService'
 import { signalNavService } from './navigators/SignalNavService'
 import { onboarderNavService } from './navigators/OnboarderNavService'
+import { nftGatedNavService } from './navigators/NFTGatedNavService'
 
 // Config types live in a neutral module (avoids a circular dep with the future
 // per-type sub-services); re-exported here so existing `@/services/core/NavigatorService`
@@ -463,46 +463,8 @@ class NavigatorService {
    * Does NOT read the gate collection itself (untrusted external contract) — the
    * plugin probes the gate (name/symbol/ownership) defensively with try/catch.
    */
-  async getNFTGatedConfig(navigatorAddress: string): Promise<NFTGatedNavigatorConfig> {
-    const contract = new quais.Contract(
-      navigatorAddress,
-      NFTGatedNavigatorABI,
-      baseService.getProvider(),
-    )
-
-    const [
-      gateToken, sharesPerHolder, lootPerHolder, requireTribute, tributeAmount,
-      expiry, mintCap, perAddressCap, allowlistRoot,
-      totalMinted, paused, navigatorType,
-    ] = await Promise.all([
-      contract.gateToken(),
-      contract.sharesPerHolder(),
-      contract.lootPerHolder(),
-      contract.requireTribute(),
-      contract.tributeAmount(),
-      contract.expiry(),
-      contract.mintCap(),
-      contract.perAddressCap(),
-      contract.allowlistRoot(),
-      contract.totalMinted(),
-      contract.paused(),
-      contract.navigatorType(),
-    ])
-
-    return {
-      gateToken: String(gateToken),
-      sharesPerHolder: BigInt(sharesPerHolder),
-      lootPerHolder: BigInt(lootPerHolder),
-      requireTribute: Boolean(requireTribute),
-      tributeAmount: BigInt(tributeAmount),
-      expiry: BigInt(expiry),
-      mintCap: BigInt(mintCap),
-      perAddressCap: BigInt(perAddressCap),
-      allowlistRoot: String(allowlistRoot),
-      totalMinted: BigInt(totalMinted),
-      paused: Boolean(paused),
-      navigatorType: String(navigatorType),
-    }
+  getNFTGatedConfig(navigatorAddress: string): Promise<NFTGatedNavigatorConfig> {
+    return nftGatedNavService.getNFTGatedConfig(navigatorAddress)
   }
 
   /**
@@ -510,31 +472,15 @@ class NavigatorService {
    * call is wrapped in try/catch). Used to render claimed-token images in the gallery. Returns
    * null when there's no provider, the call reverts, or the URI is empty.
    */
-  async getErc721TokenURI(collection: string, tokenId: string): Promise<string | null> {
-    if (!baseService.hasProvider()) return null
-    try {
-      const contract = new quais.Contract(
-        quais.getAddress(collection),
-        ['function tokenURI(uint256 tokenId) view returns (string)'],
-        baseService.getProvider(),
-      )
-      const uri = await contract.tokenURI(BigInt(tokenId))
-      return typeof uri === 'string' && uri.trim() !== '' ? uri.trim() : null
-    } catch {
-      return null
-    }
+  getErc721TokenURI(collection: string, tokenId: string): Promise<string | null> {
+    return nftGatedNavService.getErc721TokenURI(collection, tokenId)
   }
 
   /**
    * Amount (shares+loot) minted to an address — for perAddressCap display.
    */
-  async getNFTGatedMintedTo(navigatorAddress: string, userAddress: string): Promise<bigint> {
-    const contract = new quais.Contract(
-      navigatorAddress,
-      NFTGatedNavigatorABI,
-      baseService.getProvider(),
-    )
-    return BigInt(await contract.mintedTo(userAddress))
+  getNFTGatedMintedTo(navigatorAddress: string, userAddress: string): Promise<bigint> {
+    return nftGatedNavService.getNFTGatedMintedTo(navigatorAddress, userAddress)
   }
 
   /**
@@ -542,13 +488,8 @@ class NavigatorService {
    * Authoritative — read this at submit time, never trust the indexer for the
    * member's own pending claim.
    */
-  async nftGatedClaimed(navigatorAddress: string, tokenId: bigint): Promise<boolean> {
-    const contract = new quais.Contract(
-      navigatorAddress,
-      NFTGatedNavigatorABI,
-      baseService.getProvider(),
-    )
-    return Boolean(await contract.claimed(tokenId))
+  nftGatedClaimed(navigatorAddress: string, tokenId: bigint): Promise<boolean> {
+    return nftGatedNavService.nftGatedClaimed(navigatorAddress, tokenId)
   }
 
   /**
@@ -556,17 +497,12 @@ class NavigatorService {
    * if paused, expired, already claimed, or the candidate doesn't currently own the
    * token. Never reverts.
    */
-  async nftGatedCanOnboard(
+  nftGatedCanOnboard(
     navigatorAddress: string,
     candidate: string,
     tokenId: bigint,
   ): Promise<boolean> {
-    const contract = new quais.Contract(
-      navigatorAddress,
-      NFTGatedNavigatorABI,
-      baseService.getProvider(),
-    )
-    return Boolean(await contract.canOnboard(candidate, tokenId))
+    return nftGatedNavService.nftGatedCanOnboard(navigatorAddress, candidate, tokenId)
   }
 
   /**
@@ -580,21 +516,13 @@ class NavigatorService {
    * @param tributeValue Exact native tribute in wei (pass the on-chain `tributeAmount`
    *                     verbatim; 0n when `requireTribute` is false).
    */
-  async nftGatedOnboard(
+  nftGatedOnboard(
     navigatorAddress: string,
     tokenId: bigint,
     tributeValue: bigint,
     proof: string[] | null = null,
   ): Promise<void> {
-    const contract = new quais.Contract(
-      navigatorAddress,
-      NFTGatedNavigatorABI,
-      baseService.requireSigner(),
-    )
-    const tx = proof === null
-      ? await contract['onboard(uint256)'](tokenId, { value: tributeValue })
-      : await contract['onboard(uint256,bytes32[])'](tokenId, proof, { value: tributeValue })
-    await confirmTx(tx, { label: 'NFTGatedNavigator.onboard' })
+    return nftGatedNavService.nftGatedOnboard(navigatorAddress, tokenId, tributeValue, proof)
   }
 
   // ═══════════════════════════════════════════════════════════════════════
