@@ -5,7 +5,6 @@ import { NETWORK_CONFIG } from '@/config/contracts'
 import OnboarderNavigatorABI from '@/config/abi/OnboarderNavigator.json'
 import ERC20TributeNavigatorABI from '@/config/abi/ERC20TributeNavigator.json'
 import NFTGatedNavigatorABI from '@/config/abi/NFTGatedNavigator.json'
-import SignalNavigatorABI from '@/config/abi/SignalNavigator.json'
 import SubscriptionNavigatorABI from '@/config/abi/SubscriptionNavigator.json'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -16,6 +15,7 @@ import { ERC20_MINIMAL_ABI, ERC20_PERMIT_PROBE_ABI } from './navigators/shared'
 import { timelockNavService } from './navigators/TimelockNavService'
 import { vestingNavService } from './navigators/VestingNavService'
 import { budgetNavService } from './navigators/BudgetNavService'
+import { signalNavService } from './navigators/SignalNavService'
 
 // Config types live in a neutral module (avoids a circular dep with the future
 // per-type sub-services); re-exported here so existing `@/services/core/NavigatorService`
@@ -658,39 +658,18 @@ class NavigatorService {
   // ═══════════════════════════════════════════════════════════════════════
 
   /** Read the SignalNavigator's immutable config + current poll count. */
-  async getSignalConfig(navigatorAddress: string): Promise<SignalNavigatorConfig> {
-    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.getProvider())
-
-    const [minSharesToCreatePoll, minDuration, maxDuration, maxStartDelay, pollCount, navigatorType] =
-      await Promise.all([
-        contract.minSharesToCreatePoll(),
-        contract.minDuration(),
-        contract.maxDuration(),
-        contract.maxStartDelay(),
-        contract.pollCount(),
-        contract.navigatorType(),
-      ])
-
-    return {
-      minSharesToCreatePoll: BigInt(minSharesToCreatePoll),
-      minDuration: BigInt(minDuration),
-      maxDuration: BigInt(maxDuration),
-      maxStartDelay: BigInt(maxStartDelay),
-      pollCount: BigInt(pollCount),
-      navigatorType: String(navigatorType),
-    }
+  getSignalConfig(navigatorAddress: string): Promise<SignalNavigatorConfig> {
+    return signalNavService.getSignalConfig(navigatorAddress)
   }
 
   /** Has `voter` already voted on a poll? (Authoritative on-chain read.) */
-  async signalHasVoted(navigatorAddress: string, pollId: bigint, voter: string): Promise<boolean> {
-    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.getProvider())
-    return Boolean(await contract.hasVoted(pollId, voter))
+  signalHasVoted(navigatorAddress: string, pollId: bigint, voter: string): Promise<boolean> {
+    return signalNavService.signalHasVoted(navigatorAddress, pollId, voter)
   }
 
   /** Poll status enum: 0=Pending, 1=Active, 2=Ended, 3=Cancelled. */
-  async signalPollStatus(navigatorAddress: string, pollId: bigint): Promise<number> {
-    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.getProvider())
-    return Number(await contract.pollStatus(pollId))
+  signalPollStatus(navigatorAddress: string, pollId: bigint): Promise<number> {
+    return signalNavService.signalPollStatus(navigatorAddress, pollId)
   }
 
   /**
@@ -698,45 +677,24 @@ class NavigatorService {
    * now..now+maxStartDelay). `duration` is in seconds, within [minDuration, maxDuration].
    * `optionCount` must be 2..10.
    */
-  async signalCreatePoll(
+  signalCreatePoll(
     navigatorAddress: string,
     question: string,
     optionCount: number,
     startTime: bigint,
     duration: bigint,
   ): Promise<bigint> {
-    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.requireSigner())
-    const tx = await contract.createPoll(question, optionCount, startTime, duration)
-    const receipt = await confirmTx(tx, { label: 'SignalNavigator.createPoll' })
-
-    // Recover the assigned pollId (per-navigator, starts at 0) from PollCreated so the caller
-    // can post the daoships.signal.poll option labels in the required second transaction.
-    const iface = new quais.Interface(SignalNavigatorABI)
-    for (const log of receipt.logs) {
-      try {
-        const parsed = iface.parseLog({ topics: [...log.topics], data: log.data })
-        if (parsed?.name === 'PollCreated') {
-          return parsed.args.pollId as bigint
-        }
-      } catch {
-        // Not a PollCreated log — keep scanning.
-      }
-    }
-    throw new Error('SignalNavigator.createPoll succeeded but no PollCreated event was found')
+    return signalNavService.signalCreatePoll(navigatorAddress, question, optionCount, startTime, duration)
   }
 
   /** Cast a vote. Weight is the snapshot share power (loot excluded), resolved on-chain. */
-  async signalVote(navigatorAddress: string, pollId: bigint, option: number): Promise<void> {
-    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.requireSigner())
-    const tx = await contract.vote(pollId, option)
-    await confirmTx(tx, { label: 'SignalNavigator.vote' })
+  signalVote(navigatorAddress: string, pollId: bigint, option: number): Promise<void> {
+    return signalNavService.signalVote(navigatorAddress, pollId, option)
   }
 
   /** Cancel a poll (creator before start; avatar before end). */
-  async signalCancelPoll(navigatorAddress: string, pollId: bigint): Promise<void> {
-    const contract = new quais.Contract(navigatorAddress, SignalNavigatorABI, baseService.requireSigner())
-    const tx = await contract.cancelPoll(pollId)
-    await confirmTx(tx, { label: 'SignalNavigator.cancelPoll' })
+  signalCancelPoll(navigatorAddress: string, pollId: bigint): Promise<void> {
+    return signalNavService.signalCancelPoll(navigatorAddress, pollId)
   }
 
   // ═══════════════════════════════════════════════════════════════════════
