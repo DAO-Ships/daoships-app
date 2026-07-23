@@ -23,8 +23,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { quais } from 'quais'
-import { INDEXER_CONFIG } from '@/config/supabase'
-import { CONTRACT_ADDRESSES } from '@/config/contracts'
 import { baseService } from '@/services/core/BaseService'
 import { indexerHealthService } from '@/services/indexer/IndexerHealthService'
 import { daoIndexerService } from '@/services/indexer/DaoIndexerService'
@@ -50,113 +48,24 @@ import { executeWrite, confirmTx } from '@/services/utils/TxExecutor'
 import { assertAffordable, FALLBACK_LAUNCH_GAS } from '@/services/utils/LaunchGasEstimator'
 import DAOShipAbi from '@/config/abi/DAOShip.json'
 import DAOShipAndVaultLauncherAbi from '@/config/abi/DAOShipAndVaultLauncher.json'
-import SharesERC20Abi from '@/config/abi/SharesERC20.json'
-import LootERC20Abi from '@/config/abi/LootERC20.json'
-import PosterAbi from '@/config/abi/Poster.json'
-import ERC20TributeNavigatorAbi from '@/config/abi/ERC20TributeNavigator.json'
-import OnboarderNavigatorAbi from '@/config/abi/OnboarderNavigator.json'
+import {
+  getDAOShipContract,
+  getDAOShipContractWithSigner,
+  getLauncherContract,
+  getSharesContract,
+  getSharesContractWithSigner,
+  getLootContract,
+  getPosterContractWithSigner,
+  getERC20TributeNavigatorContract,
+  getERC20TributeNavigatorContractWithSigner,
+  getOnboarderNavigatorContractWithSigner,
+} from './dao/contracts'
+import {
+  isIndexerAvailable,
+  invalidateIndexerCache as resetIndexerCache,
+  logIndexerFallback,
+} from './dao/indexerGate'
 
-// ── Indexer availability cache ───────────────────────────────────────────
-
-let indexerAvailableCache: boolean | null = null
-let indexerCheckTimestamp = 0
-let indexerCheckPromise: Promise<boolean> | null = null
-
-async function isIndexerAvailable(): Promise<boolean> {
-  if (!INDEXER_CONFIG.ENABLED) return false
-
-  // No health endpoint configured (the PROD default is ''): we cannot know, so do NOT
-  // assume dead. Previously getStatus() cached healthy:false permanently in that case,
-  // so every gated read skipped Supabase even though PostgREST was perfectly fine.
-  // Supabase queries fail fast on their own; let them be the signal.
-  if (!INDEXER_CONFIG.HEALTH_URL) return true
-
-  const now = Date.now()
-  if (indexerAvailableCache !== null && now - indexerCheckTimestamp < INDEXER_CONFIG.HEALTH_CACHE_MS) {
-    return indexerAvailableCache
-  }
-
-  // Deduplicate concurrent calls
-  if (indexerCheckPromise) return indexerCheckPromise
-
-  indexerCheckPromise = (async () => {
-    try {
-      indexerAvailableCache = await indexerHealthService.isHealthy()
-      indexerCheckTimestamp = Date.now()
-      return indexerAvailableCache
-    } catch {
-      indexerAvailableCache = false
-      indexerCheckTimestamp = Date.now()
-      return false
-    } finally {
-      indexerCheckPromise = null
-    }
-  })()
-
-  return indexerCheckPromise
-}
-
-/**
- * Make a swallowed indexer read visible. These catches deliberately fall through to an
- * on-chain read — the fallback IS the legitimate answer — but logging nothing meant a
- * degraded/down indexer was completely invisible (every read silently paid the slower,
- * wallet-dependent on-chain path). The thrown error already carries the failing
- * indexer method/table via indexerError, so its message is enough context.
- */
-function logIndexerFallback(err: unknown): void {
-  console.warn(
-    '[DaoService] indexer read failed, using on-chain fallback:',
-    err instanceof Error ? err.message : err,
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Contract instance helpers (lazy, use provider for reads / signer for writes)
-// ═══════════════════════════════════════════════════════════════════════════
-
-function getDAOShipContract(daoId: string): quais.Contract {
-  return new quais.Contract(quais.getAddress(daoId), DAOShipAbi, baseService.getProvider())
-}
-
-function getDAOShipContractWithSigner(daoId: string): quais.Contract {
-  return new quais.Contract(quais.getAddress(daoId), DAOShipAbi, baseService.requireSigner())
-}
-
-function getLauncherContract(): quais.Contract {
-  return new quais.Contract(
-    CONTRACT_ADDRESSES.DAOSHIP_AND_VAULT_LAUNCHER,
-    DAOShipAndVaultLauncherAbi,
-    baseService.requireSigner()
-  )
-}
-
-function getSharesContract(sharesAddress: string): quais.Contract {
-  return new quais.Contract(quais.getAddress(sharesAddress), SharesERC20Abi, baseService.getProvider())
-}
-
-function getSharesContractWithSigner(sharesAddress: string): quais.Contract {
-  return new quais.Contract(quais.getAddress(sharesAddress), SharesERC20Abi, baseService.requireSigner())
-}
-
-function getLootContract(lootAddress: string): quais.Contract {
-  return new quais.Contract(quais.getAddress(lootAddress), LootERC20Abi, baseService.getProvider())
-}
-
-function getPosterContractWithSigner(): quais.Contract {
-  return new quais.Contract(CONTRACT_ADDRESSES.POSTER, PosterAbi, baseService.requireSigner())
-}
-
-function getERC20TributeNavigatorContract(navigatorAddress: string): quais.Contract {
-  return new quais.Contract(quais.getAddress(navigatorAddress), ERC20TributeNavigatorAbi, baseService.getProvider())
-}
-
-function getERC20TributeNavigatorContractWithSigner(navigatorAddress: string): quais.Contract {
-  return new quais.Contract(quais.getAddress(navigatorAddress), ERC20TributeNavigatorAbi, baseService.requireSigner())
-}
-
-function getOnboarderNavigatorContractWithSigner(navigatorAddress: string): quais.Contract {
-  return new quais.Contract(quais.getAddress(navigatorAddress), OnboarderNavigatorAbi, baseService.requireSigner())
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DaoService class
@@ -173,8 +82,7 @@ class DaoService {
    * Call this when subscription errors occur to trigger an immediate re-check.
    */
   invalidateIndexerCache(): void {
-    indexerAvailableCache = null
-    indexerCheckTimestamp = 0
+    resetIndexerCache()
   }
 
   // ═════════════════════════════════════════════════════════════════════════
