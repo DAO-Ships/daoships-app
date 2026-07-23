@@ -8,7 +8,6 @@ import NFTGatedNavigatorABI from '@/config/abi/NFTGatedNavigator.json'
 import SignalNavigatorABI from '@/config/abi/SignalNavigator.json'
 import BudgetNavigatorABI from '@/config/abi/BudgetNavigator.json'
 import VestingNavigatorABI from '@/config/abi/VestingNavigator.json'
-import TimelockNavigatorABI from '@/config/abi/TimelockNavigator.json'
 import SubscriptionNavigatorABI from '@/config/abi/SubscriptionNavigator.json'
 import QuaiVaultJson from '@/config/abi/QuaiVault.json'
 
@@ -17,6 +16,7 @@ import QuaiVaultJson from '@/config/abi/QuaiVault.json'
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { ERC20_MINIMAL_ABI, ERC20_PERMIT_PROBE_ABI } from './navigators/shared'
+import { timelockNavService } from './navigators/TimelockNavService'
 
 // Config types live in a neutral module (avoids a circular dep with the future
 // per-type sub-services); re-exported here so existing `@/services/core/NavigatorService`
@@ -907,32 +907,13 @@ class NavigatorService {
   // ═══════════════════════════════════════════════════════════════════════
 
   /** Read the TimelockNavigator's config: change count, pause flag, delay, expiry window. */
-  async getTimelockConfig(navigatorAddress: string): Promise<TimelockNavigatorConfig> {
-    const contract = new quais.Contract(navigatorAddress, TimelockNavigatorABI, baseService.getProvider())
-
-    const [changeCount, paused, delay, expiryWindow, daoShip, navigatorType] = await Promise.all([
-      contract.changeCount(),
-      contract.paused(),
-      contract.delay(),
-      contract.expiryWindow(),
-      contract.daoShip(),
-      contract.navigatorType(),
-    ])
-
-    return {
-      changeCount: BigInt(changeCount),
-      paused: Boolean(paused),
-      delay: BigInt(delay),
-      expiryWindow: BigInt(expiryWindow),
-      daoShip: String(daoShip),
-      navigatorType: String(navigatorType),
-    }
+  getTimelockConfig(navigatorAddress: string): Promise<TimelockNavigatorConfig> {
+    return timelockNavService.getTimelockConfig(navigatorAddress)
   }
 
   /** Is this change executable right now? (Authoritative on-chain preflight.) */
-  async timelockIsExecutable(navigatorAddress: string, changeId: bigint): Promise<boolean> {
-    const contract = new quais.Contract(navigatorAddress, TimelockNavigatorABI, baseService.getProvider())
-    return Boolean(await contract.isExecutable(changeId))
+  timelockIsExecutable(navigatorAddress: string, changeId: bigint): Promise<boolean> {
+    return timelockNavService.timelockIsExecutable(navigatorAddress, changeId)
   }
 
   /**
@@ -940,14 +921,12 @@ class NavigatorService {
    * the exact `governanceConfig` bytes from the indexed row; the hash won't reconstruct
    * them (wrong bytes → ConfigHashMismatch).
    */
-  async timelockExecuteChange(
+  timelockExecuteChange(
     navigatorAddress: string,
     changeId: bigint,
     governanceConfig: string,
   ): Promise<void> {
-    const contract = new quais.Contract(navigatorAddress, TimelockNavigatorABI, baseService.requireSigner())
-    const tx = await contract.executeChange(changeId, governanceConfig)
-    await confirmTx(tx, { label: 'TimelockNavigator.executeChange' })
+    return timelockNavService.timelockExecuteChange(navigatorAddress, changeId, governanceConfig)
   }
 
   // ═══════════════════════════════════════════════════════════════════════
