@@ -4,6 +4,7 @@ import { Modal } from '@/components/common/Modal'
 import { Button } from '@/components/common/Button'
 import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { formatTokenAmount, parseTokenAmount } from '@/utils/format'
+import { classifyTxError } from '@/utils/txError'
 import { sortAddressesNumerically } from '@/utils/address'
 import { NETWORK_CONFIG } from '@/config/contracts'
 
@@ -156,6 +157,10 @@ export function RagequitModal({
     new Set(guildTokens.map((t) => t.address)),
   )
   const [error, setError] = useState<string | null>(null)
+  // A pending-confirmation timeout is not a failure — the ragequit was broadcast. Framed
+  // amber, and submit is deliberately NOT re-armed so a slow confirmation can't be
+  // double-ragequit.
+  const [errorPending, setErrorPending] = useState(false)
   const [txHash, setTxHash] = useState<string | null>(null)
   const isSubmittingRef = useRef(false)
   const { ragequit, isRagequitting } = useRagequit(daoId)
@@ -170,6 +175,7 @@ export function RagequitModal({
       setLootToBurn('')
       setSelectedTokens(new Set(guildTokens.map((t) => t.address)))
       setError(null)
+      setErrorPending(false)
       setTxHash(null)
       isSubmittingRef.current = false
     }
@@ -276,6 +282,7 @@ export function RagequitModal({
     if (isSubmittingRef.current) return
     isSubmittingRef.current = true
     setError(null)
+    setErrorPending(false)
 
     try {
       const tokenAddresses = sortAddressesNumerically(
@@ -293,8 +300,12 @@ export function RagequitModal({
       })
       setStep('success')
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Ragequit failed')
-      isSubmittingRef.current = false
+      const info = classifyTxError(e)
+      setError(info.message)
+      setErrorPending(info.pending)
+      // Re-arm submit only on a genuine failure. On a pending timeout the tx is already
+      // broadcast, so leaving submit disabled prevents a double-ragequit.
+      if (!info.pending) isSubmittingRef.current = false
     }
   }
 
@@ -656,11 +667,18 @@ export function RagequitModal({
         </p>
       )}
 
-      {/* Error */}
+      {/* Outcome — amber "still confirming" for a pending timeout, red for a real failure */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
-          <p className="text-sm text-red-400">{error}</p>
-        </div>
+        errorPending ? (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
+            <p className="text-sm font-medium text-amber-400">Still confirming</p>
+            <p className="text-sm text-amber-300/90">{error}</p>
+          </div>
+        ) : (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
+        )
       )}
 
       {/* Actions */}
@@ -669,6 +687,7 @@ export function RagequitModal({
           variant="secondary"
           onClick={() => {
             setError(null)
+            setErrorPending(false)
             setStep('configure')
           }}
           disabled={isRagequitting}
