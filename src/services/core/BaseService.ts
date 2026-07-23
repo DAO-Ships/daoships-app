@@ -67,6 +67,11 @@ class BaseService {
     this.chainId = chainId
   }
 
+  /** The wallet's current chainId, or null if not yet known. */
+  getChainId(): number | null {
+    return this.chainId
+  }
+
   /**
    * Hard-block writes when the wallet is on the wrong network. Wrong-network state
    * otherwise causes silent reverts / "missing revert data" on Quai/Pelagus. Only
