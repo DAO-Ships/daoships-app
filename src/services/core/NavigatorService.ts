@@ -7,7 +7,6 @@ import ERC20TributeNavigatorABI from '@/config/abi/ERC20TributeNavigator.json'
 import NFTGatedNavigatorABI from '@/config/abi/NFTGatedNavigator.json'
 import SignalNavigatorABI from '@/config/abi/SignalNavigator.json'
 import BudgetNavigatorABI from '@/config/abi/BudgetNavigator.json'
-import VestingNavigatorABI from '@/config/abi/VestingNavigator.json'
 import SubscriptionNavigatorABI from '@/config/abi/SubscriptionNavigator.json'
 import QuaiVaultJson from '@/config/abi/QuaiVault.json'
 
@@ -17,6 +16,7 @@ import QuaiVaultJson from '@/config/abi/QuaiVault.json'
 
 import { ERC20_MINIMAL_ABI, ERC20_PERMIT_PROBE_ABI } from './navigators/shared'
 import { timelockNavService } from './navigators/TimelockNavService'
+import { vestingNavService } from './navigators/VestingNavService'
 
 // Config types live in a neutral module (avoids a circular dep with the future
 // per-type sub-services); re-exported here so existing `@/services/core/NavigatorService`
@@ -847,22 +847,8 @@ class NavigatorService {
   // ═══════════════════════════════════════════════════════════════════════
 
   /** Read the VestingNavigator's config: schedule count, pause flag, DAO binding. */
-  async getVestingConfig(navigatorAddress: string): Promise<VestingNavigatorConfig> {
-    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.getProvider())
-
-    const [scheduleCount, paused, daoShip, navigatorType] = await Promise.all([
-      contract.scheduleCount(),
-      contract.paused(),
-      contract.daoShip(),
-      contract.navigatorType(),
-    ])
-
-    return {
-      scheduleCount: BigInt(scheduleCount),
-      paused: Boolean(paused),
-      daoShip: String(daoShip),
-      navigatorType: String(navigatorType),
-    }
+  getVestingConfig(navigatorAddress: string): Promise<VestingNavigatorConfig> {
+    return vestingNavService.getVestingConfig(navigatorAddress)
   }
 
   /**
@@ -870,32 +856,26 @@ class NavigatorService {
    * claiming to disable the button when nothing has vested). Mirrors the indexer's
    * derived `claimable`, but on-chain and lag-free.
    */
-  async getVestingClaimable(navigatorAddress: string, scheduleId: bigint): Promise<bigint> {
-    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.getProvider())
-    return BigInt(await contract.claimable(scheduleId))
+  getVestingClaimable(navigatorAddress: string, scheduleId: bigint): Promise<bigint> {
+    return vestingNavService.getVestingClaimable(navigatorAddress, scheduleId)
   }
 
   /** Live total-vested for one schedule (minted + still-claimable). */
-  async getVestingVested(navigatorAddress: string, scheduleId: bigint): Promise<bigint> {
-    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.getProvider())
-    return BigInt(await contract.vested(scheduleId))
+  getVestingVested(navigatorAddress: string, scheduleId: bigint): Promise<bigint> {
+    return vestingNavService.getVestingVested(navigatorAddress, scheduleId)
   }
 
   /** The schedule IDs for a beneficiary (on-chain view). */
-  async getVestingSchedules(navigatorAddress: string, beneficiary: string): Promise<bigint[]> {
-    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.getProvider())
-    const ids = await contract.getSchedules(quais.getAddress(beneficiary))
-    return (ids as unknown[]).map((id) => BigInt(id as bigint))
+  getVestingSchedules(navigatorAddress: string, beneficiary: string): Promise<bigint[]> {
+    return vestingNavService.getVestingSchedules(navigatorAddress, beneficiary)
   }
 
   /**
    * Claim vested-but-unclaimed tokens for a schedule. Callable by the beneficiary OR
    * the avatar; ALWAYS mints to the schedule's beneficiary (never the caller).
    */
-  async vestingClaim(navigatorAddress: string, scheduleId: bigint): Promise<void> {
-    const contract = new quais.Contract(navigatorAddress, VestingNavigatorABI, baseService.requireSigner())
-    const tx = await contract.claim(scheduleId)
-    await confirmTx(tx, { label: 'VestingNavigator.claim' })
+  vestingClaim(navigatorAddress: string, scheduleId: bigint): Promise<void> {
+    return vestingNavService.vestingClaim(navigatorAddress, scheduleId)
   }
 
   // ═══════════════════════════════════════════════════════════════════════
