@@ -447,9 +447,17 @@ export function ProposalDetail() {
               where the old `hidden lg:block` instance sat, and `lg:sticky` restores the
               sticky behaviour that previously lived on an inner wrapper.
           Mobile voting actions come from the fixed bottom bar below, not from here.
+
+          `mt-6` matches the left column's `space-y-6` rhythm. The sidebar is a SIBLING
+          of that column, not a child, so it inherits no spacing from it — below `lg` it
+          would otherwise butt directly against ProposalVotes. The pre-collapse
+          `lg:hidden order-first mb-6` wrapper had the same gap, so this is a
+          long-standing mobile spacing bug, not a regression from the collapse.
+          Desktop resets it: the sidebar is `row-start-1`, so a top margin would drop it
+          24px below the content it aligns with, and `lg:gap-6` already spaces the columns.
         */}
         {!isTerminal && (
-          <div className="mb-6 lg:mb-0 lg:col-start-2 lg:row-start-1">
+          <div className="mt-6 mb-6 lg:mt-0 lg:mb-0 lg:col-start-2 lg:row-start-1">
             <div className="lg:sticky lg:top-4">
               <VotingSidebar
                 proposal={proposal}

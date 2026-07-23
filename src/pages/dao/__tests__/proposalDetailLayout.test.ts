@@ -64,6 +64,16 @@ describe('mobile layout is preserved', () => {
     expect(SRC).not.toMatch(/className="sticky top-4"/)
   })
 
+  it('spaces the sidebar from the content column it is a sibling of', () => {
+    // The left column's rhythm comes from `space-y-6`, which does not reach a sibling.
+    // Without `mt-6` the sidebar butts directly against ProposalVotes below `lg`.
+    const wrapper = SRC.match(/className="([^"]*lg:col-start-2[^"]*)"/)?.[1] ?? ''
+    expect(wrapper).toContain('mt-6')
+    // Desktop must reset it: the sidebar is row-start-1, so a top margin there would
+    // drop it below the content it aligns with.
+    expect(wrapper).toContain('lg:mt-0')
+  })
+
   it('keeps the fixed bottom action bar that provides mobile voting', () => {
     expect(SRC).toContain('lg:hidden fixed bottom-0')
   })
