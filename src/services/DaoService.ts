@@ -96,6 +96,20 @@ async function isIndexerAvailable(): Promise<boolean> {
   return indexerCheckPromise
 }
 
+/**
+ * Make a swallowed indexer read visible. These catches deliberately fall through to an
+ * on-chain read — the fallback IS the legitimate answer — but logging nothing meant a
+ * degraded/down indexer was completely invisible (every read silently paid the slower,
+ * wallet-dependent on-chain path). The thrown error already carries the failing
+ * indexer method/table via indexerError, so its message is enough context.
+ */
+function logIndexerFallback(err: unknown): void {
+  console.warn(
+    '[DaoService] indexer read failed, using on-chain fallback:',
+    err instanceof Error ? err.message : err,
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Contract instance helpers (lazy, use provider for reads / signer for writes)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -181,7 +195,8 @@ class DaoService {
     try {
       const dao = await daoIndexerService.getDao(daoId)
       if (dao) return dao
-    } catch {
+    } catch (err) {
+      logIndexerFallback(err)
       // Indexer unreachable — fall through to on-chain (e.g. a freshly-deployed DAO, or
       // Supabase momentarily down).
     }
@@ -216,7 +231,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await daoIndexerService.getGuildTokens(daoId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to the on-chain read below.
       }
     }
@@ -261,7 +277,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await proposalIndexerService.listProposals(daoId, filters)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -286,7 +303,8 @@ class DaoService {
           }
           return proposal
         }
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -302,7 +320,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await proposalIndexerService.getActiveProposals(daoId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
@@ -322,7 +341,8 @@ class DaoService {
       try {
         const members = await memberIndexerService.listMembers(daoId)
         if (members.length > 0) return members
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
@@ -338,7 +358,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await memberIndexerService.getMember(daoId, memberAddress)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -356,7 +377,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await voteIndexerService.getProposalVotes(proposalCompositeId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
@@ -374,7 +396,8 @@ class DaoService {
         const votes = await voteIndexerService.getProposalVotes(`${daoId}-${proposalId}`)
         const normalizedAddress = memberAddress.toLowerCase()
         return votes.some((v) => v.voter.toLowerCase() === normalizedAddress)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -410,7 +433,8 @@ class DaoService {
           (s) => s.navigator_address.toLowerCase() === navigatorAddress.toLowerCase()
         )
         if (navigator) return navigator.permission
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through to on-chain
       }
     }
@@ -427,7 +451,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await navigatorIndexerService.listNavigatorEvents(daoId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
@@ -443,7 +468,8 @@ class DaoService {
     if (await isIndexerAvailable()) {
       try {
         return await recordIndexerService.getRecords(daoId)
-      } catch {
+      } catch (err) {
+        logIndexerFallback(err)
         // Fall through
       }
     }
