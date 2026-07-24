@@ -77,7 +77,45 @@ running something other than what the contracts repo says, which is an incident,
 
 ---
 
-## 2. Phased plan
+## 2. The read-access model (indexer)
+
+Agents read the indexer over **Supabase PostgREST directly**, with the publishable key. This is a deliberate
+default, not an oversight — but the decision axis is **availability, not secrecy**, and the two are easy to
+conflate.
+
+**The key is public by design.** `sb_publishable_*` is the same class as a Firebase web config: it is already a
+plain string literal in the shipped `dist/assets/index-*.js`, so anyone with the app's bundle already has it.
+Handing it to agents in `read-api.json` discloses nothing new and grants nothing new — RLS enforces read-only at
+the database (`FOR SELECT USING (true)`, `GRANT SELECT` only, `REVOKE EXECUTE ON ALL FUNCTIONS`; writes `401`).
+So "should we hide the key behind an endpoint" is the wrong question — there is nothing to hide.
+
+**The right question is: should agent reads share the human app's Supabase quota?** They currently would. The
+plan already flags this for Realtime (project-level quota → agents told to poll, not subscribe), but PostgREST
+request budget is *also* shared, and direct access gives us no per-consumer throttle, no isolation, and no
+schema decoupling. An abusive or buggy agent fleet hammering PostgREST could degrade the one thing that matters —
+the live app.
+
+**Decision: direct PostgREST now; escalate only on a named trigger.** Building a hosted read API today is the
+"any server" line item this plan lists as a non-goal, for a demand that is currently ~1 DAO and zero agents. The
+escalation ladder, cheapest first:
+
+1. **Dedicated agent key + Supabase-native rate limits.** Mint a *separate* publishable key (or a distinct
+   restricted DB role) for agent traffic, so it can be throttled or revoked independently of the app's key —
+   isolating the blast radius with **zero hosting**. Do this in Phase B alongside `read-api.json`.
+2. **Read replica / separate connection pool** — only if agent reads measurably threaten app latency.
+3. **Thin read-only edge proxy** (Vercel/Supabase Edge Function) — only if we also want to hard-decouple agents
+   from the raw `ds_*` schema and do the `::text` casting + address checksumming + `Untrusted` marking
+   server-side once, instead of documenting them. This is the "API endpoint" instinct; it is correct **when the
+   trigger fires, not before.**
+
+**Triggers that promote step 1 → step 3:** agent PostgREST volume measurably impacting app read latency (watch it
+via the Phase-B request logs), **or** a scam-DAO / abuse burst where per-consumer throttling and a server-side
+denylist become worth the hosting. Absent either, direct PostgREST with a dedicated agent key keeps the
+host-nothing default while naming the exact condition under which the proxy becomes the right call.
+
+---
+
+## 3. Phased plan
 
 **Remaining to end of Phase C: ~11–12 dev-days** (down from ~16.5 — Day 1 and most of Phase A are banked). Phase D is conditional.
 
@@ -161,7 +199,7 @@ requires interactive confirm, and refuses `vault.enableModule` unconditionally.
 
 ---
 
-## 3. The demand probe (1 day, runs before Phase B)
+## 4. The demand probe (1 day, runs before Phase B)
 
 The draft's `SubscriptionNavigator.collectFee` probe cannot fire (mainnet has 2 sanctioned navigators, both
 Onboarder/ERC20Tribute; the only Subscription navigator is in the ephemeral `dev` schema) and would build an
@@ -176,7 +214,7 @@ Phase C. Wizard drop-off on a specific step → human UX wins the next two weeks
 
 ---
 
-## 4. Explicit non-goals (unchanged)
+## 5. Explicit non-goals (unchanged)
 
 `@daoships/protocol` npm package (extract when a second consumer exists) · `llms-full.txt` · hosted MCP / any
 server · **any signing, key custody, or relaying** · `AgentRegistry.sol` / `daoships.dao.agents` tag · the
@@ -190,7 +228,7 @@ already is) · WebMCP / A2A / x402 / ERC-8004 / ERC-7715 / agents.json (document
 
 ---
 
-## 5. Audit response — status
+## 6. Audit response — status
 
 The original 15 CRITICAL + 28 HIGH dispositions stand; several have since **shipped** rather than merely being
 planned:
@@ -201,7 +239,7 @@ planned:
 
 ---
 
-## 6. Sequencing
+## 7. Sequencing
 
 ```
 Probe        : crawler analytics + wizard instrumentation + 5 calls   [1d]  (runs in parallel)
@@ -224,7 +262,7 @@ rather than blocking B2 — the one accepted drift seam.
 
 ---
 
-## 7. Open questions
+## 8. Open questions
 
 1. **Confirm the `daoships-app-mainnet` Vercel env matches the `deployments.ts` mainnet column.** The one thing readable only by you; a disagreement is a live incident.
 2. **Is the probe gate real?** If "ship Phase D regardless" is the answer, say so and it sequences into week 2 instead of gating behind analytics no one will honor.
