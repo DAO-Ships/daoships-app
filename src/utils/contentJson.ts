@@ -2,6 +2,8 @@
 // Safe JSON Content Parsing Utilities
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { markUntrusted, type Untrusted } from '@/types/untrusted'
+
 /**
  * Safely parse a JSON string, returning a plain object or null.
  * Returns null for arrays, primitives, invalid JSON, null, and undefined.
@@ -27,20 +29,28 @@ export function safeJsonParse(json: string | null | undefined): Record<string, u
 /**
  * Safely extract a string field from a parsed object.
  *
+ * Returns `Untrusted<string>`: these objects are `ds_records.content_json`, and
+ * `Poster` tags are permissionless, so every value in them is attacker-chosen.
+ * Confirming a field is a string says nothing about what the string contains.
+ *
+ * To use the result as a URL, pass it through `resolveUrl` — validation is the
+ * sanctioned way to launder it. To render it as text, `unwrapUntrusted` with a
+ * reason (React escapes JSX children, so that is usually the correct reason).
+ *
  * @param obj      - The object to read from
  * @param key      - The field name
  * @param fallback - Fallback value if field is missing or not a string (default '')
- * @returns The string value or fallback
+ * @returns The string value or fallback, marked untrusted
  */
 export function safeString(
   obj: Record<string, unknown> | null | undefined,
   key: string,
   fallback: string = '',
-): string {
-  if (!obj || typeof obj !== 'object') return fallback
+): Untrusted<string> {
+  if (!obj || typeof obj !== 'object') return markUntrusted(fallback)
   const value = obj[key]
-  if (typeof value !== 'string') return fallback
-  return value
+  if (typeof value !== 'string') return markUntrusted(fallback)
+  return markUntrusted(value)
 }
 
 /**

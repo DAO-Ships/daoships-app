@@ -1,3 +1,4 @@
+import { markUntrusted } from '@/types/untrusted'
 import { describe, it, expect } from 'vitest'
 import { isValidUrl, resolveUrl, safeHref, resolveIpfsMedia } from '@/utils/url'
 
@@ -196,5 +197,39 @@ describe('resolveIpfsMedia', () => {
     expect(resolveIpfsMedia('javascript:alert(1)')).toBeNull()
     expect(resolveIpfsMedia('')).toBeNull()
     expect(resolveIpfsMedia(null)).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C4: resolveUrl is the sanctioned way to launder an Untrusted<string> into a
+// URL. `Poster` tags are permissionless, so every content_json value is
+// attacker-chosen — DaoBanner and DaoAvatar both gate their `src` on
+// isValidUrl/resolveUrl, and these pin that contract against regression.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('resolveUrl — laundering untrusted content_json strings', () => {
+  it('accepts a marked string without an unwrap', () => {
+    // The mark must not force a cast at the validation boundary, or callers
+    // will reach for `as string` and skip validation entirely.
+    expect(resolveUrl(markUntrusted('https://example.com/a.png'))).toBe('https://example.com/a.png')
+  })
+
+  it('rejects every scheme that could execute or exfiltrate', () => {
+    for (const bad of [
+      'javascript:alert(1)',
+      'data:text/html,<script>alert(1)</script>',
+      'vbscript:msgbox(1)',
+      'file:///etc/passwd',
+      '  javascript:alert(1)  ',
+    ]) {
+      expect(resolveUrl(markUntrusted(bad)), bad).toBeNull()
+      expect(isValidUrl(markUntrusted(bad)), bad).toBe(false)
+    }
+  })
+
+  it('returns null for absent or empty input rather than a bare gateway URL', () => {
+    expect(resolveUrl(null)).toBeNull()
+    expect(resolveUrl(undefined)).toBeNull()
+    expect(resolveUrl(markUntrusted(''))).toBeNull()
+    expect(resolveUrl(markUntrusted('   '))).toBeNull()
   })
 })

@@ -30,8 +30,29 @@ declare const untrustedBrand: unique symbol
 /**
  * A value that originated outside our trust boundary.
  *
- * Assignable *from* its base type (so a boundary can mark a value without a
- * cast) but not *to* it (so consumers must unwrap deliberately).
+ * **Know exactly what this enforces, because it is not what it looks like.**
+ * `Untrusted<T>` is an intersection, so the assignability is one-directional:
+ *
+ *   takesPlain(marked)   // ALLOWED  — marked values still are their base type
+ *   takesMarked(plain)   // BLOCKED  — a plain value cannot fabricate the brand
+ *
+ * So it does **not** stop hostile data being used where a plain string is
+ * expected, and it will not make existing call sites light up. What it does is
+ * let a function *demand* the mark:
+ *
+ *   function parse(details: Untrusted<string>) // callers must have a marked source
+ *
+ * That is the whole enforcement mechanism. Marking a field alone changes
+ * nothing; the value appears when a consumer's signature requires the mark, and
+ * every caller then has to prove where its input came from.
+ *
+ * Treat this as a directional contract — "this data came from outside, and this
+ * function knows how to handle that" — not as a containment barrier. Escaping
+ * and validation still happen at the sink.
+ *
+ * A fully opaque brand (`{ readonly [b]: T }`) *would* force an unwrap at every
+ * use, but it breaks `.length`, `.trim()`, template literals and JSX children,
+ * which is a large amount of churn for data whose sinks are already validated.
  */
 export type Untrusted<T> = T & { readonly [untrustedBrand]: true }
 
@@ -41,6 +62,10 @@ export type Untrusted<T> = T & { readonly [untrustedBrand]: true }
  * Call this at the trust boundary — where a row leaves an indexer service —
  * and nowhere else. Marking late defeats the purpose: the sites between the
  * boundary and the mark are exactly the ones that were never audited.
+ *
+ * A cast is required here precisely because the brand cannot be fabricated by
+ * assignment. That asymmetry is the point: creating untrusted data is a
+ * deliberate act, so `markUntrusted` is the only place it happens.
  */
 export function markUntrusted<T>(value: T): Untrusted<T> {
   return value as Untrusted<T>

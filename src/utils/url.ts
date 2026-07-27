@@ -2,6 +2,8 @@
 // URL Validation & Resolution Utilities
 // ═══════════════════════════════════════════════════════════════════════════
 
+import type { Untrusted } from '@/types/untrusted'
+
 /**
  * Default IPFS gateway for resolving ipfs:// URIs.
  * Configurable via VITE_IPFS_GATEWAY environment variable.
@@ -30,7 +32,7 @@ const VALID_CID = /^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$/
  * @param url - The URL string to validate
  * @returns true if the URL uses an allowed scheme
  */
-export function isValidUrl(url: string | null | undefined): boolean {
+export function isValidUrl(url: Untrusted<string> | string | null | undefined): boolean {
   if (!url || typeof url !== 'string') return false
   const trimmed = url.trim()
   if (trimmed === '') return false
@@ -44,7 +46,7 @@ export function isValidUrl(url: string | null | undefined): boolean {
  * @param url - URL string, potentially ipfs://
  * @returns Resolved URL string, or null if invalid
  */
-export function resolveUrl(url: string | null | undefined): string | null {
+export function resolveUrl(url: Untrusted<string> | string | null | undefined): string | null {
   if (!url || typeof url !== 'string') return null
   const trimmed = url.trim()
   if (trimmed === '') return null

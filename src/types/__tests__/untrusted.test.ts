@@ -52,11 +52,17 @@ describe('Untrusted — runtime behaviour', () => {
 })
 
 describe('Untrusted — the type contract', () => {
-  it('is assignable from its base type but not to it', () => {
-    expectTypeOf<string>().toExtend<string>()
-    // A marked string is still a string...
+  // Pinned because it is easy to state backwards, and the first version of this
+  // module's documentation did exactly that. The brand is an INTERSECTION, so:
+  //   marked -> plain  is allowed   (no enforcement at consumption)
+  //   plain  -> marked is blocked   (enforcement at the boundary)
+  // Enforcement therefore comes from functions REQUIRING Untrusted in a
+  // parameter, never from the mark stopping a value being used as a string.
+  it('lets a marked value be used wherever its base type is accepted', () => {
     expectTypeOf<Untrusted<string>>().toExtend<string>()
-    // ...but a plain string is not a marked one, so a boundary cannot be skipped.
+  })
+
+  it('refuses to let a plain value pass as marked, so a boundary cannot be faked', () => {
     expectTypeOf<string>().not.toExtend<Untrusted<string>>()
   })
 
