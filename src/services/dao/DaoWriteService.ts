@@ -6,10 +6,9 @@
 // await durability, status-checked receipt). Launch lives in LaunchService.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { quais } from 'quais'
 import { baseService } from '@/services/core/BaseService'
 import { executeWrite, confirmTx } from '@/services/utils/TxExecutor'
-import DAOShipAbi from '@/config/abi/DAOShip.json'
+import { preflightProcess, assertActionSucceeded, parseSubmitReceipt } from './governanceOps'
 import {
   getDAOShipContractWithSigner,
   getSharesContractWithSigner,
@@ -71,20 +70,9 @@ class DaoWriteService {
       step: `proposal:submit:${daoId.toLowerCase()}`,
     })
 
-    // Parse the SubmitProposal event to extract the proposal ID
-    const iface = new quais.Interface(DAOShipAbi)
-    for (const log of receipt.logs) {
-      try {
-        const parsed = iface.parseLog({ topics: [...log.topics], data: log.data })
-        if (parsed?.name === 'SubmitProposal') {
-          return parsed.args.proposal as bigint
-        }
-      } catch {
-        // Not this event, continue
-      }
-    }
-
-    throw new Error('SubmitProposal event not found in transaction receipt')
+    // The id is assigned on-chain and appears only in the event. Shared with
+    // governanceOps so an integrator has the same supported way to learn it.
+    return BigInt(parseSubmitReceipt(receipt))
   }
 
   /**
@@ -135,20 +123,38 @@ class DaoWriteService {
    * @param proposalData Original action bytes for a passing proposal, or '0x' to close a defeated one
    */
   async processProposal(daoId: string, proposalId: number, proposalData: string): Promise<void> {
+    // Preflight before spending anything. processProposal is the one write whose
+    // bad outcomes are UNRECOVERABLE: STATUS_PROCESSED is set before the
+    // retention veto is evaluated, and AlreadyProcessed() blocks every retry. A
+    // proposal that won its vote can be killed permanently by sending this at
+    // the wrong moment, and the receipt still comes back status 1.
+    //
+    // preflightProcess re-reads state() on-chain (the view the user clicked from
+    // may be stale), verifies the action bytes against the committed hash, and
+    // refuses outright when the retention floor is breached. It also returns the
+    // data the contract will actually accept — empty '0x' for a Defeated
+    // proposal, the original bytes for a Ready one.
+    const { proposalData: resolvedData } = await preflightProcess(daoId, proposalId, proposalData)
+
     const daoShip = getDAOShipContractWithSigner(daoId)
     // Workaround: Quai gas estimation follows the try/catch failure path in processProposal,
     // underestimating gas for the inner DelegateCall chain. Add 50% headroom via the
     // gasMultiplier (executeWrite only appends the computed gasLimit when an estimate came
     // back — quais alpha rejects a trailing undefined override).
     // See: daoships-contracts/docs/GAS_ESTIMATION_BUG_REPORT.md
-    await executeWrite({
+    const receipt = await executeWrite({
       contract: daoShip,
       method: 'processProposal',
-      args: [proposalId, proposalData],
+      args: [proposalId, resolvedData],
       label: 'Process Proposal',
       gasMultiplier: 150n,
       step: `proposal:process:${daoId.toLowerCase()}:${proposalId}`,
     })
+
+    // confirmTx only checked receipt.status. Both of the outcomes that matter
+    // here produce status 1, so without this the UI reported success for a
+    // permanently dead proposal and for an action that never ran.
+    assertActionSucceeded(receipt)
   }
 
   /**
