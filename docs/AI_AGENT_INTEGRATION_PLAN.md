@@ -179,7 +179,31 @@ condition under which the proxy becomes the right call.
 ### Phase A remnants — 1 day
 The four fixes in §0's remnants table. Each is its own justification (they harm humans now); none blocks the agent program.
 
-### Deployment gates — 0.5 day
+### Deployment gates — ✅ SHIPPED 2026-07-27
+
+`src/config/__tests__/deployments.onchain.test.ts`, opt-in via `npm run test:deployments`, wired
+into CI as a separate `continue-on-error` job that never runs on `pull_request`. The default suite
+stays offline: 755 pass, 11 skipped, ~10s. `deployments.ts`'s testnet column was corrected to the
+live deployment in the same commit (`7887fbf`).
+
+**The lesson, which cost a wrong answer to learn:** the four checks this item originally specified —
+chain ID, bytecode present, derivation walk, ABI match — **all pass on a retired deployment.** I
+wrote them, ran them against the retired testnet set, and every one was green. Each Orchard
+deployment derives cleanly from its own launcher and holds real bytecode; internal consistency
+cannot distinguish live from retired.
+
+So the suite adds a **liveness gate**: every `DAOShip` is an ERC-1167 clone whose runtime code
+embeds its implementation, so a DAO the indexer knows about proves which singleton produced it.
+Asserting that DAOs in each chain's bound schema are clones of that chain's `DAOSHIP_SINGLETON`
+ties the table to reality instead of to itself. Re-tested against the retired set: the other ten
+gates still pass, the liveness gate fails and names the mismatch. It skips rather than asserts when
+a schema has no DAOs, so a fresh deployment cannot pass vacuously.
+
+*(The ABI-vs-artifacts check from the original scope is not included — `daoships-contracts`
+artifacts are a sibling checkout, not available in CI. The GasEstimator work already covers the
+consumer-side risk by decoding from all 16 ABIs.)*
+
+### ~~Deployment gates — 0.5 day~~ *(original scope, superseded above)*
 
 The one piece of the cut generator worth rescuing, relocated from a build step into the existing vitest suite:
 
@@ -390,7 +414,7 @@ planned.
 
 ```
 Phase A rem. : error dict (16 ABIs) + poster validate + CID derive + indexer chain_id ✅ SHIPPED
-Deploy gates : on-chain address/ABI assertions as vitest tests                          [0.5d]
+Deploy gates : on-chain address assertions + liveness check as vitest tests      ✅ SHIPPED
 Phase B1     : llms.txt route on daoships-www (generated from flatDocs)          ✅ SHIPPED
 Phase B2     : public/llms.txt on daoships-app                                   ✅ SHIPPED
 Phase B3     : docs/developers/agents — the silent-failure index                 ✅ SHIPPED
@@ -401,7 +425,7 @@ Phase C2     : composed refusing ops, layered on TxExecutor                     
 Phase C3     : promote inline literals, sync mineSalts                                  [1d]
 Phase C4     : Untrusted typing on the indexer services                                 [1d]
 ──────────────────────────────────────────────────────────────────────────────────────
-                              Phases A + B COMPLETE · Remaining ~6d (deploy gates + C)
+                    Phases A + B + gates COMPLETE · Remaining ~5.5d (Phase C)
 Phase D      : read-only MCP, ~8 tools, no signing        [3d]  CONDITIONAL on §4
 Budgets page : /dao/:daoId/budgets rename + detection     [1d]  CONDITIONAL on §4
 ```
