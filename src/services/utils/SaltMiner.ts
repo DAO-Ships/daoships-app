@@ -15,9 +15,14 @@
 //   - Shares/Loot/DAOShip: DAOShipAndVaultLauncher -> DAOShipLauncher
 //                    msg.sender to DAOShipLauncher = DAOShipAndVaultLauncher
 //
-// Salt packing types (must match on-chain logic):
+// Salt packing types, kept to mirror each factory's declared parameter:
 //   - Vault:  keccak256(abi.encodePacked(address, bytes32))  — QuaiVaultFactory
 //   - Others: keccak256(abi.encodePacked(address, uint256))  — DAOShipLauncher
+//
+//   These two produce IDENTICAL bytes. abi.encodePacked renders a bytes32 and a
+//   uint256 as the same 32 big-endian bytes, so the mode cannot cause a wrong
+//   address — verified in create2.test.ts. The parameter documents the on-chain
+//   signature; it is not a behavioural switch.
 //
 // Vault initCodeHash:
 //   The vault uses QuaiVaultProxy (NOT ERC1167 minimal proxy). The initCodeHash
@@ -36,6 +41,7 @@
 
 import { CONTRACT_ADDRESSES } from '@/config/contracts'
 import { quais } from 'quais'
+import { minimalProxyInitCodeHash } from './create2'
 
 // Import vault artifacts for correct initCodeHash computation
 import QuaiVaultJson from '@/config/abi/QuaiVault.json'
@@ -75,13 +81,9 @@ export type ProgressCallback = (progress: {
 // Used by DAOShipLauncher for Shares, Loot, and DAOShip clones.
 // The singleton address is embedded at the fixed offset.
 
-const MINIMAL_PROXY_PREFIX = '0x3d602d80600a3d3981f3363d3d373d3d3d363d73'
-const MINIMAL_PROXY_SUFFIX = '5af43d82803e903d91602b57fd5bf3'
-
-function getMinimalProxyBytecode(singletonAddress: string): string {
-  const addr = singletonAddress.toLowerCase().replace('0x', '')
-  return MINIMAL_PROXY_PREFIX + addr + MINIMAL_PROXY_SUFFIX
-}
+// The proxy/CREATE2 math lives in create2.ts so it can be tested — it used to be
+// duplicated here and in saltMiner.worker.ts, where neither copy was reachable
+// from a test.
 
 // ── SaltMiner Class ──────────────────────────────────────────────────────
 
@@ -113,18 +115,12 @@ class SaltMiner {
     params?: SaltMiningParams
   ): string {
     switch (contractType) {
-      case 'shares': {
-        const bytecode = getMinimalProxyBytecode(CONTRACT_ADDRESSES.SHARES_SINGLETON)
-        return quais.keccak256(bytecode)
-      }
-      case 'loot': {
-        const bytecode = getMinimalProxyBytecode(CONTRACT_ADDRESSES.LOOT_SINGLETON)
-        return quais.keccak256(bytecode)
-      }
-      case 'daoShip': {
-        const bytecode = getMinimalProxyBytecode(CONTRACT_ADDRESSES.DAOSHIP_SINGLETON)
-        return quais.keccak256(bytecode)
-      }
+      case 'shares':
+        return minimalProxyInitCodeHash(CONTRACT_ADDRESSES.SHARES_SINGLETON)
+      case 'loot':
+        return minimalProxyInitCodeHash(CONTRACT_ADDRESSES.LOOT_SINGLETON)
+      case 'daoShip':
+        return minimalProxyInitCodeHash(CONTRACT_ADDRESSES.DAOSHIP_SINGLETON)
       case 'vault': {
         if (!params) {
           throw new Error('Vault initCodeHash requires SaltMiningParams (vaultOwners, vaultThreshold)')

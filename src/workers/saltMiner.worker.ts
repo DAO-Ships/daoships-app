@@ -10,10 +10,9 @@
 // Reference: daoships-contracts/scripts/launch-dao.ts
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { quais } from 'quais'
+import { predictCreate2Address, isCyprus1Address } from '@/services/utils/create2'
 
 const MAX_ATTEMPTS = 100_000
-const CYPRUS1_PREFIX = '0x00'
 
 // ── Message Types ─────────────────────────────────────────────────────────
 
@@ -72,23 +71,14 @@ function mineSalt(
     // 2. Compute full salt using the correct packing type
     //    - QuaiVaultFactory:  keccak256(abi.encodePacked(address, bytes32))
     //    - DAOShipLauncher:   keccak256(abi.encodePacked(address, uint256))
-    let fullSalt: string
-    if (saltPackingType === 'bytes32') {
-      fullSalt = quais.keccak256(
-        quais.solidityPacked(['address', 'bytes32'], [senderAddress, userSalt])
-      )
-    } else {
-      const userSaltBigInt = BigInt(userSalt)
-      fullSalt = quais.keccak256(
-        quais.solidityPacked(['address', 'uint256'], [senderAddress, userSaltBigInt])
-      )
-    }
-
-    // 3. Predict CREATE2 address
-    const predicted = quais.getCreate2Address(factoryAddress, fullSalt, initCodeHash)
+    // 3. Predict CREATE2 address (packing + prediction share create2.ts with
+    //    SaltMiner, so the two cannot drift apart silently)
+    const predicted = predictCreate2Address(
+      factoryAddress, senderAddress, userSalt, initCodeHash, saltPackingType,
+    )
 
     // 4. Check Cyprus1 validity (prefix + Quai address check)
-    if (predicted.toLowerCase().startsWith(CYPRUS1_PREFIX) && quais.isQuaiAddress(predicted)) {
+    if (isCyprus1Address(predicted)) {
       return { salt: userSalt, address: predicted }
     }
 
