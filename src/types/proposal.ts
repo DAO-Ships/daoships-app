@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import type { DaoExpiryConfig } from './dao'
+import type { Untrusted } from './untrusted'
 
 /**
  * Proposal lifecycle status.
@@ -56,7 +57,13 @@ export interface Proposal {
 
   proposal_data_hash: string
   proposal_data?: string | null
-  details?: string | null
+  /**
+   * Attacker-authored. `submitProposal` is `external payable` with no membership
+   * check and `proposalOffering` is commonly 0, so any funded address can write
+   * arbitrary text here. Parse it with `parseProposalDetails`, which validates
+   * shape and keeps the mark on the strings it returns.
+   */
+  details?: Untrusted<string> | null
 
   prev_proposal_id?: number | null
 

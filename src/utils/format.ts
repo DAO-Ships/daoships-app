@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { safeBigInt } from './bigint'
+import { markUntrusted, type Untrusted } from '@/types/untrusted'
 
 /**
  * Default number of decimals for ERC-20 tokens.
@@ -92,34 +93,56 @@ export function parseTokenAmount(
  * Parsed proposal details from the JSON `details` field.
  */
 export interface ParsedProposalDetails {
-  title: string
-  description: string
-  type?: string
-  discussionUrl?: string
+  /** Attacker-authored. Escaped by React when rendered as a JSX child. */
+  title: Untrusted<string>
+  /** Attacker-authored. Escaped by React when rendered as a JSX child. */
+  description: Untrusted<string>
+  /** Attacker-authored — never branch on this to choose an address or amount. */
+  type?: Untrusted<string>
+  /** Scheme-validated (`http(s)` only) but the rest of the URL is attacker-chosen. */
+  discussionUrl?: Untrusted<string>
 }
 
 /**
  * Parse the proposal `details` field.
  * Details may be JSON `{"title":"...","description":"...","type":"...","discussionUrl":"..."}` or plain text.
+ *
+ * Validating the *shape* does not make the *contents* trustworthy, so every
+ * string returned stays marked. The input is required to be marked too: that is
+ * what stops a caller from passing something it never got from the indexer and
+ * quietly laundering it into a `ParsedProposalDetails`.
  */
-export function parseProposalDetails(details: string | null | undefined): ParsedProposalDetails {
-  if (!details) return { title: 'Untitled Proposal', description: '' }
+export function parseProposalDetails(
+  details: Untrusted<string> | null | undefined,
+): ParsedProposalDetails {
+  // Our own fallback literals are marked too. The field is uniformly hostile as
+  // far as consumers are concerned, and a union of trusted/untrusted strings
+  // would buy nothing while making every call site branch.
+  if (!details) {
+    return { title: markUntrusted('Untitled Proposal'), description: markUntrusted('') }
+  }
 
   try {
-    const parsed = JSON.parse(details)
+    const parsed: unknown = JSON.parse(details)
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const p = parsed as Record<string, unknown>
       // All fields MUST be strings — never pass non-string values through to JSX
       // (renders like `Objects are not valid as a React child` crash the list).
-      const title = typeof parsed.title === 'string' && parsed.title.trim()
-        ? parsed.title
+      const title = typeof p.title === 'string' && p.title.trim()
+        ? p.title
         : 'Untitled Proposal'
-      const description = typeof parsed.description === 'string' ? parsed.description : ''
-      const type = typeof parsed.type === 'string' ? parsed.type : undefined
+      const description = typeof p.description === 'string' ? p.description : ''
+      const type = typeof p.type === 'string' ? p.type : undefined
       const discussionUrl =
-        typeof parsed.discussionUrl === 'string' && /^https?:\/\//i.test(parsed.discussionUrl)
-          ? parsed.discussionUrl
+        typeof p.discussionUrl === 'string' && /^https?:\/\//i.test(p.discussionUrl)
+          ? p.discussionUrl
           : undefined
-      return { title, description, type, discussionUrl }
+      return {
+        title: markUntrusted(title),
+        description: markUntrusted(description),
+        type: type === undefined ? undefined : markUntrusted(type),
+        discussionUrl: discussionUrl === undefined ? undefined : markUntrusted(discussionUrl),
+      }
     }
   } catch {
     // Not JSON — treat as plain text
@@ -127,8 +150,8 @@ export function parseProposalDetails(details: string | null | undefined): Parsed
 
   const firstLine = details.split('\n')[0]?.trim()
   return {
-    title: firstLine || 'Untitled Proposal',
-    description: details,
+    title: markUntrusted(firstLine || 'Untitled Proposal'),
+    description: markUntrusted(details as string),
   }
 }
 

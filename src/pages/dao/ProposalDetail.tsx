@@ -138,8 +138,11 @@ export function ProposalDetail() {
     }
   }, [proposal, refetch])
 
+  // Route the empty case through the parser too, so both branches produce a full
+  // ParsedProposalDetails. A bare object literal here narrowed the union and hid
+  // `discussionUrl` from every consumer below.
   const details = useMemo(
-    () => proposal ? parseProposalDetails(proposal.details) : { title: '', description: '' },
+    () => parseProposalDetails(proposal?.details ?? null),
     [proposal],
   )
   usePageTitle(details.title, dao.name)

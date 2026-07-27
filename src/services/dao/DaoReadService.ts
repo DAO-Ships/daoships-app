@@ -18,6 +18,7 @@ import type { ProposalFilters } from '@/services/indexer/ProposalIndexerService'
 import type {
   Dao, GuildToken, Proposal, Member, Vote, Navigator, NavigatorEvent, DaoRecord,
 } from '@/types'
+import { markUntrustedMaybe } from '@/types/untrusted'
 import { isIndexerAvailable, logIndexerFallback } from './indexerGate'
 import {
   getDAOShipContract,
@@ -602,7 +603,10 @@ class DaoReadService {
         tx_hash: '',
         proposal_data_hash: p.proposalDataHash,
         proposal_data: null,
-        details: p.details || null,
+        // Marked explicitly rather than relying on the contract call's `any`.
+        // Reading from the chain instead of the indexer changes nothing about
+        // who wrote this string: submitProposal has no membership check.
+        details: markUntrustedMaybe(p.details || null),
         prev_proposal_id: Number(p.prevProposalId) > 0 ? Number(p.prevProposalId) : null,
         sponsored: votingStarts > 0,
         sponsor: p.sponsor !== '0x0000000000000000000000000000000000000000' ? p.sponsor : null,

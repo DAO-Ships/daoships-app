@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { parseProposalDetails } from '@/utils/format'
+import type { Untrusted } from '@/types/untrusted'
 import { decodeProposalActions } from '@/services/utils/ProposalDecoder'
 
 export const PROPOSAL_TYPE_COLORS: Record<string, string> = {
@@ -35,7 +36,10 @@ export const PROPOSAL_TYPE_LABELS: Record<string, string> = {
  * Returns { type, label, color } or null if unknown.
  */
 export function getProposalType(
-  details: string | null | undefined,
+  // Marked: this is ds_proposals.details, which any funded address can write.
+  // It is read here only to pick a display label, never to choose an address,
+  // an amount, or a call target — those come from the on-chain proposal_data.
+  details: Untrusted<string> | null | undefined,
   proposalData?: string | null,
   daoId?: string,
 ): {

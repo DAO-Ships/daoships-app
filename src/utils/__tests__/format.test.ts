@@ -1,3 +1,4 @@
+import { markUntrusted } from '@/types/untrusted'
 import { describe, it, expect } from 'vitest'
 import {
   formatTokenAmount,
@@ -93,7 +94,7 @@ describe('parseTokenAmount', () => {
 describe('parseProposalDetails', () => {
   it('parses valid JSON with title and description', () => {
     const json = JSON.stringify({ title: 'My Proposal', description: 'Details here' })
-    const result = parseProposalDetails(json)
+    const result = parseProposalDetails(markUntrusted(json))
     expect(result.title).toBe('My Proposal')
     expect(result.description).toBe('Details here')
   })
@@ -105,14 +106,14 @@ describe('parseProposalDetails', () => {
   })
 
   it('uses first line as title for plain text', () => {
-    const result = parseProposalDetails('First line\nSecond line')
+    const result = parseProposalDetails(markUntrusted('First line\nSecond line'))
     expect(result.title).toBe('First line')
     expect(result.description).toBe('First line\nSecond line')
   })
 
   it('handles JSON missing title', () => {
     const json = JSON.stringify({ description: 'Only description' })
-    const result = parseProposalDetails(json)
+    const result = parseProposalDetails(markUntrusted(json))
     expect(result.title).toBe('Untitled Proposal')
     expect(result.description).toBe('Only description')
   })
@@ -163,5 +164,54 @@ describe('formatCompactNumber', () => {
 
   it('handles negative numbers', () => {
     expect(formatCompactNumber(-1500)).toBe('-1.5K')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C4: ds_proposals.details is attacker-authored — submitProposal is external
+// payable with no membership check, so any funded address can write these.
+// The parser validates SHAPE only; the contents stay hostile and stay marked.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('parseProposalDetails — hostile input', () => {
+  it('passes script-like text through unchanged rather than half-sanitising it', () => {
+    // Escaping belongs at the render boundary (React does it). A parser that
+    // silently rewrote content would give a false sense of safety here.
+    const payload = '<img src=x onerror=alert(1)>'
+    const r = parseProposalDetails(markUntrusted(JSON.stringify({ title: payload, description: payload })))
+    expect(r.title).toBe(payload)
+    expect(r.description).toBe(payload)
+  })
+
+  it('rejects a non-http(s) discussionUrl', () => {
+    for (const url of ['javascript:alert(1)', 'data:text/html,<script>', 'file:///etc/passwd']) {
+      const r = parseProposalDetails(markUntrusted(JSON.stringify({ title: 't', discussionUrl: url })))
+      expect(r.discussionUrl, url).toBeUndefined()
+    }
+  })
+
+  it('keeps a valid https discussionUrl', () => {
+    const r = parseProposalDetails(markUntrusted(JSON.stringify({ title: 't', discussionUrl: 'https://example.com/x' })))
+    expect(r.discussionUrl).toBe('https://example.com/x')
+  })
+
+  it('never returns a non-string for a field JSX will render', () => {
+    // `Objects are not valid as a React child` crashes the whole proposal list,
+    // so a hostile object/array/number must not reach the caller as-is.
+    const r = parseProposalDetails(markUntrusted(JSON.stringify({
+      title: { evil: true }, description: [1, 2], type: 42,
+    })))
+    expect(typeof r.title).toBe('string')
+    expect(typeof r.description).toBe('string')
+    expect(r.type).toBeUndefined()
+  })
+
+  it('falls back to a placeholder title for whitespace-only input', () => {
+    const r = parseProposalDetails(markUntrusted(JSON.stringify({ title: '   ' })))
+    expect(r.title).toBe('Untitled Proposal')
+  })
+
+  it('treats unparseable text as plain text without throwing', () => {
+    const r = parseProposalDetails(markUntrusted('{not json at all'))
+    expect(r.title).toBe('{not json at all')
   })
 })
