@@ -1,17 +1,27 @@
-# DAOShips for AI Agents — Plan (re-baselined 2026-07-25)
+# DAOShips for AI Agents — Plan (COMPLETE, closed 2026-07-27)
 
-> **Re-baseline note (2nd pass, 2026-07-25).** The 2026-07-24 pass marked off the shipped
-> remediation. This pass corrects a **scoping error in the agent surface itself**: the plan
-> specified a generated JSON "agent pack" (`public/agent/v1/`) on the assumption that agents
-> needed us to publish ABIs, addresses, and specs. Verification (§0.5) shows all four repos are
-> public, the ABIs and `deployment-addresses.json` are already fetchable at stable raw URLs, and
-> `daoships-www` already carries 29 MDX doc pages including a happy-path
-> `docs/developers/launch-from-typescript`. The pack was largely re-publishing public data and
-> restating our own prose in JSON. It is cut. What replaces it is smaller and sharper: **two
-> `llms.txt` files and one new doc page whose subject is silent failure.**
+> **This effort is finished.** Phases A, B and C shipped; the deployment gates shipped; Phase D
+> (a read-only MCP server) was **declined**, not deferred. Nothing here is outstanding.
 >
-> The 2026-07-24 pass is preserved below in §0. The address model (§1) and read-access model (§2)
-> are unchanged — they were never the stale parts.
+> **What exists as a result**
+>
+> | Surface | Where |
+> |---|---|
+> | `llms.txt` on both hosts | `daoships.org/llms.txt` (generated from `lib/docs.ts`), `app.daoships.org/llms.txt` |
+> | The silent-failure index | `daoships-www/app/docs/developers/agents` |
+> | Security policy + threat model | `SECURITY.md` in `daoships-app` and `daoships-www` |
+> | Deployment gates (incl. a liveness check) | `src/config/__tests__/deployments.onchain.test.ts`, `npm run test:deployments` |
+> | Refusing governance operations | `src/services/dao/governanceOps.ts` |
+> | Tested encoders | `LaunchEncoder`, `MultiSendEncoder`, `create2`, `bytecodeMetadata` |
+> | Differential status harness | `proposalStateDifferential.test.ts` + `daoships-contracts/scripts/gen-state-corpus.ts` |
+> | Docs-parity guard | `launchDocsParity.test.ts` |
+>
+> **The finding worth carrying forward** is §9: every substantive bug in this effort was *prose
+> that had drifted from code*. The deployment gates and the docs-parity test are the only two
+> places that class is now mechanically checked. If this plan has a successor, that is its subject.
+>
+> The re-baseline notes and phase detail below are kept as a record of how the scope changed —
+> twice materially — and why.
 
 ## 0. Where this stands now (the re-baseline ledger)
 
@@ -319,7 +329,16 @@ the **`dao/`/`navigators/` sub-services** from SU3/SU4.
   `ds_daos.name/description`, `ds_navigators.name`, and signal-poll labels as `Untrusted<string>`. Bake the
   `::text` + `quoteUnsafeIntegers` recipes into the `indexer/` services.
 
-### Phase D — Read-only MCP, conditional (3 days)
+### Phase D — Read-only MCP — ❌ CUT 2026-07-27
+
+**Declined, not deferred.** No MCP server will be built. The design below is kept as a
+record of what was considered and why the shape was constrained the way it was — in
+particular the no-signing rule, which remains the correct answer for any future tool that
+reads `ds_proposals.details`.
+
+<details>
+<summary>Original design (not built)</summary>
+
 
 Ship only if there is signal **or** the one live DAO's operator wants it. The plausible first user is a human
 with Claude Code asking about their DAO — not an autonomous agent. `npx @daoships/mcp`, stdio, ~8 tools:
@@ -341,9 +360,18 @@ prompt-injection-to-signature pipeline, and `daoships_simulate` does not close i
 `@daoships/signer` CLI re-decodes the plan, resolves every address against `deployments.ts` + `trust_status`,
 requires interactive confirm, and refuses `vault.enableModule` unconditionally.
 
+</details>
+
 ---
 
-## 4. Demand measurement (passive — no longer a gate)
+## 4. Demand measurement — ❌ no longer needed
+
+The probe existed to decide whether Phase D was worth building. Phase D is cut, so it gates
+nothing. The crawler analytics below are harmless to keep if they already exist, but nothing
+depends on the result and no threshold needs watching.
+
+<details>
+<summary>Original probe design (obsolete)</summary>
 
 The original 1-day probe gated a 5-day surface. With the surface at ~3.25 days, a 1-day gate costs a third of
 what it protects. **Demote the probe from a gate to passive instrumentation**, and ship the docs regardless:
@@ -361,6 +389,8 @@ conversations in 6 weeks → no MCP. Wizard drop-off on a specific step → huma
 sanctioned navigators, both Onboarder/ERC20Tribute, and the only Subscription navigator is in the ephemeral
 `dev` schema — and it would build an adversarial keeper network against our own users.)*
 
+</details>
+
 ---
 
 ## 5. Explicit non-goals
@@ -376,6 +406,8 @@ sanctioned navigators, both Onboarder/ERC20Tribute, and the only Subscription na
   serve the pack.
 - **`public/agent/denylist.json`** — a scam-DAO lever with no scam DAOs and no agents. Revisit if the §2 abuse
   trigger fires.
+
+**Cut 2026-07-27:** a read-only MCP server (Phase D) — declined outright rather than deferred.
 
 **Carried forward unchanged:** `@daoships/protocol` npm package (extract when a second consumer exists) ·
 `llms-full.txt` · hosted MCP / any server · **any signing, key custody, or relaying** · `AgentRegistry.sol` /
@@ -426,8 +458,8 @@ Phase C3     : promote inline literals (launch codec + docs parity)             
 Phase C4     : Untrusted typing on the indexer services                          ✅ SHIPPED
 ──────────────────────────────────────────────────────────────────────────────────────
               Phases A + B + gates + ALL of Phase C COMPLETE · only Phase D remains
-Phase D      : read-only MCP, ~8 tools, no signing        [3d]  CONDITIONAL on §4
-Budgets page : /dao/:daoId/budgets rename + detection     [1d]  CONDITIONAL on §4
+Phase D      : read-only MCP                              ❌ CUT — not building one
+Budgets page : /dao/:daoId/budgets rename + detection     [1d]  independent of this plan
 ```
 
 ### Shipped 2026-07-25
@@ -484,7 +516,22 @@ worth doing on its own merits.
 
 ---
 
-## 8. Open questions
+## 8. Open questions — none block this plan
+
+Nothing here is outstanding *work*; these are product and operations decisions that outlived the
+effort. Recorded so they are not lost when this document stops being read as a plan.
+
+**Still genuinely open:** 2 (surface `Defeated` in the UI), 4 (`quorumPercent` warning floor),
+5 (dedicated agent Supabase key — now lower priority, since no MCP means no new consumer), and
+the two residuals under 6 (three testnet DAOs from a retired singleton that will render but not
+work; the dead `VITE_RPC_URL` default in `daoships-app/.env` and the indexer's `config.ts`).
+
+**Closed:** 1 and the main body of 6. Question 3 (contract freeze window) is moot — with no
+`specVersion` and no published pack, a redeploy costs a docs edit, and the deployment gates will
+fail loudly if `deployments.ts` is not updated with it.
+
+---
+
 
 1. ~~**Confirm the `daoships-app-mainnet` Vercel env matches the `deployments.ts` mainnet column.**~~
    **RESOLVED 2026-07-25 — confirmed matching.** Production runs what the contracts repo says. The
