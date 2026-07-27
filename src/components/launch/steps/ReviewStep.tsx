@@ -435,6 +435,27 @@ export function ReviewStep({ formData, onSubmit }: ReviewStepProps) {
           case 'profile': {
             const result = localLaunchResult || pipelineRef.current.launchResult
             if (!result) throw new Error('Launch result not available')
+
+            // The indexer requires a non-empty description for dao.profile.initial
+            // (validateDaoProfileInitial: `if (!daoAddress || !name || !description)
+            // return null`), but the launch form defaults description to ''. Posting
+            // anyway spends gas on a record that is discarded on arrival — which is
+            // what happened on every description-less launch until now.
+            //
+            // Skip rather than throw: the DAO is already deployed and paid for at this
+            // point, and failing the step would halt the pipeline over an optional
+            // field. The owner can add a description later via dao.profile, which
+            // requires only daoAddress.
+            if (!formData.description?.trim()) {
+              console.warn(
+                '[Launch] Skipping initial profile post: the indexer requires a '
+                + 'non-empty description for daoships.dao.profile.initial. '
+                + 'Add one from DAO settings after launch.',
+              )
+              updateStepStatus(step.id, 'done')
+              break
+            }
+
             const profileLinks = formData.links && Object.keys(formData.links).length > 0
               ? formData.links
               : undefined

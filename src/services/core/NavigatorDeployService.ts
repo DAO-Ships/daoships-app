@@ -16,6 +16,7 @@ import { VESTING_NAVIGATOR_BYTECODE } from '@/config/abi/VestingNavigator.byteco
 import { TIMELOCK_NAVIGATOR_BYTECODE } from '@/config/abi/TimelockNavigator.bytecode'
 import { SUBSCRIPTION_NAVIGATOR_BYTECODE } from '@/config/abi/SubscriptionNavigator.bytecode'
 import { BUDGET_NAVIGATOR_BYTECODE } from '@/config/abi/BudgetNavigator.bytecode'
+import { requireIpfsCid } from '@/utils/bytecodeMetadata'
 import { addressesEqual } from '../utils/AddressUtils'
 import { assertAffordable, estimateTxGas, modelDeployGas } from '../utils/LaunchGasEstimator'
 
@@ -25,24 +26,22 @@ import { assertAffordable, estimateTxGas, modelDeployGas } from '../utils/Launch
 
 const ZERO_BYTES32 = '0x' + '00'.repeat(32)
 
-// IPFS CIDs extracted from compiled bytecode CBOR metadata appendix.
-// quais ContractFactory requires a valid 46-char IPFS CIDv0 for on-chain source verification.
-const ONBOARDER_IPFS_HASH = 'QmeFR5wgHwGL91BAUQoQrdfhmFGCagQKoUzBEsYRMCkgdn'
-const ERC20_TRIBUTE_IPFS_HASH = 'QmNkqVRbHfJVnEfa36XDRYV8xrPpJmsBJDm2XuyY2ufFJN'
-const NFT_GATED_IPFS_HASH = 'Qmavg3RjwCjRCEHUHRayeg4gj2UoiB9t1uKEUbsL5qb5md'
-const SIGNAL_IPFS_HASH = 'QmQTefaaDcNXkZjjXGdt9czkZEjxZGjqvHuY95h1bHvJLF'
-// Extracted from the VestingNavigator creation bytecode's CBOR metadata appendix
-// (must match VESTING_NAVIGATOR_BYTECODE — both copied from the same artifact).
-const VESTING_IPFS_HASH = 'QmdSX6vuYL2vcmsAEXAm9rT1nwjBivxwU8iwHeURHSPvgi'
-// Extracted from the TimelockNavigator creation bytecode's CBOR metadata appendix
-// (must match TIMELOCK_NAVIGATOR_BYTECODE — both copied from the same artifact).
-const TIMELOCK_IPFS_HASH = 'QmRHkRsWTPGDoeP6XKL9RuXMkBfWdboQDPuYBm4NRvh8qn'
-// Extracted from the SubscriptionNavigator creation bytecode's CBOR metadata appendix
-// (must match SUBSCRIPTION_NAVIGATOR_BYTECODE — both copied from the same artifact).
-const SUBSCRIPTION_IPFS_HASH = 'QmPYtpmxAbU6WrYNz1h8V7ikQSDoaE7QDKRjMsbdzULZMa'
-// Extracted from the BudgetNavigator creation bytecode's CBOR metadata appendix
-// (must match BUDGET_NAVIGATOR_BYTECODE — both copied from the same artifact).
-const BUDGET_IPFS_HASH = 'QmaWqpzw5A8bGYxGUhmCir34iLc1aeZWeiTZrYBgCrUNue'
+// IPFS CIDs, derived from each artifact's own CBOR metadata appendix rather than
+// hand-copied alongside it. quais.ContractFactory requires a valid 46-char CIDv0
+// for on-chain source verification.
+//
+// These were previously eight literals, each with a comment asking the next
+// person to keep it in sync with the bytecode constant beside it. Deriving
+// removes the second copy, so updating an artifact cannot leave a stale CID
+// pointing at the previous source. (H25)
+const ONBOARDER_IPFS_HASH = requireIpfsCid(ONBOARDER_NAVIGATOR_BYTECODE, 'OnboarderNavigator')
+const ERC20_TRIBUTE_IPFS_HASH = requireIpfsCid(ERC20_TRIBUTE_NAVIGATOR_BYTECODE, 'ERC20TributeNavigator')
+const NFT_GATED_IPFS_HASH = requireIpfsCid(NFT_GATED_NAVIGATOR_BYTECODE, 'NFTGatedNavigator')
+const SIGNAL_IPFS_HASH = requireIpfsCid(SIGNAL_NAVIGATOR_BYTECODE, 'SignalNavigator')
+const VESTING_IPFS_HASH = requireIpfsCid(VESTING_NAVIGATOR_BYTECODE, 'VestingNavigator')
+const TIMELOCK_IPFS_HASH = requireIpfsCid(TIMELOCK_NAVIGATOR_BYTECODE, 'TimelockNavigator')
+const SUBSCRIPTION_IPFS_HASH = requireIpfsCid(SUBSCRIPTION_NAVIGATOR_BYTECODE, 'SubscriptionNavigator')
+const BUDGET_IPFS_HASH = requireIpfsCid(BUDGET_NAVIGATOR_BYTECODE, 'BudgetNavigator')
 
 // ERC-165 interface id for IERC721 — used for a best-effort gate-token sanity probe.
 const ERC721_INTERFACE_ID = '0x80ac58cd'

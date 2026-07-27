@@ -49,14 +49,22 @@ predicate, which proposal branch, whether a proposal will actually pass. That is
 > inside. It has now been merged directly to `main` and verified green: typecheck, lint
 > (`--max-warnings 0`), 719 tests, production build.
 
-### Phase A remnants (the genuinely-open bug fixes — ~1 day)
+### Phase A remnants — ✅ ALL SHIPPED 2026-07-27
 
-| Fix | Location | Why |
-|---|---|---|
-| Error dictionary decodes from **all 16 ABIs**, not just `DAOShip.json` | `src/services/utils/GasEstimator.ts:84` (`tryDecodeCustomError`) builds `new quais.Interface(DAOShipAbi)` at `:91` | "missing revert data" is the #1 human complaint; navigator/vault reverts don't decode today. Same map agents need. |
-| Wire `validatePosterContent` before spending gas | `PosterService.ts.post()` (size guard present; schema validator `posterSchemas.ts:validatePosterContent` still dead) | Cheap pre-flight; posted metadata that the indexer will reject currently burns gas. |
-| Navigator IPFS CIDs derived from CBOR metadata, not hand-copied | `NavigatorDeployService.ts:30-31` (8 `Qm…` literals) | H25 — derive via `@ethereum-sourcify/bytecode-utils` (already a dep); test asserts derived == shipped. |
-| Indexer `chain_id` column | `daoships-indexer` (`mainnet.ds_indexer_state.chain_id` reports 15000 while indexing 9) | H8 — separate repo; verify + fix + `NOT NULL`. |
+| Fix | Outcome |
+|---|---|
+| Error dictionary decodes from **all 16 ABIs** | Done. `GasEstimator` builds a memoised `Interface` per ABI and tries each. **Also resolves H12**: `QuaiVault.json` / `QuaiVaultProxy.json` are `{abi:[…]}` objects while the other 14 are bare arrays, so `new quais.Interface()` rejected them — the vault, whose reverts are hardest to diagnose, was the one contract silently missing from the dictionary. `normalizeAbi()` absorbs both shapes. 9 tests, using real selectors from the shipped ABIs. |
+| Wire `validatePosterContent` before spending gas | Done, gated on a new `hasPosterSchema()` — 2 of the 8 tags (`dao.navigators`, `signal.poll`) have no entry in `POSTER_SCHEMAS`, and `validatePosterContent` reports an unschema'd tag as *invalid*, so validating them would have rejected valid posts. 9 tests. |
+| Navigator IPFS CIDs derived from CBOR metadata | Done via a new `src/utils/bytecodeMetadata.ts`. All 8 derived CIDs match the literals they replaced, pinned in 18 tests. |
+| Indexer `chain_id` column (H8) | Done in `daoships-indexer` (`5eeaf30`). Root cause was narrower than described: **nothing ever wrote the column.** Not one of the six `ds_indexer_state` methods touched it, and `getIndexerState` did not select it — so it kept its `NOT NULL DEFAULT 15000` for the life of the row. Now reconciled from the live RPC on every boot. 7 tests. |
+
+**Three findings from doing the work:**
+
+1. **The plan's premise for H25 was wrong.** It said to derive CIDs "via `@ethereum-sourcify/bytecode-utils` (already a dep)". The dependency is present, but its `decode()` rejects *every* navigator artifact we ship with `Unsupported auxdata style`, with and without the `0x` prefix. The appendix is standard solc IPFS metadata, so `bytecodeMetadata.ts` parses it directly and base58-encodes via `quais.encodeBase58`.
+
+2. **Wiring Poster validation naively would have broken every description-less launch.** `POSTER_SCHEMAS[DAO_PROFILE_INITIAL].description` is `required`, and the launch form's `description` is `.optional().default('')` — so validation would throw inside the launch pipeline's profile step, which marks the step `failed` and *halts the pipeline*, after the DAO is already deployed and paid for. The indexer is the authority and agrees the field is required (`validateDaoProfileInitial`: `if (!daoAddress || !name || !description) return null`), so the post was always discarded on arrival. `ReviewStep` now **skips** the initial profile post when there is no description, which is what the Phase A item wanted — stop paying gas for a record that cannot land — without turning a silent waste into a failed launch.
+
+3. **`config.chainId` in the indexer is decorative.** It appears exactly twice: its own definition and one log line. It drives no logic, which is why a wrong `CHAIN_ID` env produced no visible symptom other than the bad column.
 
 ---
 
@@ -381,7 +389,7 @@ planned.
 ## 7. Sequencing
 
 ```
-Phase A rem. : error dict (16 ABIs) + poster validate + CID derive + indexer chain_id   [1d]
+Phase A rem. : error dict (16 ABIs) + poster validate + CID derive + indexer chain_id ✅ SHIPPED
 Deploy gates : on-chain address/ABI assertions as vitest tests                          [0.5d]
 Phase B1     : llms.txt route on daoships-www (generated from flatDocs)          ✅ SHIPPED
 Phase B2     : public/llms.txt on daoships-app                                   ✅ SHIPPED
@@ -393,7 +401,7 @@ Phase C2     : composed refusing ops, layered on TxExecutor                     
 Phase C3     : promote inline literals, sync mineSalts                                  [1d]
 Phase C4     : Untrusted typing on the indexer services                                 [1d]
 ──────────────────────────────────────────────────────────────────────────────────────
-                                                    Phase B COMPLETE · Remaining ~6.5d
+                              Phases A + B COMPLETE · Remaining ~6d (deploy gates + C)
 Phase D      : read-only MCP, ~8 tools, no signing        [3d]  CONDITIONAL on §4
 Budgets page : /dao/:daoId/budgets rename + detection     [1d]  CONDITIONAL on §4
 ```

@@ -4,6 +4,7 @@ import { confirmTx } from '@/services/utils/TxExecutor'
 import PosterABI from '@/config/abi/Poster.json'
 import { CONTRACT_ADDRESSES } from '@/config/contracts'
 import { POSTER_TAGS } from '@/types/poster'
+import { hasPosterSchema, validatePosterContent } from '@/utils/posterSchemas'
 import { assertAffordable, modelPostGas } from '../utils/LaunchGasEstimator'
 import type { DaoTheme } from '@/utils/daoTheme'
 
@@ -54,6 +55,23 @@ class PosterService {
       throw new Error(`Content exceeds maximum size (${contentBytes} bytes > ${MAX_CONTENT_BYTES} bytes)`)
     }
 
+    // Schema pre-flight, for the same reason as the size guard: the indexer
+    // discards a post that fails validation, but the gas is spent regardless and
+    // the transaction still succeeds on-chain. The user sees a confirmed tx and
+    // metadata that never appears. Refuse before paying.
+    //
+    // Gated on hasPosterSchema: two tags are validated elsewhere or not at all,
+    // and validatePosterContent reports an unschema'd tag as invalid.
+    if (hasPosterSchema(tag)) {
+      const parsed = this.tryParseObject(content)
+      if (parsed) {
+        const { valid, errors } = validatePosterContent(tag, parsed)
+        if (!valid) {
+          throw new Error(`Invalid content for "${tag}": ${errors.join('; ')}`)
+        }
+      }
+    }
+
     const contract = this.getWriteContract()
 
     // Cheap relative to a launch, but a post that dies for lack of gas leaves a
@@ -62,6 +80,26 @@ class PosterService {
 
     const tx = await contract['post(string,string)'](content, tag)
     await confirmTx(tx, { label: 'Poster.post' })
+  }
+
+  /**
+   * Parse content as a JSON object, or null if it is not one.
+   *
+   * Every current caller posts `stringify()` output, but `post()` is public and
+   * takes a raw string. A non-JSON payload should fall through to the on-chain
+   * write unvalidated rather than being rejected by a parse error the schema
+   * layer was never meant to raise.
+   */
+  private tryParseObject(content: string): Record<string, unknown> | null {
+    try {
+      const parsed: unknown = JSON.parse(content)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // Not JSON — nothing to validate against a field schema.
+    }
+    return null
   }
 
   /**

@@ -68,6 +68,19 @@ const POSTER_SCHEMAS: Record<string, Record<string, FieldDef>> = {
 }
 
 /**
+ * True when this tag has a schema to validate against.
+ *
+ * Not every POSTER_TAG does: `daoships.dao.navigators` is a bare address array,
+ * and `daoships.signal.poll` has its own validator (validateSignalPollLabels)
+ * because its rules depend on the poll's on-chain optionCount. Callers that
+ * validate generically must gate on this — validatePosterContent reports an
+ * unschema'd tag as INVALID, which would reject those two posts outright.
+ */
+export function hasPosterSchema(tag: string): boolean {
+  return tag in POSTER_SCHEMAS
+}
+
+/**
  * Validate poster content against the schema for a given tag.
  *
  * @param tag     - A POSTER_TAGS constant

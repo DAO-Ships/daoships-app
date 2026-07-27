@@ -13,6 +13,21 @@
 import { quais } from 'quais'
 import { parseTransactionError } from './TransactionErrorHandler'
 import DAOShipAbi from '@/config/abi/DAOShip.json'
+import BudgetNavigatorAbi from '@/config/abi/BudgetNavigator.json'
+import DAOShipAndVaultLauncherAbi from '@/config/abi/DAOShipAndVaultLauncher.json'
+import DAOShipLauncherAbi from '@/config/abi/DAOShipLauncher.json'
+import ERC20TributeNavigatorAbi from '@/config/abi/ERC20TributeNavigator.json'
+import LootERC20Abi from '@/config/abi/LootERC20.json'
+import NFTGatedNavigatorAbi from '@/config/abi/NFTGatedNavigator.json'
+import OnboarderNavigatorAbi from '@/config/abi/OnboarderNavigator.json'
+import PosterAbi from '@/config/abi/Poster.json'
+import QuaiVaultAbi from '@/config/abi/QuaiVault.json'
+import QuaiVaultProxyAbi from '@/config/abi/QuaiVaultProxy.json'
+import SharesERC20Abi from '@/config/abi/SharesERC20.json'
+import SignalNavigatorAbi from '@/config/abi/SignalNavigator.json'
+import SubscriptionNavigatorAbi from '@/config/abi/SubscriptionNavigator.json'
+import TimelockNavigatorAbi from '@/config/abi/TimelockNavigator.json'
+import VestingNavigatorAbi from '@/config/abi/VestingNavigator.json'
 
 /**
  * Map of DAOShip custom error names to user-friendly messages.
@@ -79,7 +94,77 @@ function findRevertData(error: unknown, depth = 0): string | null {
 }
 
 /**
- * Attempt to decode a custom error from the revert data using the DAOShip ABI.
+ * Every ABI the app can provoke a revert from.
+ *
+ * Decoding used to run against DAOShip.json alone, so any revert originating in
+ * a navigator, a token, the vault, or a launcher fell through undecoded and
+ * surfaced as "missing revert data" — the single most common user complaint.
+ * A proposal that reverts inside a navigator is not a DAOShip error.
+ *
+ * Note the shape inconsistency: QuaiVault.json and QuaiVaultProxy.json are
+ * `{ abi: [...] }` objects while the other 14 are bare arrays, so they cannot be
+ * handed to `new quais.Interface()` directly. normalizeAbi() absorbs that rather
+ * than silently dropping the vault — which is exactly the contract whose reverts
+ * are hardest to diagnose by hand.
+ */
+const ALL_ABIS: readonly unknown[] = [
+  DAOShipAbi,
+  BudgetNavigatorAbi,
+  DAOShipAndVaultLauncherAbi,
+  DAOShipLauncherAbi,
+  ERC20TributeNavigatorAbi,
+  LootERC20Abi,
+  NFTGatedNavigatorAbi,
+  OnboarderNavigatorAbi,
+  PosterAbi,
+  QuaiVaultAbi,
+  QuaiVaultProxyAbi,
+  SharesERC20Abi,
+  SignalNavigatorAbi,
+  SubscriptionNavigatorAbi,
+  TimelockNavigatorAbi,
+  VestingNavigatorAbi,
+]
+
+/** Accepts both artifact shapes: a bare fragment array or `{ abi: [...] }`. */
+function normalizeAbi(raw: unknown): unknown[] | null {
+  if (Array.isArray(raw)) return raw
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { abi?: unknown }).abi)) {
+    return (raw as { abi: unknown[] }).abi
+  }
+  return null
+}
+
+/**
+ * Interfaces are built once and reused. Constructing 16 of them per decode
+ * attempt would put ABI parsing on the error path of every failed estimate.
+ */
+let cachedInterfaces: quais.Interface[] | null = null
+
+function getInterfaces(): quais.Interface[] {
+  if (cachedInterfaces) return cachedInterfaces
+
+  const built: quais.Interface[] = []
+  for (const raw of ALL_ABIS) {
+    const abi = normalizeAbi(raw)
+    if (!abi) continue
+    try {
+      built.push(new quais.Interface(abi as never))
+    } catch {
+      // A malformed ABI must not take down error decoding for the other 15.
+    }
+  }
+
+  cachedInterfaces = built
+  return built
+}
+
+/**
+ * Attempt to decode a custom error from the revert data against every known ABI.
+ *
+ * First match wins. Selector collisions across contracts are possible in
+ * principle but the decoded name is still reported, which beats the previous
+ * behaviour of reporting nothing at all.
  */
 function tryDecodeCustomError(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null
@@ -87,14 +172,15 @@ function tryDecodeCustomError(error: unknown): string | null {
   const data = findRevertData(error)
   if (!data) return null
 
-  try {
-    const iface = new quais.Interface(DAOShipAbi)
-    const decoded = iface.parseError(data)
-    if (decoded) {
-      return CUSTOM_ERROR_MESSAGES[decoded.name] ?? `Contract error: ${decoded.name}`
+  for (const iface of getInterfaces()) {
+    try {
+      const decoded = iface.parseError(data)
+      if (decoded) {
+        return CUSTOM_ERROR_MESSAGES[decoded.name] ?? `Contract error: ${decoded.name}`
+      }
+    } catch {
+      // This ABI does not know the selector — try the next.
     }
-  } catch {
-    // Not a decodable error
   }
 
   return null
