@@ -474,9 +474,24 @@ worth doing on its own merits.
    below it?
 5. **Dedicated agent Supabase key** (§2 step 1) — mint now alongside B3, or wait for measured agent traffic?
 
-6. **The docs' "Orchard Testnet" column is the `dev` environment, not testnet.** *(Open — left
-   unchanged by request 2026-07-27. Addresses are still the original set; the dead RPC URL was
-   fixed.)*
+6. ~~**The docs' "Orchard Testnet" column is the `dev` environment, not testnet.**~~
+   **RESOLVED 2026-07-27.** Canonical Orchard is the `testnet` Supabase schema + `testnet.daoships.org`,
+   which is set **B** (`deployments.ts` testnet column). Confirmed by fetching the live testnet
+   bundle: it ships `0x0036B11e…C9D1` and reads the `testnet` schema, and the previously published
+   `0x0030d87f…b6dD` appears nowhere in it. `daoships-www` now publishes set B; all 18 cells match
+   `deployments.ts`, every address returns bytecode, and the derivation walk from the launcher
+   reproduces the set. The trust callout was rewritten — "prefer the ones here" was the advice that
+   caused the bug, since it invited hand-assembly from mixed sources.
+
+   **Still open, minor:** the three DAOs in the `testnet` schema are ERC-1167 clones of singleton
+   `0x000f38dc…9fe03`, which is neither set A's nor set B's — they predate the current deployment.
+   Harmless as history, but the app lists DAOs from the indexer, so those three will render and
+   then fail to interact, because their contracts belong to a retired deployment. Worth pruning the
+   schema or filtering them out. Testnet only; mainnet is unaffected.
+
+   Also still open: `daoships-app/.env` has `VITE_RPC_URL=https://rpc.orchard.quai.network`, which
+   does not resolve (the working host is `orchard.rpc.quai.network`), and the indexer's `config.ts`
+   carries the same wrong host as its default.
 
    Three distinct, internally-coherent DAOShips deployments exist on Orchard (chain 15000). All
    six DAOShips-owned addresses differ between them; all three share the same Quai Vault infra
