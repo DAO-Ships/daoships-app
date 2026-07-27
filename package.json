@@ -11,7 +11,8 @@
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:deployments": "CHECK_DEPLOYMENTS=1 vitest run src/config/__tests__/deployments.onchain.test.ts"
   },
   "dependencies": {
     "@ethereum-sourcify/bytecode-utils": "^1.4.0",

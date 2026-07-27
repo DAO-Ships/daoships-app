@@ -31,3 +31,38 @@ jobs:
       # or test failure reports before the slower bundle step.
       - name: Build
         run: npm run build
+
+  # Confirms src/config/deployments.ts still describes the deployments that are
+  # actually live: chain IDs, bytecode, the derivation walk from each launcher,
+  # and — the check that matters — that the indexer schema each chain is bound to
+  # contains DAOs cloned from that chain's DAOSHIP_SINGLETON.
+  #
+  # Separate job, and never on pull_request. It talks to the public RPCs and the
+  # indexer, so an outage is an infrastructure signal, not a code failure, and it
+  # must not be able to block a PR. `continue-on-error` keeps a flaky network from
+  # reddening main while still surfacing the result.
+  #
+  # A retired address set passes every other check in this file: it is internally
+  # consistent, holds real bytecode, and reports the right chain ID. Only the
+  # liveness assertion tells the difference.
+  deployments:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify deployments against the live chains
+        env:
+          # Publishable by design — RLS enforces read-only at the database and this
+          # value is already a string literal in the shipped bundle.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+        run: npm run test:deployments

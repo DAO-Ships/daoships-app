@@ -13,8 +13,21 @@
 //                `references` block of
 //                deployments/deployment-complete-cyprus1-1784667245618.json
 //                (QuaiVaultFactory, MultiSendCallOnly — absent from the top-level file)
-//   chain 15000  the previous hardcoded defaults in contracts.ts, which were the
-//                complete and current Orchard set (not stale, as first assumed)
+//   chain 15000  the runtime config of the deployed testnet.daoships.org, corroborated by
+//                the `testnet` indexer schema (every DAO in it is an ERC-1167 clone of
+//                DAOSHIP_SINGLETON below) and by the on-chain derivation walk from
+//                DAOSHIP_AND_VAULT_LAUNCHER. Corrected 2026-07-27.
+//
+// DO NOT hand-assemble an Orchard set from repo files. Orchard has had at least four
+// complete DAOShips deployments, all of which share the Quai Vault infrastructure
+// (QUAIVAULT_FACTORY / VAULT_SINGLETON / MULTISEND_CALL_ONLY), so a mixed set looks
+// two-thirds correct and still points at contracts nobody uses. This column previously
+// held a retired deployment; production was correct only because Vercel env vars
+// overrode it, which meant a local run without those overrides saw zero live DAOs.
+//
+// `npm run test:deployments` re-derives both columns from their launchers against the
+// live chains. Run it whenever a redeploy happens — it is the only check that
+// distinguishes the current deployment from a retired one.
 //
 // VAULT_SINGLETON is deployed by the external QuaiVault project, not by
 // daoships-contracts, and appears in no repo. It is recovered from the chain via
@@ -76,14 +89,14 @@ export const DEPLOYMENTS: Record<number, ChainDeployment> = {
     blockExplorerUrl: 'https://orchard.quaiscan.io',
     supabaseSchema: 'testnet',
     contracts: {
-      DAOSHIP_SINGLETON: '0x0034B574bDC240d37b6F08248Ae069727164002C',
-      SHARES_SINGLETON: '0x00366CedcB0B99A9E5Dfb9B7dE1484A895118235',
-      LOOT_SINGLETON: '0x00521258bBD3B23Bc10c3Fc77d360Df4379dE054',
+      DAOSHIP_SINGLETON: '0x000F38Dc0B711a57086ca0bD6fa2041D8Cd9Fe03',
+      SHARES_SINGLETON: '0x001a4f36ead605149A0144C771B7cbf4116753a9',
+      LOOT_SINGLETON: '0x002abA2592A1111b8EcfFcA98A7f30b8de30cA58',
       VAULT_SINGLETON: '0x004E539Cf477A5Cb456A56023f083cD91Bc4934e',
-      DAOSHIP_LAUNCHER: '0x00487182EA7a7881d84C63099001B0195a41BFB3',
-      DAOSHIP_AND_VAULT_LAUNCHER: '0x0036B11eEC6aa17407b0e157fA9caa32b7EFC9D1',
+      DAOSHIP_LAUNCHER: '0x005D0D996cB3f25bEC37E1827FeAfCe5AC9f7856',
+      DAOSHIP_AND_VAULT_LAUNCHER: '0x0054Cb24fA412B2b276D5F73f4A7adC70f0f0Cbf',
       QUAIVAULT_FACTORY: '0x002d1305D597c157bB975967FA2e5337674b0E5F',
-      POSTER: '0x005C3957b8f612BBcdCFCbeDb8C53C3d3b3FEEdc',
+      POSTER: '0x0032eA61e8fF1b12A70C39696CfdA06198d2095e',
       MULTISEND_CALL_ONLY: '0x002ae8A47C2da497fe569AfCF0486410aA1093E0',
     },
   },
