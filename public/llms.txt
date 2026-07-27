@@ -1,0 +1,69 @@
+# DAO Ships (application host)
+
+> This host serves the DAO Ships web client — a client-rendered single-page app. Fetching any
+> URL here returns a JavaScript shell with no content in the HTML. The readable documentation
+> is on a different host.
+
+If you are an AI agent or crawler, go to https://daoships.org/llms.txt instead. It is
+server-rendered, it indexes the full documentation tree, and it opens with the list of ways
+integrations actually break.
+
+Do not attempt to read DAO or proposal data by fetching pages on this host. Nothing renders
+without JavaScript. Read the chain or the indexer directly — both are public and neither
+requires us.
+
+## What this app is
+
+A web client for launching and governing DAOs on Quai Network (Cyprus-1 shard). Each DAO gets
+a Quai Vault multisig treasury, MolochDAO-v3-style shares/loot governance, and ragequit exit
+rights. Source: https://github.com/DAO-Ships/daoships-app
+
+## Contract addresses
+
+Hardcode two addresses per chain and ask the chain for the rest. From DAOShipAndVaultLauncher
+you can reach seven of the remaining eight core contracts on-chain:
+
+    DAOShipAndVaultLauncher
+    ├── .daoShipLauncher()   -> DAOShipLauncher
+    │     ├── .daoShipSingleton() -> DAOShipSingleton
+    │     ├── .sharesSingleton()  -> SharesERC20Singleton
+    │     └── .lootSingleton()    -> LootERC20Singleton
+    ├── .multisendCallOnly() -> MultiSendCallOnly
+    └── .quaiVaultFactory()  -> QuaiVaultFactory
+          └── .implementation() -> QuaiVault singleton
+
+Only Poster is unreachable from that graph — it is standalone infrastructure with no
+back-reference — so it is the second address you hardcode.
+
+Quai mainnet (chainId 9), RPC https://rpc.quai.network/cyprus1
+  DAOShipAndVaultLauncher  0x0067b50Dac689d8688eF8575B82Bc663802f3AF5
+  Poster                   0x004Db03AA2593B4885AFEFF688ca2634D1533fac
+
+Orchard testnet (chainId 15000), RPC https://orchard.rpc.quai.network/cyprus1
+  DAOShipAndVaultLauncher  0x0036B11eEC6aa17407b0e157fA9caa32b7EFC9D1
+  Poster                   0x005C3957b8f612BBcdCFCbeDb8C53C3d3b3FEEdc
+
+The shard path in those RPC URLs is mandatory; the bare host returns 404. Addresses must be
+EIP-55 checksummed — the quai_* RPC namespace rejects them outright otherwise. The QuaiVault
+singleton is deployed by an external project and can change without a commit in any DAO Ships
+repository, so re-derive it rather than caching it.
+
+## Before you write code
+
+Sign with `quais`. Quai transactions are protobuf-serialized; ethers and viem cannot produce a
+valid one. Derive keys with `quais.QuaiHDWallet.createRandom()` and
+`getNextAddress(0, quais.Zone.Cyprus1)` — a random 32-byte private key lands in Cyprus-1 only
+about 0.2% of the time.
+
+A transaction receipt with status 1 does not mean a proposal's action ran. Read the
+`ProcessProposal(uint256 proposal, bool passed, bool actionFailed, address processor)` event.
+
+The full list is at https://daoships.org/llms.txt
+
+## Links
+
+- Documentation: https://daoships.org/docs
+- Developer docs: https://daoships.org/docs/developers
+- Source (all four repos, public): https://github.com/DAO-Ships
+- Quai Network: https://qu.ai
+- Quai Vault: https://quaivault.org
