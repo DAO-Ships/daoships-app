@@ -422,10 +422,10 @@ Phase B4     : edits to launch-from-typescript, indexer, contracts              
 Phase B5     : SECURITY.md in both repos                                         ✅ SHIPPED
 Phase C1     : differential harness + encoder tests                              ✅ SHIPPED
 Phase C2     : composed refusing ops, layered on TxExecutor                      ✅ SHIPPED
-Phase C3     : promote inline literals, sync mineSalts                                  [1d]
+Phase C3     : promote inline literals (launch codec + docs parity)              ✅ SHIPPED
 Phase C4     : Untrusted typing on the indexer services                          ✅ SHIPPED
 ──────────────────────────────────────────────────────────────────────────────────────
-        Phases A + B + gates + C1/C2/C4 COMPLETE · Remaining ~1d (C3, optional)
+              Phases A + B + gates + ALL of Phase C COMPLETE · only Phase D remains
 Phase D      : read-only MCP, ~8 tools, no signing        [3d]  CONDITIONAL on §4
 Budgets page : /dao/:daoId/budgets rename + detection     [1d]  CONDITIONAL on §4
 ```
@@ -565,3 +565,35 @@ worth doing on its own merits.
    Also worth fixing regardless: `daoships-app/.env` has a dead `VITE_RPC_URL`. Mainnet is
    unaffected throughout — the docs' mainnet column matches `deployments.ts` on all nine
    addresses, and the Vercel env was confirmed matching (question 1).
+
+---
+
+## 9. Phase C — what actually shipped, and one correction
+
+**C2 was marked shipped prematurely.** Three of its listed items did not exist at that commit:
+`simulateLaunch`, `waitForIndexed`, and `buildProcessTx`. The first two landed with C3.
+`buildProcessTx` is deliberately absent — `preflightProcess` does its substance (resolves the
+branch from on-chain state, verifies the hash, refuses on a breached retention floor) and returns
+resolved data rather than an unsent transaction, which is what the callers wanted.
+
+**C3 was nearly cut, and that would have been a mistake.** The plan justified it as feeding
+`launch-spec.json`, which died with the agent pack — so with that consumer gone it looked like
+pure tidiness. The real justification is different and stronger:
+
+- The launch encoding was **half-factored**. The 7-field governance blob had a validating codec;
+  the 13-field template that wraps it sat inline in a React hook, unvalidated and untested. The
+  unfactored half is the larger one.
+- Its failure mode has **precedent in this repo** — §0 lists the `governanceConfig` 6→7 field
+  count as a shipped Day-1 fix for a fatal `abi.decode` revert. The 13-field blob had no test.
+- `@daoships/protocol` is a non-goal, so external integrators **cannot import the codec** — they
+  copy the type list out of `docs/developers/launch-from-typescript`. Their launch is only as
+  correct as that page. `launchDocsParity.test.ts` now asserts the two agree, which is the only
+  mechanism that actually protects them.
+
+That last point generalises: **prose duplicated from code is the recurring defect in this
+project.** This session shipped fixes for two non-functional RPC URLs, a complete Orchard address
+set belonging to a retired deployment, a backwards salt-mining `sender`, an inverted claim about
+`NUMERIC` serialisation, and a "the two salt packings differ" claim that is false. Every one was
+prose that had drifted from, or never matched, the code. The deployment gates and the docs-parity
+test are the two places that pattern is now mechanically checked; extending that coverage is
+better value than most remaining feature work.
