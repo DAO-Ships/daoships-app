@@ -475,22 +475,41 @@ worth doing on its own merits.
 5. **Dedicated agent Supabase key** (§2 step 1) — mint now alongside B3, or wait for measured agent traffic?
 
 6. ~~**The docs' "Orchard Testnet" column is the `dev` environment, not testnet.**~~
-   **RESOLVED 2026-07-27.** Canonical Orchard is the `testnet` Supabase schema + `testnet.daoships.org`,
-   which is set **B** (`deployments.ts` testnet column). Confirmed by fetching the live testnet
-   bundle: it ships `0x0036B11e…C9D1` and reads the `testnet` schema, and the previously published
-   `0x0030d87f…b6dD` appears nowhere in it. `daoships-www` now publishes set B; all 18 cells match
-   `deployments.ts`, every address returns bytecode, and the derivation walk from the launcher
-   reproduces the set. The trust callout was rewritten — "prefer the ones here" was the advice that
-   caused the bug, since it invited hand-assembly from mixed sources.
+   **RESOLVED 2026-07-27** — after one wrong answer, recorded here because the mistake is
+   instructive.
 
-   **Still open, minor:** the three DAOs in the `testnet` schema are ERC-1167 clones of singleton
-   `0x000f38dc…9fe03`, which is neither set A's nor set B's — they predate the current deployment.
-   Harmless as history, but the app lists DAOs from the indexer, so those three will render and
-   then fail to interact, because their contracts belong to a retired deployment. Worth pruning the
-   schema or filtering them out. Testnet only; mainnet is unaffected.
+   Orchard has had **four** complete, internally-consistent DAOShips deployments. They share the
+   Quai Vault infrastructure (`QuaiVaultFactory`, `VaultSingleton`, `MultiSendCallOnly`), which is
+   why a mixed set looks two-thirds correct.
+
+   | Set | `DAOShipAndVaultLauncher` | Where it lives |
+   |---|---|---|
+   | A | `0x0030d87f…Bfb6dD` | `daoships-app/.env` (local dev, `VITE_NETWORK_SCHEMA=dev`); was published by the docs |
+   | B | `0x0036B11e…FC9D1` | **`src/config/deployments.ts` testnet column** — retired |
+   | C | *(unidentified)* | — |
+   | **D** | **`0x0054Cb24…0f0Cbf`** | **`testnet.daoships.org` runtime config + the `testnet` indexer schema — LIVE** |
+
+   The docs now publish **D**. Verified against the running application, not a config file: the
+   deployed bundle's runtime config object, all three `testnet` DAOs being ERC-1167 clones of D's
+   `DAOSHIP_SINGLETON` (`0x000F38Dc…Fe03`), `QuaiVaultFactory.implementation()` returning D's
+   `VAULT_SINGLETON`, and the full derivation walk from D's launcher.
+
+   **The method error worth remembering:** the first attempt grepped the deployed bundle for a
+   launcher address, found one hit, and concluded the app used set B. That hit was the compiled-in
+   `DEPLOYMENTS` table — the app ships *both* chains' columns and selects at runtime — not the
+   active config, which is assembled from build-time `VITE_*` overrides and appears as a separate
+   object. **Grepping a bundle for a value proves presence, not use.** Read the config object.
+
+   **Now open, app-side (new):** `deployments.ts`'s testnet column is set **B**, a retired
+   deployment, and production is correct only because the Vercel env overrides it. Anyone running
+   the app without those overrides gets B and cannot see or interact with any live testnet DAO.
+   Update the column to D, or drop the overrides so the committed table is the source of truth —
+   but not both silently. **This is precisely what the "Deploy gates" item catches**, and it is now
+   the strongest argument for building it: an assertion that `deployments.ts` matches an on-chain
+   derivation walk would have failed the moment B was retired.
 
    Also still open: `daoships-app/.env` has `VITE_RPC_URL=https://rpc.orchard.quai.network`, which
-   does not resolve (the working host is `orchard.rpc.quai.network`), and the indexer's `config.ts`
+   does not resolve (the working host is `orchard.rpc.quai.network`); the indexer's `config.ts`
    carries the same wrong host as its default.
 
    Three distinct, internally-coherent DAOShips deployments exist on Orchard (chain 15000). All
