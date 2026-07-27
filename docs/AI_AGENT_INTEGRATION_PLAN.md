@@ -420,12 +420,12 @@ Phase B2     : public/llms.txt on daoships-app                                  
 Phase B3     : docs/developers/agents — the silent-failure index                 ✅ SHIPPED
 Phase B4     : edits to launch-from-typescript, indexer, contracts               ✅ SHIPPED
 Phase B5     : SECURITY.md in both repos                                         ✅ SHIPPED
-Phase C1     : differential harness + encoder tests                                     [2d]
-Phase C2     : composed refusing ops, layered on TxExecutor                             [1.5d]  (needs C1)
+Phase C1     : differential harness + encoder tests                              ✅ SHIPPED
+Phase C2     : composed refusing ops, layered on TxExecutor                      ✅ SHIPPED
 Phase C3     : promote inline literals, sync mineSalts                                  [1d]
-Phase C4     : Untrusted typing on the indexer services                                 [1d]
+Phase C4     : Untrusted typing on the indexer services                          ✅ SHIPPED
 ──────────────────────────────────────────────────────────────────────────────────────
-                    Phases A + B + gates COMPLETE · Remaining ~5.5d (Phase C)
+        Phases A + B + gates + C1/C2/C4 COMPLETE · Remaining ~1d (C3, optional)
 Phase D      : read-only MCP, ~8 tools, no signing        [3d]  CONDITIONAL on §4
 Budgets page : /dao/:daoId/budgets rename + detection     [1d]  CONDITIONAL on §4
 ```
