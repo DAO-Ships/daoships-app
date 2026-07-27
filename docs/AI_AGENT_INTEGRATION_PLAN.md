@@ -521,12 +521,11 @@ worth doing on its own merits.
 Nothing here is outstanding *work*; these are product and operations decisions that outlived the
 effort. Recorded so they are not lost when this document stops being read as a plan.
 
-**Still genuinely open:** 2 (surface `Defeated` in the UI), 4 (`quorumPercent` warning floor),
-5 (dedicated agent Supabase key — now lower priority, since no MCP means no new consumer), and
+**Still genuinely open:** 2 (surface `Defeated` in the UI), 4 (`quorumPercent` warning floor), and
 the two residuals under 6 (three testnet DAOs from a retired singleton that will render but not
 work; the dead `VITE_RPC_URL` default in `daoships-app/.env` and the indexer's `config.ts`).
 
-**Closed:** 1 and the main body of 6. Question 3 (contract freeze window) is moot — with no
+**Closed:** 1, 5, and the main body of 6. Question 3 (contract freeze window) is moot — with no
 `specVersion` and no published pack, a redeploy costs a docs edit, and the deployment gates will
 fail loudly if `deployments.ts` is not updated with it.
 
@@ -543,7 +542,27 @@ fail loudly if `deployments.ts` is not updated with it.
    implied compatibility promise, so a redeploy costs a doc edit rather than a versioned artifact migration.
 4. **`quorumPercent` warning floor.** Warn when `quorumPercent < 100` (under 1%)? Or are there DAOs legitimately
    below it?
-5. **Dedicated agent Supabase key** (§2 step 1) — mint now alongside B3, or wait for measured agent traffic?
+5. ~~**Dedicated agent Supabase key** (§2 step 1) — mint now alongside B3, or wait for measured agent traffic?~~
+   **RESOLVED 2026-07-27 — minted, and published.** §2 step 1 is done: agents and the future SDK
+   read with `sb_publishable_BdCkzZNKGhfs1AJUWFsgWw_yh3OhLi2`, quota-separated from the web
+   client's key, so an agent fleet retrying a bad query cannot degrade the human application.
+
+   The decision that changed with it: the docs previously said "open to anyone with the
+   publishable key" and then never gave one — every agent-facing page described a read layer it
+   left unreachable. Publishing the endpoint is not a loosening. Contract addresses are withheld
+   from `llms.txt` because they are *derivable* (§4's walk); a Supabase project ref is derivable
+   from nothing, so withholding it only forced agents to scrape the web client's bundle for the
+   application's key, which is the outcome the split key exists to prevent.
+
+   Verified read-only against all three schemas (`mainnet`, `testnet`, `dev`) before publishing.
+   Now in: `daoships-www/app/llms.txt/route.ts` (as a literal, for the same reason the hostnames
+   are literals — quoting `NEXT_PUBLIC_SUPABASE_ANON_KEY` would publish whatever key the deploy
+   carried), `daoships-www` agents + indexer pages, `daoships-app/public/llms.txt`, and
+   `daoships-indexer/docs/FRONTEND_INTEGRATION.md`.
+
+   **The trigger for step 3 (edge proxy) is unchanged** and is now measurable for the first time:
+   agent PostgREST volume impacting app read latency. The keys being distinct is what makes that
+   attributable — before this, agent and app traffic were indistinguishable in the dashboard.
 
 6. ~~**The docs' "Orchard Testnet" column is the `dev` environment, not testnet.**~~
    **RESOLVED 2026-07-27** — after one wrong answer, recorded here because the mistake is

@@ -12,6 +12,25 @@ Do not attempt to read DAO or proposal data by fetching pages on this host. Noth
 without JavaScript. Read the chain or the indexer directly — both are public and neither
 requires us.
 
+## Reading the indexer
+
+Supabase PostgREST, read-only. The key below is publishable and published deliberately — it is
+the key for AI agents and SDK consumers, kept separate from the one this web client uses so the
+two have separate quotas.
+
+    Endpoint   https://anpmmwvxzchumfclhvmr.supabase.co/rest/v1
+    Key        sb_publishable_BdCkzZNKGhfs1AJUWFsgWw_yh3OhLi2
+    Schema     Accept-Profile: mainnet   — Quai mainnet, chainId 9
+               Accept-Profile: testnet   — Orchard testnet, chainId 15000
+
+    curl "https://anpmmwvxzchumfclhvmr.supabase.co/rest/v1/ds_daos?select=id,name,total_shares::text&limit=10" \
+      -H "apikey: sb_publishable_BdCkzZNKGhfs1AJUWFsgWw_yh3OhLi2" \
+      -H "Accept-Profile: mainnet"
+
+Send the key as an `apikey` header on every request, and always name the schema — PostgREST
+defaults to `public`, which holds no DAO Ships tables. Cast large NUMERIC columns to `::text`;
+read as JSON numbers they exceed 2^53, and a 1000-share balance silently reads as 0.
+
 ## What this app is
 
 A web client for launching and governing DAOs on Quai Network (Cyprus-1 shard). Each DAO gets
