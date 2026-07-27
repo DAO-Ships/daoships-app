@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { quais } from 'quais'
 import { daoService } from '@/services/DaoService'
 import { encodeGovernanceConfig } from '@/services/utils/GovernanceEncoder'
-import { CONTRACT_ADDRESSES, ZERO_ADDRESS } from '@/config/contracts'
+import { encodeLaunchInitParams } from '@/services/utils/LaunchEncoder'
+import { CONTRACT_ADDRESSES } from '@/config/contracts'
 
 export interface LaunchParams {
   salts: { vault: string; shares: string; loot: string; daoShip: string }
@@ -52,41 +52,22 @@ export function useLaunch() {
       const shareAmounts = params.members.map(m => m.shares)
       const lootAmounts = params.members.map(m => m.loot)
 
-      // Encode 13-field initializationParamsTemplate
-      // The factory replaces fields 0-2 (lootToken, sharesToken, avatar) with actual addresses
-      const abiCoder = quais.AbiCoder.defaultAbiCoder()
-      const initializationParamsTemplate = abiCoder.encode(
-        [
-          'address',    // lootToken (replaced by factory)
-          'address',    // sharesToken (replaced by factory)
-          'address',    // avatar (replaced by factory with vault)
-          'address',    // multisendLibrary
-          'bytes',      // governanceConfig (7-param)
-          'address[]',  // navigators
-          'uint256[]',  // navigatorPermissions
-          'address[]',  // initMembers
-          'uint256[]',  // initShareAmounts
-          'uint256[]',  // initLootAmounts
-          'address[]',  // guildTokens
-          'bool',       // pauseSharesOnLaunch
-          'bool',       // pauseLootOnLaunch
-        ],
-        [
-          ZERO_ADDRESS,                         // lootToken placeholder
-          ZERO_ADDRESS,                         // sharesToken placeholder
-          ZERO_ADDRESS,                         // avatar placeholder
-          CONTRACT_ADDRESSES.MULTISEND_CALL_ONLY,
-          govConfigBytes,
-          params.navigators,
-          params.navigatorPermissions,
-          memberAddresses,
-          shareAmounts,
-          lootAmounts,
-          params.guildTokens,
-          params.tokenConfig.pauseSharesOnLaunch,
-          params.tokenConfig.pauseLootOnLaunch,
-        ]
-      )
+      // The 13-field template lives in LaunchEncoder, which validates what it can
+      // (parallel-array lengths, guild-token ordering, a non-empty governance
+      // blob) before the chain does. Field order is consensus-critical and pinned
+      // by test there; keeping it inline here left it unverified.
+      const initializationParamsTemplate = encodeLaunchInitParams({
+        multisendLibrary: CONTRACT_ADDRESSES.MULTISEND_CALL_ONLY,
+        governanceConfig: govConfigBytes,
+        navigators: params.navigators,
+        navigatorPermissions: params.navigatorPermissions,
+        initMembers: memberAddresses,
+        initShareAmounts: shareAmounts,
+        initLootAmounts: lootAmounts,
+        guildTokens: params.guildTokens,
+        pauseSharesOnLaunch: params.tokenConfig.pauseSharesOnLaunch,
+        pauseLootOnLaunch: params.tokenConfig.pauseLootOnLaunch,
+      })
 
       if (params.vaultOwners.length === 0) {
         throw new Error(

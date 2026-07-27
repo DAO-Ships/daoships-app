@@ -16,7 +16,7 @@
 
 import { quais } from 'quais'
 import DAOShipAbi from '@/config/abi/DAOShip.json'
-import { getDAOShipContract, getSharesContract, getLootContract } from './contracts'
+import { getDAOShipContract, getSharesContract, getLootContract, getLauncherContract } from './contracts'
 
 /** DAOShip.sol ProposalState, by on-chain uint8. Order is contract order. */
 export enum OnChainProposalState {
@@ -317,6 +317,96 @@ export function requiresProposal(action: GovernanceAction, caps: Capabilities): 
       return !caps.isGovernor
     case 'setGuildTokens':
       return !caps.isAdmin
+  }
+}
+
+/**
+ * Dry-run a launch without sending it.
+ *
+ * A plain `eth_call` of `launchDAOShipAndVault`. `calculateAllAddresses` — the
+ * check most callers reach for — verifies only that the salts produce Cyprus-1
+ * addresses. It says nothing about whether the 13-field template decodes, which
+ * is the single likeliest launch error: `DAOShip.setUp` abi.decodes that blob,
+ * and a wrong field count or order reverts during initialization with no clearer
+ * signal than a failed transaction.
+ *
+ * Worth the round trip because launch is the most expensive and least reversible
+ * operation in the system — by the time it reverts, any navigators earlier in
+ * the pipeline are already deployed and paid for.
+ *
+ * @returns null when the simulation succeeds, or the decoded revert reason.
+ */
+export async function simulateLaunch(args: {
+  initializationParamsTemplate: string
+  shareTokenName: string
+  shareTokenSymbol: string
+  lootTokenName: string
+  lootTokenSymbol: string
+  vaultOwners: string[]
+  vaultThreshold: number
+  vaultSalt: string
+  sharesSalt: string
+  lootSalt: string
+  daoShipSalt: string
+}): Promise<string | null> {
+  const launcher = getLauncherContract()
+  try {
+    await launcher.launchDAOShipAndVault.staticCall(
+      args.initializationParamsTemplate,
+      args.shareTokenName,
+      args.shareTokenSymbol,
+      args.lootTokenName,
+      args.lootTokenSymbol,
+      args.vaultOwners,
+      args.vaultThreshold,
+      args.vaultSalt,
+      args.sharesSalt,
+      args.lootSalt,
+      args.daoShipSalt,
+    )
+    return null
+  } catch (err) {
+    const e = err as { shortMessage?: string; reason?: string; message?: string }
+    return e.shortMessage ?? e.reason ?? e.message ?? 'Launch simulation reverted'
+  }
+}
+
+/**
+ * Wait for the indexer to catch up to a block.
+ *
+ * After a write lands on-chain the indexer is behind by design, so an immediate
+ * read returns the pre-transaction world. The app papers over this with a
+ * refetch a few seconds later; a script has no such luxury and would otherwise
+ * poll a stale row and conclude nothing happened.
+ *
+ * Polls rather than subscribes — Realtime quota is project-level and shared with
+ * the human app.
+ *
+ * @returns true when the indexer reached the block, false on timeout.
+ */
+export async function waitForIndexed(
+  blockNumber: number,
+  opts: {
+    getIndexedBlock: () => Promise<number>
+    timeoutMs?: number
+    pollMs?: number
+  },
+): Promise<boolean> {
+  const timeoutMs = opts.timeoutMs ?? 60_000
+  const pollMs = opts.pollMs ?? 3_000
+  const deadline = Date.now() + timeoutMs
+
+  for (;;) {
+    let indexed = -1
+    try {
+      indexed = await opts.getIndexedBlock()
+    } catch {
+      // A transient indexer error is not a reason to declare failure — keep
+      // polling until the deadline.
+    }
+    if (indexed >= blockNumber) return true
+    if (Date.now() + pollMs > deadline) return false
+    await new Promise((r) => setTimeout(r, pollMs))
   }
 }
 
