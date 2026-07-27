@@ -36,7 +36,18 @@ predicate, which proposal branch, whether a proposal will actually pass. That is
 | `DAOShip.json` ABI synced (`InsufficientProcessGas`, `TooManyGuildTokens`) | Phase A / C13 | Mainnet ABI sync |
 | Deep-link hardening: `customValue` hardcoded `'0'`, `customSummary` dropped from URL read, calldata decoded | Phase A / B3 / C8 | WP6 (`customActionHref.ts:28`, `NewProposal.tsx`) |
 | Real token decimals on write paths | Phase A (funding decimals) | WP3 (`tokenMetadata.ts`, navigator/token services) |
-| **Bonus infra the plan predates:** shared write path (`TxExecutor`: `executeWrite`/`confirmTx`/`TxReverted` + `TxTracker` record-before-await) and the service decomposition (`dao/`, `navigators/`) | — | write-path branch + SU3/SU4 |
+| **Bonus infra the plan predates:** shared write path (`TxExecutor`: `executeWrite`/`confirmTx`/`TxReverted` + `TxTracker` record-before-await) | — | PR #4 (`refactor/write-path-and-service-split`) |
+| Service decomposition: `dao/{DaoReadService,DaoWriteService,LaunchService,contracts,indexerGate}` + `core/navigators/*NavService` | — | SU3/SU4 — **merged to main 2026-07-27**, see note below |
+
+> **Note on SU3/SU4 (2026-07-27).** Until today this row was inaccurate: the decomposition had
+> never been merged. `refactor/su3-su4-service-decomposition` was pushed but **no PR was ever
+> opened for it**, and `main` still carried the monolithic `DaoService.ts` with no `dao/` or
+> `core/navigators/` directories. The confusion is understandable — PR #4 is titled
+> *"Refactor/write path and service split"*, which sounds like the decomposition but delivered
+> the write path (12 files, +759/−135) rather than SU3/SU4 (18 files, +2930/−2143). The branch
+> was based on PR #4's merge commit, so it inherited `TxExecutor` and looked merged from the
+> inside. It has now been merged directly to `main` and verified green: typecheck, lint
+> (`--max-warnings 0`), 719 tests, production build.
 
 ### Phase A remnants (the genuinely-open bug fixes — ~1 day)
 
