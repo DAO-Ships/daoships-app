@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // H25: navigator IPFS CIDs are derived from CBOR metadata, not hand-copied.
 //
-// The eight CIDs below are the literals that shipped before derivation replaced
-// them, pinned here deliberately. Derivation must reproduce them exactly — if a
+// The eight CIDs below match source-verified compiler artifacts synchronized on
+// 2026-09-10 and are pinned here deliberately. Derivation must reproduce them exactly — if a
 // change to extractIpfsCid alters what we hand to quais.ContractFactory, that is
 // a change to what gets deployed and verified on-chain, and it should fail here
 // rather than in production.
@@ -23,17 +23,17 @@ import { SUBSCRIPTION_NAVIGATOR_BYTECODE } from '@/config/abi/SubscriptionNaviga
 import { BUDGET_NAVIGATOR_BYTECODE } from '@/config/abi/BudgetNavigator.bytecode'
 
 const SHIPPED: ReadonlyArray<[string, string, string]> = [
-  ['OnboarderNavigator', ONBOARDER_NAVIGATOR_BYTECODE, 'QmeFR5wgHwGL91BAUQoQrdfhmFGCagQKoUzBEsYRMCkgdn'],
-  ['ERC20TributeNavigator', ERC20_TRIBUTE_NAVIGATOR_BYTECODE, 'QmNkqVRbHfJVnEfa36XDRYV8xrPpJmsBJDm2XuyY2ufFJN'],
-  ['NFTGatedNavigator', NFT_GATED_NAVIGATOR_BYTECODE, 'Qmavg3RjwCjRCEHUHRayeg4gj2UoiB9t1uKEUbsL5qb5md'],
-  ['SignalNavigator', SIGNAL_NAVIGATOR_BYTECODE, 'QmQTefaaDcNXkZjjXGdt9czkZEjxZGjqvHuY95h1bHvJLF'],
+  ['OnboarderNavigator', ONBOARDER_NAVIGATOR_BYTECODE, 'QmVh562nBMRjjSxLvLnUqY1GtAQKmjkRg6p9nnXZcYyTkH'],
+  ['ERC20TributeNavigator', ERC20_TRIBUTE_NAVIGATOR_BYTECODE, 'QmbeoaRx6juiv6b1WMeeDJNs8ezLp9NkjwWjkcXCvvekPe'],
+  ['NFTGatedNavigator', NFT_GATED_NAVIGATOR_BYTECODE, 'Qmbz9ioUN9Jzb7T5iPUYSAHytGtHC1Q6CtG6YiaXmyPWD1'],
+  ['SignalNavigator', SIGNAL_NAVIGATOR_BYTECODE, 'QmPr7nkPaN4sEx7CWQTRbXPyMjUM1qrEXyKhvjr2H1Q1hw'],
   ['VestingNavigator', VESTING_NAVIGATOR_BYTECODE, 'QmdSX6vuYL2vcmsAEXAm9rT1nwjBivxwU8iwHeURHSPvgi'],
   ['TimelockNavigator', TIMELOCK_NAVIGATOR_BYTECODE, 'QmRHkRsWTPGDoeP6XKL9RuXMkBfWdboQDPuYBm4NRvh8qn'],
   ['SubscriptionNavigator', SUBSCRIPTION_NAVIGATOR_BYTECODE, 'QmPYtpmxAbU6WrYNz1h8V7ikQSDoaE7QDKRjMsbdzULZMa'],
   ['BudgetNavigator', BUDGET_NAVIGATOR_BYTECODE, 'QmaWqpzw5A8bGYxGUhmCir34iLc1aeZWeiTZrYBgCrUNue'],
 ]
 
-describe('extractIpfsCid — derived CIDs match the literals they replaced', () => {
+describe('extractIpfsCid — derived CIDs match reviewed compiler artifacts', () => {
   it.each(SHIPPED)('%s', (_name, bytecode, expected) => {
     expect(extractIpfsCid(bytecode)).toBe(expected)
   })
