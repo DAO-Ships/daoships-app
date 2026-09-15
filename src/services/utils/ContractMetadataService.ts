@@ -10,8 +10,7 @@
 //   5. Fetch Solidity metadata JSON from IPFS gateway
 //   6. Parse ABI from metadata.output.abi
 //   7. Detect EIP-1967 proxy (upgradeTo/implementation in ABI) → recurse
-//   8. Fallback: Quaiscan explorer API
-//   9. Fallback: null (manual paste or raw hex)
+//   8. Fallback: null (manual paste or raw hex)
 //
 // All RPC calls go through baseService.getProvider() (wallet provider)
 // due to CORS restrictions on direct RPC.
@@ -20,7 +19,6 @@
 import { decode, AuxdataStyle } from '@ethereum-sourcify/bytecode-utils'
 import { quais } from 'quais'
 import { baseService } from '@/services/core/BaseService'
-import { NETWORK_CONFIG } from '@/config/contracts'
 
 const IPFS_GATEWAY = import.meta.env.VITE_IPFS_GATEWAY || 'https://ipfs.qu.ai'
 const FETCH_TIMEOUT_MS = 10_000
@@ -53,7 +51,7 @@ function cacheSet(address: string, entry: AbiCacheEntry) {
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-export type AbiSource = 'ipfs' | 'explorer'
+export type AbiSource = 'ipfs'
 
 export interface AbiResult {
   abi: quais.JsonFragment[] | null
@@ -75,7 +73,7 @@ export async function isContract(address: string): Promise<boolean> {
 
 /**
  * Resolve the ABI for a contract address.
- * Tries IPFS bytecode metadata first, then explorer API.
+ * Resolves via the IPFS CID embedded in the on-chain bytecode metadata.
  */
 export async function fetchAbi(address: string): Promise<AbiResult> {
   const key = address.toLowerCase()
@@ -86,14 +84,6 @@ export async function fetchAbi(address: string): Promise<AbiResult> {
   const ipfsResult = await fetchAbiFromIpfs(address, 0)
   if (ipfsResult) {
     const entry: AbiCacheEntry = { abi: ipfsResult, source: 'ipfs' }
-    cacheSet(key, entry)
-    return entry
-  }
-
-  // Fallback: explorer API
-  const explorerResult = await fetchAbiFromExplorer(address)
-  if (explorerResult) {
-    const entry: AbiCacheEntry = { abi: explorerResult, source: 'explorer' }
     cacheSet(key, entry)
     return entry
   }
@@ -152,31 +142,6 @@ async function fetchAbiFromIpfs(address: string, depth: number): Promise<quais.J
         if (implAbi) return implAbi
       }
     }
-
-    return abi
-  } catch {
-    return null
-  }
-}
-
-// ── Explorer API Fallback ────────────────────────────────────────────────
-
-async function fetchAbiFromExplorer(address: string): Promise<quais.JsonFragment[] | null> {
-  try {
-    const checksummed = quais.getAddress(address)
-    const explorerBase = new URL('/api', NETWORK_CONFIG.blockExplorerUrl)
-    explorerBase.searchParams.set('module', 'contract')
-    explorerBase.searchParams.set('action', 'getabi')
-    explorerBase.searchParams.set('address', checksummed)
-    const url = explorerBase.toString()
-    const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
-    if (!response.ok) return null
-
-    const data = await response.json()
-    if (data.status !== '1' || !data.result) return null
-
-    const abi = typeof data.result === 'string' ? JSON.parse(data.result) : data.result
-    if (!Array.isArray(abi) || abi.length === 0) return null
 
     return abi
   } catch {

@@ -20,7 +20,7 @@ export const quaiMainnet = defineChain({
     default: { http: [MAINNET.rpcUrl] },
   },
   blockExplorers: {
-    default: { name: 'Quaiscan', url: MAINNET.blockExplorerUrl },
+    default: { name: 'Quai Explorer', url: MAINNET.blockExplorerUrl },
   },
 })
 

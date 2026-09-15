@@ -68,7 +68,7 @@ export const DEPLOYMENTS: Record<number, ChainDeployment> = {
     chainId: QUAI_MAINNET_CHAIN_ID,
     chainName: 'Quai Network',
     rpcUrl: 'https://rpc.quai.network/cyprus1',
-    blockExplorerUrl: 'https://quaiscan.io',
+    blockExplorerUrl: 'https://explorer.qu.ai',
     supabaseSchema: 'mainnet',
     contracts: {
       DAOSHIP_SINGLETON: '0x002956ba6223d17b67Af509bb057928299B11611',

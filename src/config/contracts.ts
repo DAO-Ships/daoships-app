@@ -164,7 +164,7 @@ export function validateContractConfig(): boolean {
   }
 
   if (!NETWORK_CONFIG.blockExplorerUrl) {
-    console.warn('[contracts] Missing block explorer URL — ABI-assisted calldata decoding will degrade.')
+    console.warn('[contracts] Missing block explorer URL — explorer links will be broken.')
     valid = false
   }
 
