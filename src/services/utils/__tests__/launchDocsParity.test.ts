@@ -1,61 +1,79 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// The published launch tutorial duplicates the 13-field type list as prose.
+// Cross-repo drift guards for the published launch path.
 //
-// That duplication is the point of this test. `@daoships/protocol` is an
-// explicit non-goal, so an external integrator cannot import our codec — they
-// copy the list out of docs/developers/launch-from-typescript. Their launch is
-// therefore only as correct as that page, and prose copied from code drifts.
+// This file used to assert that the launch tutorial repeated the 13-field type
+// list as prose, because `@daoships/protocol` was a non-goal and an integrator
+// had no codec to import — docs were the only copy, and prose copied from code
+// drifts.
 //
-// This session alone produced two live examples of exactly that: the docs
-// carried two non-functional RPC URLs, and a complete Orchard address set
-// belonging to a deployment nobody uses.
+// That premise is gone. `@daoships/sdk` now exports INIT_PARAMS_TYPES and
+// encodes the template itself, and the tutorial was rewritten around it: there
+// is no hand-rolled type list left on the page to check, and no placeholder
+// fields for a reader to fill in by hand.
 //
-// Cross-repo, so it skips when daoships-www is not checked out beside this one —
-// the same reason the ABI-vs-artifacts check was dropped from the deployment
-// gates. It runs for anyone working locally, which is where the docs get edited.
+// What can still drift is checked below: our codec against the one integrators
+// actually import, and the version the tutorial tells them to install.
+//
+// Cross-repo, so each check skips when its sibling repo is not checked out
+// beside this one. They run for anyone working locally, which is where both
+// the docs and the SDK get edited.
 // ═══════════════════════════════════════════════════════════════════════════
 import { describe, it, expect } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { INIT_PARAMS_TYPES } from '../LaunchEncoder'
 
+const SDK_LAUNCH = path.resolve(__dirname, '../../../../../daoships-sdk/src/launch.ts')
+const SDK_PACKAGE = path.resolve(__dirname, '../../../../../daoships-sdk/package.json')
 const DOC = path.resolve(
   __dirname,
   '../../../../../daoships-www/app/docs/developers/launch-from-typescript/page.mdx',
 )
 
-const available = fs.existsSync(DOC)
+const sdkAvailable = fs.existsSync(SDK_LAUNCH) && fs.existsSync(SDK_PACKAGE)
+const docAvailable = fs.existsSync(DOC) && fs.existsSync(SDK_PACKAGE)
 
-describe.skipIf(!available)('published launch tutorial matches the codec', () => {
-  const source = available ? fs.readFileSync(DOC, 'utf8') : ''
+describe.skipIf(!sdkAvailable)('published SDK encodes the same launch template', () => {
+  it('exports the same 13 ABI types, in the same order', () => {
+    const source = fs.readFileSync(SDK_LAUNCH, 'utf8')
 
-  it('documents the same 13 ABI types, in the same order', () => {
-    // The tutorial writes the list inline on one line. Match the LINE rather
-    // than a bracketed region — `address[]` contains a `]`, so a non-greedy
-    // `[^\]]*?` terminates inside the first array type and silently reads a
-    // truncated list.
-    const line = source.split('\n').find((l) => /^\s*\["address"/.test(l))
-    expect(line, 'could not find the type list in the tutorial').toBeDefined()
+    // The SDK writes the list inline inside Object.freeze([...]). Match from the
+    // declaration to the first `]` — every type is a quoted literal, and
+    // `address[]` contains a `]`, so slice on the closing bracket of the array
+    // rather than the first one encountered.
+    const decl = source.match(/export const INIT_PARAMS_TYPES\s*=\s*Object\.freeze\(\[(.*?)\]\s*as const\)/s)
+    expect(decl, 'could not find INIT_PARAMS_TYPES in the SDK').toBeTruthy()
 
-    const documented = [...line!.matchAll(/"([a-z0-9[\]]+)"/g)].map((m) => m[1])
+    const published = [...decl![1].matchAll(/'([a-z0-9[\]]+)'/g)].map((m) => m[1])
 
     expect(
-      documented,
-      'The tutorial\'s field list has drifted from LaunchEncoder. An integrator copying '
-      + 'from the docs would build a template DAOShip.setUp cannot decode.',
+      published,
+      'The SDK\'s init-params layout has drifted from LaunchEncoder. An integrator '
+      + 'using @daoships/sdk would build a template DAOShip.setUp cannot decode.',
     ).toEqual([...INIT_PARAMS_TYPES])
-  })
-
-  it('still tells readers the first three fields are launcher-filled placeholders', () => {
-    // If this wording disappears, someone will pass real addresses and wonder
-    // why they are ignored.
-    expect(source).toMatch(/filled by launcher|placeholder/i)
   })
 })
 
-describe.skipIf(available)('docs parity (skipped)', () => {
-  it('reports why it could not run', () => {
-    console.warn(`[docs-parity] daoships-www not found at ${DOC} — skipping`)
+describe.skipIf(!docAvailable)('published launch tutorial matches the SDK', () => {
+  it('pins the version of @daoships/sdk that the SDK repo publishes', () => {
+    const source = fs.readFileSync(DOC, 'utf8')
+    const { version } = JSON.parse(fs.readFileSync(SDK_PACKAGE, 'utf8')) as { version: string }
+
+    const pinned = [...source.matchAll(/@daoships\/sdk@([0-9a-zA-Z.-]+)/g)].map((m) => m[1])
+
+    expect(pinned.length, 'the tutorial no longer pins an SDK version').toBeGreaterThan(0)
+    expect(
+      [...new Set(pinned)],
+      'The tutorial installs an SDK version other than the one this repo publishes. '
+      + 'A reader following it gets a different codec than the docs describe.',
+    ).toEqual([version])
+  })
+})
+
+describe.skipIf(sdkAvailable && docAvailable)('launch parity (partially skipped)', () => {
+  it('reports what it could not check', () => {
+    if (!sdkAvailable) console.warn(`[launch-parity] daoships-sdk not found at ${SDK_LAUNCH} — skipping codec check`)
+    if (!docAvailable) console.warn(`[launch-parity] daoships-www not found at ${DOC} — skipping docs check`)
     expect(true).toBe(true)
   })
 })
